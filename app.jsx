@@ -6,7 +6,7 @@
   const STORAGE_KEY = 'pitcher:draft';
 
 // ---------- Inline SVG Icons (lucide-style) ----------
-const Icon = ({ children, size = 16, ...props }) => (
+const Icon = ({ children, size = 16 }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width={size}
@@ -17,7 +17,6 @@ const Icon = ({ children, size = 16, ...props }) => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    {...props}
   >
     {children}
   </svg>
@@ -191,7 +190,11 @@ function PitcherInputForm({ onOpenReport } = {}) {
       try {
         const meta = {
           pitcher,
-          trialMetas: trials.map(({ data, ...rest }) => rest)
+          trialMetas: trials.map((t) => {
+            const m = { ...t };
+            delete m.data;
+            return m;
+          })
         };
         await idbKeyval.set(STORAGE_KEY, meta);
 
