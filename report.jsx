@@ -315,6 +315,143 @@
   }
 
   // ============================================================
+  // Side-by-side video player — synchronized rate / frame stepping
+  // ============================================================
+  function SideBySideVideoPlayer({ currentSrc, pastSrc, currentLabel, pastLabel }) {
+    const currentRef = useRef(null);
+    const pastRef = useRef(null);
+    const [speed, setSpeed] = useState(0.25);
+    const FRAME_TIME = 1 / 30;
+
+    const setRate = (r) => {
+      setSpeed(r);
+      if (currentRef.current) currentRef.current.playbackRate = r;
+      if (pastRef.current) pastRef.current.playbackRate = r;
+    };
+    const stepFrame = (forward) => {
+      [currentRef, pastRef].forEach(ref => {
+        const v = ref.current;
+        if (!v) return;
+        if (!v.paused) v.pause();
+        v.currentTime = Math.max(0, v.currentTime + (forward ? FRAME_TIME : -FRAME_TIME));
+      });
+    };
+    const playBoth = () => {
+      [currentRef, pastRef].forEach(ref => {
+        if (ref.current) ref.current.play();
+      });
+    };
+    const pauseBoth = () => {
+      [currentRef, pastRef].forEach(ref => {
+        if (ref.current) ref.current.pause();
+      });
+    };
+    const resetBoth = () => {
+      [currentRef, pastRef].forEach(ref => {
+        if (ref.current) {
+          ref.current.pause();
+          ref.current.currentTime = 0;
+        }
+      });
+    };
+
+    return (
+      <div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Current */}
+          <div>
+            <div className="text-[10.5px] uppercase tracking-wider font-bold mb-1.5" style={{ color: '#93c5fd' }}>
+              현재 {currentLabel ? `· ${currentLabel}` : ''}
+            </div>
+            {currentSrc ? (
+              <video
+                ref={currentRef}
+                src={currentSrc}
+                muted
+                controls
+                className="w-full max-h-[380px] rounded-md"
+                style={{ background: '#000' }}/>
+            ) : (
+              <div className="w-full rounded-md flex items-center justify-center text-[12px] italic"
+                style={{ background: '#0a0e1a', border: '1px dashed #1e2a47', color: '#94a3b8', height: '240px' }}>
+                현재 영상 없음
+              </div>
+            )}
+          </div>
+          {/* Past */}
+          <div>
+            <div className="text-[10.5px] uppercase tracking-wider font-bold mb-1.5" style={{ color: '#fbbf24' }}>
+              과거 {pastLabel ? `· ${pastLabel}` : ''}
+            </div>
+            {pastSrc ? (
+              <video
+                ref={pastRef}
+                src={pastSrc}
+                muted
+                controls
+                className="w-full max-h-[380px] rounded-md"
+                style={{ background: '#000' }}/>
+            ) : (
+              <div className="w-full rounded-md flex items-center justify-center text-[12px] italic"
+                style={{ background: '#0a0e1a', border: '1px dashed #1e2a47', color: '#94a3b8', height: '240px' }}>
+                과거 영상 없음
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Synchronized controls */}
+        {(currentSrc || pastSrc) && (
+          <div className="mt-3 flex flex-wrap gap-1.5 items-center print:hidden">
+            <span className="text-[10.5px] uppercase tracking-wider font-bold mr-1" style={{ color: '#94a3b8' }}>
+              동시 제어
+            </span>
+            <button onClick={playBoth}
+              className="px-2.5 py-1 text-[12px] font-semibold rounded border"
+              style={{ background: '#10b981', color: '#042f2c', borderColor: '#10b981' }}>
+              ▶ 둘 다 재생
+            </button>
+            <button onClick={pauseBoth}
+              className="px-2.5 py-1 text-[12px] font-semibold rounded border"
+              style={{ background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+              ❚❚ 정지
+            </button>
+            <button onClick={resetBoth}
+              className="px-2.5 py-1 text-[12px] font-semibold rounded border"
+              style={{ background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+              ⟲ 처음으로
+            </button>
+            <span className="text-[10.5px] uppercase tracking-wider font-bold mx-1 ml-3" style={{ color: '#94a3b8' }}>배속</span>
+            {[0.1, 0.25, 0.5, 1].map(r => (
+              <button key={r} onClick={() => setRate(r)}
+                className="px-2.5 py-1 text-[12px] font-semibold rounded border"
+                style={speed === r
+                  ? { background: '#2563eb', color: 'white', borderColor: '#2563eb' }
+                  : { background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+                {r}×
+              </button>
+            ))}
+            <span className="text-[10.5px] uppercase tracking-wider font-bold mx-1 ml-3" style={{ color: '#94a3b8' }}>프레임</span>
+            <button onClick={() => stepFrame(false)}
+              className="px-2.5 py-1 text-[12px] font-semibold rounded border"
+              style={{ background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+              ◀ 이전
+            </button>
+            <button onClick={() => stepFrame(true)}
+              className="px-2.5 py-1 text-[12px] font-semibold rounded border"
+              style={{ background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+              다음 ▶
+            </button>
+            <span className="ml-auto text-[10.5px]" style={{ color: '#94a3b8' }}>
+              개별 영상 재생/탐색은 각 영상 컨트롤로 가능
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ============================================================
   // Layout primitives
   // ============================================================
   function Section({ title, subtitle, n, children }) {
@@ -789,6 +926,250 @@
   }
 
   // ============================================================
+  // Comparison view — side-by-side subject vs benchmark with Δ
+  // ============================================================
+  function CompareRow({ label, subjectVal, benchVal, unit, decimals = 1, lowerIsBetter = false, sd, benchSd }) {
+    if (subjectVal == null && benchVal == null) return null;
+    const fmt = (v) => v == null || isNaN(v) ? '—' : v.toFixed(decimals);
+    const delta = (subjectVal != null && benchVal != null) ? subjectVal - benchVal : null;
+    let deltaTone = 'neutral';
+    if (delta != null && Math.abs(delta) > 0.01) {
+      const better = lowerIsBetter ? delta < 0 : delta > 0;
+      deltaTone = better ? 'better' : 'worse';
+    }
+    const deltaColor = { better: '#6ee7b7', worse: '#fca5a5', neutral: '#94a3b8' }[deltaTone];
+    const deltaArrow = delta == null ? '' : (delta > 0 ? '▲' : delta < 0 ? '▼' : '');
+    const deltaSign = delta == null ? '' : (delta >= 0 ? '+' : '');
+    return (
+      <div className="grid items-center gap-3 py-2 border-b" style={{
+        gridTemplateColumns: '1.6fr 1fr 0.6fr 1fr',
+        borderColor: '#1e2a47'
+      }}>
+        <div className="text-[12px]" style={{ color: '#cbd5e1' }}>{label}</div>
+        <div className="text-right tabular-nums">
+          <span className="font-bold text-[14px]" style={{ color: '#f1f5f9' }}>{fmt(subjectVal)}</span>
+          {sd != null && <span className="text-[10.5px] ml-1" style={{ color: '#94a3b8' }}>±{fmt(sd)}</span>}
+          <span className="text-[10px] ml-0.5" style={{ color: '#94a3b8' }}>{unit}</span>
+        </div>
+        <div className="text-center text-[11px] tabular-nums font-bold" style={{ color: deltaColor }}>
+          {delta != null ? `${deltaArrow} ${deltaSign}${fmt(delta)}` : '—'}
+        </div>
+        <div className="text-right tabular-nums">
+          <span className="font-bold text-[14px]" style={{ color: '#cbd5e1' }}>{fmt(benchVal)}</span>
+          {benchSd != null && <span className="text-[10.5px] ml-1" style={{ color: '#94a3b8' }}>±{fmt(benchSd)}</span>}
+          <span className="text-[10px] ml-0.5" style={{ color: '#94a3b8' }}>{unit}</span>
+        </div>
+      </div>
+    );
+  }
+
+  function CompareSection({ title, subtitle, children }) {
+    return (
+      <section className="bbl-section">
+        <div className="bbl-section-head">
+          <h2 className="bbl-section-title">{title}</h2>
+          {subtitle && <span className="bbl-section-subtitle">{subtitle}</span>}
+        </div>
+        <div className="bbl-section-body">{children}</div>
+      </section>
+    );
+  }
+
+  function CompareSummary({ subject, bench }) {
+    // Build a quick at-a-glance summary of meaningful changes
+    const items = [];
+    const push = (cond, type, text) => { if (cond) items.push({ type, text }); };
+    const sM = subject.summary, bM = bench.summary;
+    const dV = (sM.velocity?.mean ?? 0) - (bM.velocity?.mean ?? 0);
+    push(Math.abs(dV) >= 1, dV > 0 ? 'better' : 'worse',
+      `평균 구속 ${dV >= 0 ? '+' : ''}${dV.toFixed(1)} km/h`);
+    const dArm = (sM.peakArmVel?.mean ?? 0) - (bM.peakArmVel?.mean ?? 0);
+    push(Math.abs(dArm) >= 50, dArm > 0 ? 'better' : 'worse',
+      `팔 회전속도 ${dArm >= 0 ? '+' : ''}${Math.round(dArm)} °/s`);
+    const dLay = (sM.maxLayback?.mean ?? 0) - (bM.maxLayback?.mean ?? 0);
+    push(Math.abs(dLay) >= 5, dLay > 0 ? 'better' : 'worse',
+      `Layback ${dLay >= 0 ? '+' : ''}${Math.round(dLay)}°`);
+    const dXf = (sM.maxXFactor?.mean ?? 0) - (bM.maxXFactor?.mean ?? 0);
+    push(Math.abs(dXf) >= 5, dXf > 0 ? 'better' : 'worse',
+      `X-factor ${dXf >= 0 ? '+' : ''}${Math.round(dXf)}°`);
+    const dSt = (sM.strideRatio?.mean ?? 0) - (bM.strideRatio?.mean ?? 0);
+    push(Math.abs(dSt) >= 0.03, dSt > 0 ? 'better' : 'worse',
+      `Stride 비율 ${dSt >= 0 ? '+' : ''}${(dSt * 100).toFixed(0)}%p`);
+    const dLeak = (subject.energy?.leakRate ?? 0) - (bench.energy?.leakRate ?? 0);
+    push(Math.abs(dLeak) >= 5, dLeak < 0 ? 'better' : 'worse',
+      `에너지 누수율 ${dLeak >= 0 ? '+' : ''}${dLeak.toFixed(1)}%p`);
+
+    if (items.length === 0) {
+      return (
+        <div className="summary-box mid">
+          <div className="summary-icon">·</div>
+          <div className="flex-1">
+            <div className="summary-label">한눈에 보기</div>
+            <div className="summary-text">두 측정 사이에 의미 있는 변화가 거의 없습니다 — 전반적으로 비슷한 수준이에요.</div>
+          </div>
+        </div>
+      );
+    }
+    const better = items.filter(i => i.type === 'better').map(i => i.text);
+    const worse  = items.filter(i => i.type === 'worse').map(i => i.text);
+    const tone = better.length > worse.length ? 'good' : worse.length > better.length ? 'bad' : 'mid';
+    return (
+      <div className={`summary-box ${tone}`}>
+        <div className="summary-icon">{tone === 'good' ? '✓' : tone === 'bad' ? '⚠' : '·'}</div>
+        <div className="flex-1">
+          <div className="summary-label">한눈에 보기</div>
+          <div className="summary-text">
+            {better.length > 0 && <span><b style={{ color: '#6ee7b7' }}>향상:</b> {better.join(' · ')}.<br/></span>}
+            {worse.length > 0 && <span><b style={{ color: '#fca5a5' }}>퇴보:</b> {worse.join(' · ')}.</span>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function ComparisonView({ subject, bench, subjectName, subjectHeight, benchLabel, benchDate, benchHeight, benchNote, currentVideoUrl, pastVideoUrl }) {
+    const sM = subject.summary;
+    const bM = bench.summary;
+    const sE = subject.energy;
+    const bE = bench.energy;
+    const sC = subject.command;
+    const bC = bench.command;
+
+    return (
+      <div className="space-y-3">
+        {/* Header — current vs past */}
+        <div className="bbl-section">
+          <div className="bbl-section-body" style={{ padding: '14px 16px' }}>
+            <div className="grid items-center gap-3" style={{ gridTemplateColumns: '1.6fr 1fr 0.6fr 1fr' }}>
+              <div className="text-[10.5px] uppercase tracking-wider font-bold" style={{ color: '#94a3b8' }}>지표</div>
+              <div className="text-right">
+                <div className="text-[10.5px] uppercase tracking-wider font-bold" style={{ color: '#93c5fd' }}>현재</div>
+                <div className="text-[12.5px] font-bold mt-0.5" style={{ color: '#f1f5f9' }}>{subjectName}</div>
+                {subjectHeight && <div className="text-[10.5px]" style={{ color: '#94a3b8' }}>신장 {subjectHeight}cm</div>}
+              </div>
+              <div className="text-center text-[10.5px] uppercase tracking-wider font-bold" style={{ color: '#94a3b8' }}>Δ</div>
+              <div className="text-right">
+                <div className="text-[10.5px] uppercase tracking-wider font-bold" style={{ color: '#fbbf24' }}>과거</div>
+                <div className="text-[12.5px] font-bold mt-0.5" style={{ color: '#f1f5f9' }}>{benchLabel}</div>
+                <div className="text-[10.5px]" style={{ color: '#94a3b8' }}>
+                  {benchDate}{benchDate && benchHeight && ' · '}{benchHeight && `신장 ${benchHeight}cm`}
+                </div>
+                {benchNote && <div className="text-[10.5px] italic mt-0.5" style={{ color: '#cbd5e1' }}>"{benchNote}"</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick summary */}
+        <CompareSummary subject={subject} bench={bench}/>
+
+        {/* Side-by-side video comparison */}
+        {(currentVideoUrl || pastVideoUrl) && (
+          <CompareSection title="영상 비교" subtitle="동시 제어 가능 (배속 · 프레임 이동)">
+            <SideBySideVideoPlayer
+              currentSrc={currentVideoUrl}
+              pastSrc={pastVideoUrl}
+              currentLabel={subjectName}
+              pastLabel={benchLabel}/>
+          </CompareSection>
+        )}
+
+        {/* 구속 */}
+        <CompareSection title="구속" subtitle="평균 / 최고">
+          <CompareRow label="평균 구속" unit="km/h" decimals={1}
+            subjectVal={sM.velocity?.mean} benchVal={bM.velocity?.mean}
+            sd={sM.velocity?.sd} benchSd={bM.velocity?.sd}/>
+          <CompareRow label="최고 구속" unit="km/h" decimals={1}
+            subjectVal={sM.velocity?.max} benchVal={bM.velocity?.max}/>
+        </CompareSection>
+
+        {/* 분절 회전 */}
+        <CompareSection title="분절 회전 속도" subtitle="3분절 peak ω">
+          <CompareRow label="골반 peak ω" unit="°/s" decimals={0}
+            subjectVal={sM.peakPelvisVel?.mean} benchVal={bM.peakPelvisVel?.mean}
+            sd={sM.peakPelvisVel?.sd} benchSd={bM.peakPelvisVel?.sd}/>
+          <CompareRow label="몸통 peak ω" unit="°/s" decimals={0}
+            subjectVal={sM.peakTrunkVel?.mean} benchVal={bM.peakTrunkVel?.mean}
+            sd={sM.peakTrunkVel?.sd} benchSd={bM.peakTrunkVel?.sd}/>
+          <CompareRow label="팔 peak ω" unit="°/s" decimals={0}
+            subjectVal={sM.peakArmVel?.mean} benchVal={bM.peakArmVel?.mean}
+            sd={sM.peakArmVel?.sd} benchSd={bM.peakArmVel?.sd}/>
+        </CompareSection>
+
+        {/* 시퀀싱 */}
+        <CompareSection title="분절 시퀀싱" subtitle="P→T→A 타이밍">
+          <CompareRow label="P→T lag" unit="ms" decimals={0}
+            subjectVal={sM.ptLagMs?.mean} benchVal={bM.ptLagMs?.mean}/>
+          <CompareRow label="T→A lag" unit="ms" decimals={0}
+            subjectVal={sM.taLagMs?.mean} benchVal={bM.taLagMs?.mean}/>
+          <CompareRow label="FC→릴리스" unit="ms" decimals={0}
+            subjectVal={sM.fcBrMs?.mean} benchVal={bM.fcBrMs?.mean}/>
+        </CompareSection>
+
+        {/* 에너지 */}
+        <CompareSection title="키네틱 체인 에너지" subtitle="ETI + 누수율">
+          <CompareRow label="ETI (P→T)" unit="" decimals={2}
+            subjectVal={sM.etiPT?.mean} benchVal={bM.etiPT?.mean}/>
+          <CompareRow label="ETI (T→A)" unit="" decimals={2}
+            subjectVal={sM.etiTA?.mean} benchVal={bM.etiTA?.mean}/>
+          <CompareRow label="종합 누수율" unit="%" decimals={1} lowerIsBetter
+            subjectVal={sE?.leakRate} benchVal={bE?.leakRate}/>
+        </CompareSection>
+
+        {/* 핵심 키네매틱스 */}
+        <CompareSection title="핵심 키네매틱스" subtitle="6종 동작 지표">
+          <CompareRow label="Layback (어깨 외회전)" unit="°" decimals={1}
+            subjectVal={sM.maxLayback?.mean} benchVal={bM.maxLayback?.mean}/>
+          <CompareRow label="X-factor" unit="°" decimals={1}
+            subjectVal={sM.maxXFactor?.mean} benchVal={bM.maxXFactor?.mean}/>
+          <CompareRow label="Stride length" unit="m" decimals={2}
+            subjectVal={sM.strideLength?.mean} benchVal={bM.strideLength?.mean}/>
+          <CompareRow label="Stride 비율 (신장 대비)" unit="x" decimals={2}
+            subjectVal={sM.strideRatio?.mean} benchVal={bM.strideRatio?.mean}/>
+          <CompareRow label="몸통 전방 기울기" unit="°" decimals={1}
+            subjectVal={sM.trunkForwardTilt?.mean} benchVal={bM.trunkForwardTilt?.mean}/>
+          <CompareRow label="몸통 측방 기울기" unit="°" decimals={1}
+            subjectVal={sM.trunkLateralTilt?.mean} benchVal={bM.trunkLateralTilt?.mean}/>
+          <CompareRow label="Arm slot 각도" unit="°" decimals={1}
+            subjectVal={sM.armSlotAngle?.mean} benchVal={bM.armSlotAngle?.mean}/>
+          <CompareRow label="앞 무릎 굴곡 (FC)" unit="°" decimals={1}
+            subjectVal={sM.frontKneeFlex?.mean} benchVal={bM.frontKneeFlex?.mean}/>
+        </CompareSection>
+
+        {/* 제구 */}
+        <CompareSection title="제구 능력" subtitle="릴리스 일관성 (CV / SD)">
+          <div className="grid items-center gap-3 py-2 border-b" style={{
+            gridTemplateColumns: '1.6fr 1fr 0.6fr 1fr', borderColor: '#1e2a47'
+          }}>
+            <div className="text-[12px] font-bold" style={{ color: '#f1f5f9' }}>종합 등급</div>
+            <div className="text-right"><span className={`pill pill-${sC?.overall}`}>{sC?.overall}</span></div>
+            <div></div>
+            <div className="text-right"><span className={`pill pill-${bC?.overall}`}>{bC?.overall}</span></div>
+          </div>
+          <CompareRow label="손목 높이 SD" unit="cm" decimals={2} lowerIsBetter
+            subjectVal={sM.wristHeight?.sd != null ? sM.wristHeight.sd * 100 : null}
+            benchVal={bM.wristHeight?.sd != null ? bM.wristHeight.sd * 100 : null}/>
+          <CompareRow label="Arm slot SD" unit="°" decimals={2} lowerIsBetter
+            subjectVal={sM.armSlotAngle?.sd} benchVal={bM.armSlotAngle?.sd}/>
+          <CompareRow label="몸통 기울기 SD" unit="°" decimals={2} lowerIsBetter
+            subjectVal={sM.trunkForwardTilt?.sd} benchVal={bM.trunkForwardTilt?.sd}/>
+          <CompareRow label="Layback CV" unit="%" decimals={2} lowerIsBetter
+            subjectVal={sM.maxLayback?.cv} benchVal={bM.maxLayback?.cv}/>
+          <CompareRow label="Stride CV" unit="%" decimals={2} lowerIsBetter
+            subjectVal={sM.strideLength?.cv} benchVal={bM.strideLength?.cv}/>
+          <CompareRow label="FC→BR CV" unit="%" decimals={2} lowerIsBetter
+            subjectVal={sM.fcBrMs?.cv} benchVal={bM.fcBrMs?.cv}/>
+        </CompareSection>
+
+        {/* Footer note */}
+        <div className="text-[11px] italic px-2" style={{ color: '#94a3b8' }}>
+          ※ Δ는 현재 − 과거. 녹색 ▲ = 향상, 빨간 ▼ = 퇴보 (지표 특성에 따라 방향 자동 판단)
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
   // Main ReportView
   // ============================================================
   function ReportView({ onBack }) {
@@ -798,6 +1179,9 @@
     const [videoUrl, setVideoUrl] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [benchmarks, setBenchmarks] = useState([]); // [{id,label,type,measurementDate,note,trials,analysis}]
+    const [activeTab, setActiveTab] = useState('individual'); // 'individual' | 'compare'
+    const [activeBenchId, setActiveBenchId] = useState(null);
 
     // Load data from IndexedDB on mount
     useEffect(() => {
@@ -829,6 +1213,29 @@
               setVideoBlob(v);
             }
           } catch (e) {}
+          // Restore benchmarks
+          try {
+            const bm = await idbKeyval.get('pitcher:benchmarks');
+            if (Array.isArray(bm) && bm.length > 0) {
+              const restored = await Promise.all(bm.map(async (b) => {
+                const trials = await Promise.all((b.trialMetas || []).map(async (m) => {
+                  try {
+                    const data = await idbKeyval.get(`pitcher:benchmarks:data:${m.id}`);
+                    return Array.isArray(data) ? { ...m, data } : { ...m, data: null };
+                  } catch (e) { return { ...m, data: null }; }
+                }));
+                // Restore video for this benchmark
+                let videoBlob = null;
+                try {
+                  const v = await idbKeyval.get(`pitcher:benchmarks:video:${b.id}`);
+                  if (v && (v instanceof Blob || v instanceof File)) videoBlob = v;
+                } catch (e) {}
+                return { ...b, trials, trialMetas: undefined, videoBlob };
+              }));
+              setBenchmarks(restored);
+              if (restored.length > 0) setActiveBenchId(restored[0].id);
+            }
+          } catch (e) {}
           setLoading(false);
         } catch (e) {
           setError(`데이터 로드 실패: ${e.message}`);
@@ -846,11 +1253,53 @@
       }
     }, [videoBlob]);
 
-    // Run analysis
+    // Build object URLs for benchmark videos: { benchId -> url }
+    const [benchVideoUrls, setBenchVideoUrls] = useState({});
+    useEffect(() => {
+      const urls = {};
+      const created = [];
+      for (const b of benchmarks) {
+        if (b.videoBlob && (b.videoBlob instanceof Blob || b.videoBlob instanceof File)) {
+          const u = URL.createObjectURL(b.videoBlob);
+          urls[b.id] = u;
+          created.push(u);
+        }
+      }
+      setBenchVideoUrls(urls);
+      return () => { created.forEach(u => URL.revokeObjectURL(u)); };
+    }, [benchmarks]);
+
+    // Run analysis (subject)
     const analysis = useMemo(() => {
       if (!pitcher || !trials.length) return null;
       return BBLAnalysis.analyze({ pitcher, trials });
     }, [pitcher, trials]);
+
+    // Run analysis on each benchmark — benchmarks are ALWAYS past self,
+    // so use subject's handedness/height/weight as fallback when missing.
+    const benchAnalyses = useMemo(() => {
+      if (!pitcher || benchmarks.length === 0) return [];
+      return benchmarks.map((b) => {
+        const validTrials = (b.trials || []).filter(t => t.data && t.data.length);
+        if (validTrials.length === 0) return { ...b, analysis: null };
+        const benchPitcher = {
+          name: b.label,
+          throwingHand: pitcher.throwingHand,
+          heightCm: (b.heightCm && parseFloat(b.heightCm) > 0) ? b.heightCm : pitcher.heightCm,
+          weightKg: (b.weightKg && parseFloat(b.weightKg) > 0) ? b.weightKg : pitcher.weightKg,
+          velocityMax: '', velocityAvg: ''
+        };
+        try {
+          const a = BBLAnalysis.analyze({ pitcher: benchPitcher, trials: validTrials });
+          return { ...b, analysis: a, resolvedPitcher: benchPitcher };
+        } catch (e) {
+          return { ...b, analysis: null, analysisError: e.message };
+        }
+      });
+    }, [pitcher, benchmarks]);
+
+    const hasBenchmarks = benchAnalyses.some(b => b.analysis);
+    const activeBench = benchAnalyses.find(b => b.id === activeBenchId) || benchAnalyses.find(b => b.analysis);
 
     if (loading) {
       return (
@@ -953,6 +1402,71 @@
         </div>
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 mt-6 space-y-4 print:max-w-none print:px-8 print:mt-3 print:space-y-3">
+          {/* Tab toggle — only shown if benchmarks exist */}
+          {hasBenchmarks && (
+            <div className="bbl-section print:hidden">
+              <div className="bbl-section-body" style={{ padding: '10px 14px' }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10.5px] uppercase tracking-wider font-bold mr-2" style={{ color: '#94a3b8' }}>
+                    리포트 모드
+                  </span>
+                  <button
+                    onClick={() => setActiveTab('individual')}
+                    className="px-3 py-1.5 text-[12px] font-semibold rounded border"
+                    style={activeTab === 'individual'
+                      ? { background: '#2563eb', color: 'white', borderColor: '#2563eb' }
+                      : { background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+                    개별 분석
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('compare')}
+                    className="px-3 py-1.5 text-[12px] font-semibold rounded border"
+                    style={activeTab === 'compare'
+                      ? { background: '#2563eb', color: 'white', borderColor: '#2563eb' }
+                      : { background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+                    과거와 비교
+                  </button>
+                  {activeTab === 'compare' && benchAnalyses.filter(b => b.analysis).length > 1 && (
+                    <>
+                      <span className="text-[10.5px] uppercase tracking-wider font-bold mx-2 ml-3" style={{ color: '#94a3b8' }}>
+                        비교 대상
+                      </span>
+                      {benchAnalyses.filter(b => b.analysis).map(b => (
+                        <button
+                          key={b.id}
+                          onClick={() => setActiveBenchId(b.id)}
+                          className="px-2.5 py-1 text-[11.5px] font-semibold rounded border"
+                          style={activeBenchId === b.id
+                            ? { background: '#f59e0b', color: '#1f1408', borderColor: '#f59e0b' }
+                            : { background: '#1a233d', color: '#cbd5e1', borderColor: '#475569' }}>
+                          {b.label}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Comparison view */}
+          {activeTab === 'compare' && activeBench?.analysis && (
+            <ComparisonView
+              subject={analysis}
+              bench={activeBench.analysis}
+              subjectName={`${pitcher.name || '본인'}${pitcher.measurementDate ? ` · ${pitcher.measurementDate}` : ''}`}
+              subjectHeight={pitcher.heightCm}
+              benchLabel={activeBench.label}
+              benchDate={activeBench.measurementDate}
+              benchHeight={activeBench.resolvedPitcher?.heightCm}
+              benchNote={activeBench.note}
+              currentVideoUrl={videoUrl}
+              pastVideoUrl={benchVideoUrls[activeBench.id]}/>
+          )}
+
+          {/* Individual analysis — only when individual tab active */}
+          {activeTab === 'individual' && (
+          <>
           <Section n={1} title="신체 & 구속">
             <BioVelocityPanel pitcher={pitcher} summary={summary} perTrial={perTrialStats}/>
           </Section>
@@ -1101,10 +1615,13 @@
               </div>
             </Section>
           )}
+          </>
+          )}
 
           <div className="text-[10.5px] text-center pt-3 print:pt-1" style={{ color: '#64748b' }}>
             © BBL · BioMotion Baseball Lab · {pitcher.measurementDate}<br/>
             본 리포트는 {trialsWithData.length}개 트라이얼 ({trialsWithData[0]?.rowCount || 0}프레임 / 트라이얼 평균) 분석 결과입니다.
+            {hasBenchmarks && <span> · 비교 대상 {benchAnalyses.filter(b => b.analysis).length}건 포함.</span>}
           </div>
         </div>
       </div>

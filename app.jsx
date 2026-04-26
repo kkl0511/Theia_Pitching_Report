@@ -67,6 +67,12 @@ const IconFile = (p) => (
     <line x1="8" y1="17" x2="16" y2="17" />
   </Icon>
 );
+const IconCompare = (p) => (
+  <Icon {...p}>
+    <rect x="3" y="6" width="7" height="12" rx="1"/>
+    <rect x="14" y="3" width="7" height="18" rx="1"/>
+  </Icon>
+);
 const IconCheck = (p) => (
   <Icon {...p}><polyline points="20 6 9 17 4 12" /></Icon>
 );
@@ -138,6 +144,11 @@ function PitcherInputForm({ onOpenReport } = {}) {
   const [videoBlob, setVideoBlob] = useState(null);
   const lastSavedBlobRef = useRef(null);
   const VIDEO_KEY = 'pitcher:video';
+
+  // ---- Comparison benchmarks (past self / reference pitchers) ----
+  const BENCH_KEY = 'pitcher:benchmarks';
+  const [benchmarks, setBenchmarks] = useState([]);  // [{id,label,type,measurementDate,velocityAvg,trials:[]}]
+  const benchSavedDataRef = useRef(new Map());       // trialId -> parsedAt
 
   // ---------- Load saved draft ----------
   useEffect(() => {
@@ -263,6 +274,158 @@ function PitcherInputForm({ onOpenReport } = {}) {
     }, 800);
     return () => clearTimeout(t);
   }, [videoBlob, loaded]);
+
+  // ---------- Benchmarks load (run once after main draft loads) ----------
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try {
+        const meta = await idbKeyval.get(BENCH_KEY);
+        if (Array.isArray(meta) && meta.length > 0) {
+          const restored = await Promise.all(meta.map(async (b) => {
+            const trials = await Promise.all((b.trialMetas || []).map(async (m) => {
+              try {
+                const data = await idbKeyval.get(`${BENCH_KEY}:data:${m.id}`);
+                if (Array.isArray(data)) {
+                  benchSavedDataRef.current.set(m.id, m.parsedAt);
+                  return { ...m, data };
+                }
+              } catch (e) {}
+              return { ...m, data: null };
+            }));
+            // Restore video blob from its own key
+            let videoBlob = null;
+            try {
+              const v = await idbKeyval.get(`${BENCH_KEY}:video:${b.id}`);
+              if (v && (v instanceof Blob || v instanceof File)) videoBlob = v;
+            } catch (e) {}
+            return { ...b, trials, trialMetas: undefined, videoBlob };
+          }));
+          setBenchmarks(restored);
+        }
+      } catch (e) {}
+    })();
+  // run when loaded becomes true
+  // eslint-disable-next-line
+  }, [loaded]);
+
+  // ---------- Benchmarks auto-save ----------
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(async () => {
+      try {
+        // Save metadata only (no per-trial data, no video blob)
+        const meta = benchmarks.map((b) => ({
+          ...b,
+          trialMetas: (b.trials || []).map((t) => {
+            const m = { ...t };
+            delete m.data;
+            return m;
+          }),
+          trials: undefined,
+          videoBlob: undefined,  // never serialize blob to JSON
+          hasVideo: !!b.videoBlob
+        }));
+        await idbKeyval.set(BENCH_KEY, meta);
+
+        // Save each trial's CSV data separately when changed
+        const currentIds = new Set();
+        const currentBenchIds = new Set();
+        for (const b of benchmarks) {
+          currentBenchIds.add(b.id);
+          for (const tr of (b.trials || [])) {
+            currentIds.add(tr.id);
+            if (tr.data && tr.data.length > 0 &&
+                benchSavedDataRef.current.get(tr.id) !== tr.parsedAt) {
+              try {
+                await idbKeyval.set(`${BENCH_KEY}:data:${tr.id}`, tr.data);
+                benchSavedDataRef.current.set(tr.id, tr.parsedAt);
+              } catch (e) {}
+            }
+          }
+          // Save video blob (separately keyed)
+          try {
+            if (b.videoBlob && (b.videoBlob instanceof Blob || b.videoBlob instanceof File)) {
+              await idbKeyval.set(`${BENCH_KEY}:video:${b.id}`, b.videoBlob);
+            } else {
+              await idbKeyval.del(`${BENCH_KEY}:video:${b.id}`);
+            }
+          } catch (e) {
+            // Silently ignore — too big or other error
+          }
+        }
+        // GC removed trials
+        for (const id of Array.from(benchSavedDataRef.current.keys())) {
+          if (!currentIds.has(id)) {
+            try { await idbKeyval.del(`${BENCH_KEY}:data:${id}`); } catch {}
+            benchSavedDataRef.current.delete(id);
+          }
+        }
+      } catch (e) {}
+    }, 800);
+    return () => clearTimeout(t);
+  }, [benchmarks, loaded]);
+
+  // ---------- Benchmark editing helpers ----------
+  const addBenchmark = () => {
+    const id = `bench-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setBenchmarks((bs) => [...bs, {
+      id,
+      label: bs.length === 0 ? '과거 측정 1' : `과거 측정 ${bs.length + 1}`,
+      type: 'self-past',
+      measurementDate: '',
+      heightCm: '',
+      weightKg: '',
+      note: '',
+      videoBlob: null,
+      videoName: '',
+      trials: []
+    }]);
+  };
+  const setBenchmarkVideo = (bid, file) => {
+    setBenchmarks((bs) => bs.map((b) => b.id === bid
+      ? { ...b, videoBlob: file, videoName: file ? file.name : '' }
+      : b));
+  };
+  const removeBenchmark = (bid) => {
+    setBenchmarks((bs) => bs.filter((b) => b.id !== bid));
+    // Best-effort cleanup of stored video for this benchmark
+    idbKeyval.del(`${BENCH_KEY}:video:${bid}`).catch(() => {});
+  };
+  const updateBenchmark = (bid, patch) => {
+    setBenchmarks((bs) => bs.map((b) => b.id === bid ? { ...b, ...patch } : b));
+  };
+  const addBenchTrial = (bid, file) => {
+    Papa.parse(file, {
+      header: true, dynamicTyping: true, skipEmptyLines: true,
+      complete: (result) => {
+        if (result.errors?.length) return;
+        const tid = `btrial-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const trial = {
+          id: tid,
+          label: file.name.replace(/\.csv$/i, '').slice(0, 30),
+          velocity: '',
+          filename: file.name,
+          parsedAt: new Date().toISOString(),
+          columnNames: result.meta.fields || [],
+          rowCount: result.data.length,
+          data: result.data
+        };
+        setBenchmarks((bs) => bs.map((b) =>
+          b.id === bid ? { ...b, trials: [...(b.trials || []), trial] } : b));
+      }
+    });
+  };
+  const updateBenchTrial = (bid, tid, patch) => {
+    setBenchmarks((bs) => bs.map((b) => b.id === bid
+      ? { ...b, trials: (b.trials || []).map((tr) => tr.id === tid ? { ...tr, ...patch } : tr) }
+      : b));
+  };
+  const removeBenchTrial = (bid, tid) => {
+    setBenchmarks((bs) => bs.map((b) => b.id === bid
+      ? { ...b, trials: (b.trials || []).filter((tr) => tr.id !== tid) }
+      : b));
+  };
 
   // ---------- Derived values ----------
   const bmi = useMemo(() => {
@@ -554,6 +717,20 @@ function PitcherInputForm({ onOpenReport } = {}) {
     setDataSavedCount(0);
     setVideoBlob(null);
     lastSavedBlobRef.current = null;
+    // Clear benchmarks too
+    try {
+      const benchIds = Array.from(benchSavedDataRef.current.keys());
+      for (const id of benchIds) {
+        try { await idbKeyval.del(`${BENCH_KEY}:data:${id}`); } catch {}
+      }
+      // Delete each benchmark's video
+      for (const b of benchmarks) {
+        try { await idbKeyval.del(`${BENCH_KEY}:video:${b.id}`); } catch {}
+      }
+      await idbKeyval.del(BENCH_KEY);
+    } catch {}
+    benchSavedDataRef.current.clear();
+    setBenchmarks([]);
     setPitcher(initialPitcher);
     setTrials([]);
     setConfirmClear(false);
@@ -883,6 +1060,212 @@ function PitcherInputForm({ onOpenReport } = {}) {
           />
         </Card>
 
+        {/* 비교 데이터 (선택) — 과거 본인 측정과 비교 */}
+        <Card icon={<IconCompare />} title="과거 측정 비교 (선택)" subtitle="과거 본인 측정 데이터와 비교 분석">
+          {benchmarks.length === 0 ? (
+            <div className="text-center py-4">
+              <div className="text-[12px] text-slate-500 mb-3 leading-relaxed">
+                과거 본인의 측정 Uplift CSV를 추가하면<br/>
+                리포트에서 <b>현재 vs 과거</b> 항목을 나란히 볼 수 있습니다.
+              </div>
+              <button
+                type="button"
+                onClick={addBenchmark}
+                className="px-3.5 py-2 bg-blue-600 text-white text-[12.5px] font-semibold rounded-md hover:bg-blue-700">
+                + 과거 측정 추가
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {benchmarks.map((b, bidx) => (
+                <div key={b.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">
+                      {bidx + 1}
+                    </div>
+                    <input
+                      type="text"
+                      value={b.label}
+                      onChange={(e) => updateBenchmark(b.id, { label: e.target.value })}
+                      placeholder="예: 2024년 봄 측정, 부상 전, 폼 수정 전"
+                      className="bbl-input text-[12.5px] flex-1"
+                      style={{ padding: '4px 10px' }}/>
+                    <button
+                      type="button"
+                      onClick={() => removeBenchmark(b.id)}
+                      className="text-[11px] text-red-600 hover:text-red-800 px-2 py-1">
+                      삭제
+                    </button>
+                  </div>
+
+                  {/* Past measurement info — height optional, defaults to current self */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">측정일</label>
+                      <input
+                        type="date"
+                        value={b.measurementDate || ''}
+                        onChange={(e) => updateBenchmark(b.id, { measurementDate: e.target.value })}
+                        className="bbl-input text-[12px] mt-1"
+                        style={{ padding: '4px 8px' }}/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        당시 신장 <span className="font-normal text-slate-400">(선택)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={b.heightCm || ''}
+                        onChange={(e) => updateBenchmark(b.id, { heightCm: e.target.value })}
+                        placeholder={pitcher.heightCm ? `${pitcher.heightCm} (현재)` : 'cm'}
+                        className="bbl-input bbl-input-num text-[12px] mt-1"
+                        style={{ padding: '4px 8px' }}/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        당시 체중 <span className="font-normal text-slate-400">(선택)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={b.weightKg || ''}
+                        onChange={(e) => updateBenchmark(b.id, { weightKg: e.target.value })}
+                        placeholder="kg"
+                        className="bbl-input bbl-input-num text-[12px] mt-1"
+                        style={{ padding: '4px 8px' }}/>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">메모</label>
+                    <input
+                      type="text"
+                      value={b.note || ''}
+                      onChange={(e) => updateBenchmark(b.id, { note: e.target.value })}
+                      placeholder="예: 부상 회복 후, 시즌 시작 전"
+                      className="bbl-input text-[12px] mt-1"
+                      style={{ padding: '4px 8px' }}/>
+                  </div>
+
+                  {/* Past video upload */}
+                  <div className="mb-3 p-2.5 bg-white border border-slate-200 rounded">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        과거 측정 영상 (선택)
+                      </span>
+                      {!b.videoBlob && (
+                        <label className="text-[11px] text-blue-600 hover:text-blue-800 cursor-pointer font-semibold">
+                          + 영상 추가
+                          <input
+                            type="file"
+                            accept="video/*"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) setBenchmarkVideo(b.id, f);
+                              e.target.value = '';
+                            }}
+                            className="hidden"/>
+                        </label>
+                      )}
+                    </div>
+                    {b.videoBlob ? (
+                      <div className="flex items-center gap-2 text-[11.5px]">
+                        <span className="text-slate-700 truncate flex-1">{b.videoName || '(영상 첨부됨)'}</span>
+                        <span className="text-[10px] text-slate-400 tabular-nums flex-shrink-0">
+                          {((b.videoBlob.size || 0) / (1024*1024)).toFixed(1)}MB
+                        </span>
+                        <label className="text-[10px] text-blue-600 hover:text-blue-800 cursor-pointer">
+                          교체
+                          <input
+                            type="file"
+                            accept="video/*"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) setBenchmarkVideo(b.id, f);
+                              e.target.value = '';
+                            }}
+                            className="hidden"/>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setBenchmarkVideo(b.id, null)}
+                          className="text-[10px] text-red-500 hover:text-red-700 px-1">×</button>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-slate-400 italic">
+                        리포트에서 현재 영상과 나란히 비교하려면 과거 영상을 첨부하세요
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Trial CSV uploads */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        트라이얼 ({(b.trials || []).length}개)
+                      </span>
+                      <label className="text-[11px] text-blue-600 hover:text-blue-800 cursor-pointer">
+                        + CSV 추가
+                        <input
+                          type="file"
+                          accept=".csv"
+                          multiple
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            files.forEach((f) => addBenchTrial(b.id, f));
+                            e.target.value = '';
+                          }}
+                          className="hidden"/>
+                      </label>
+                    </div>
+                    {(b.trials || []).length > 0 && (
+                      <div className="space-y-1.5 mt-2">
+                        {(b.trials || []).map((tr) => (
+                          <div key={tr.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded px-2 py-1.5">
+                            <span className="text-[11px] text-slate-500 truncate flex-shrink-0" style={{ width: '80px' }}>
+                              {tr.filename}
+                            </span>
+                            <input
+                              type="text"
+                              value={tr.label}
+                              onChange={(e) => updateBenchTrial(b.id, tr.id, { label: e.target.value })}
+                              placeholder="라벨"
+                              className="bbl-input text-[11.5px] flex-1"
+                              style={{ padding: '3px 6px' }}/>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={tr.velocity}
+                              onChange={(e) => updateBenchTrial(b.id, tr.id, { velocity: e.target.value })}
+                              placeholder="구속"
+                              className="bbl-input bbl-input-num text-[11.5px]"
+                              style={{ width: '70px', padding: '3px 6px' }}/>
+                            <span className="text-[10px] text-slate-400">km/h</span>
+                            <span className="text-[10px] text-slate-400 tabular-nums">
+                              {tr.rowCount}행
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeBenchTrial(b.id, tr.id)}
+                              className="text-[10px] text-red-500 hover:text-red-700 px-1">×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addBenchmark}
+                className="w-full px-3 py-2 bg-white border-2 border-dashed border-slate-300 hover:border-blue-400 text-slate-600 hover:text-blue-600 text-[12.5px] font-semibold rounded-md">
+                + 과거 측정 추가
+              </button>
+            </div>
+          )}
+        </Card>
+
         {/* Footer actions */}
         <div className="flex flex-col sm:flex-row gap-2 pt-2">
           <button
@@ -954,13 +1337,14 @@ function PitcherInputForm({ onOpenReport } = {}) {
 }
 
 // ---------- Sub-components ----------
-function Card({ icon, title, right, children }) {
+function Card({ icon, title, subtitle, right, children }) {
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
-        <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
-          <span className="text-blue-600">{icon}</span>
-          {title}
+        <div className="flex items-baseline gap-2 text-slate-800 font-semibold text-sm">
+          <span className="text-blue-600 self-center">{icon}</span>
+          <span>{title}</span>
+          {subtitle && <span className="text-[11px] font-normal text-slate-500 ml-1">{subtitle}</span>}
         </div>
         {right}
       </div>
