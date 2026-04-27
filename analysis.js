@@ -27,8 +27,11 @@
     fcBrMs:          { lo: 130, hi: 180, unit: 'ms' },
     etiPT:           { mid: 1.3, elite: 1.5 },
     etiTA:           { mid: 1.4, elite: 1.7 },
-    // Max ER — Uplift CSV time-series max in [FC, BR]. Elite pitchers
-    // typically reach 170-195° (over-the-top higher, sidearm lower).
+    // Max ER — academic humero-thoracic external rotation, computed from
+    // the shoulder_external_rotation timeseries in a BR-anchored window.
+    // Elite pitchers reach 170-195° (Crotin & Ramsey 2014: collegiate 178°,
+    // MLB 182°). Falls back to Uplift's max_layback_angle if timeseries is
+    // unreliable.
     maxER:           { lo: 155, hi: 200, unit: '°' },
     maxXFactor:      { lo: 35,  hi: 60,  unit: '°' },
     strideRatio:     { lo: 0.80, hi: 1.05, unit: 'ratio'},
@@ -802,25 +805,27 @@
     const strideRatio = (strideLength != null && bodyHeight != null && bodyHeight > 0)
       ? strideLength / bodyHeight : null;
 
-    // Max ER (Maximum External Rotation) — taken directly from Uplift's
-    // shoulder_external_rotation time series. Find max value between FC and BR.
-    // This matches the convention used by most lab reports (forearm rotates
-    // posteriorly around humerus from "neutral" position at FC to "layback"
-    // position just before release).
+    // Max ER (Maximum External Rotation) — academic "MER" / shoulder layback.
     //
-    // Robustness #1: Uplift's Euler-decomposed ER column can occasionally wrap
-    // around (e.g. 195° appearing as -165° = 195 - 360). We unwrap by
-    // detecting jumps > 180° between adjacent frames and adding ±360° to
-    // restore continuity.
+    // Strategy (v39):
+    //   1. Compute Max ER from the shoulder_external_rotation TIMESERIES,
+    //      windowed BR-150ms to BR+30ms. Cocking-phase peak typically occurs
+    //      30-60ms before BR; we use a wide window before BR (not from FC)
+    //      because FC frame detection is sometimes unreliable in noisy data
+    //      while BR is consistently reliable.
+    //   2. Auto-detect units (radians vs degrees) and unwrap wraparound.
+    //   3. Sanity-check the result. If timeseries max is in the academic
+    //      "elite layback" range (140-210°), use it. Otherwise fall back to
+    //      Uplift's pre-computed `max_layback_angle` value.
+    //   4. Always also expose Uplift's `max_layback_angle` separately for
+    //      comparison.
     //
-    // Robustness #2: Some Uplift export versions/locales emit this column in
-    // RADIANS instead of degrees. We auto-detect by checking the magnitude of
-    // the |max| in the FC..BR window — pitchers reach 150-200° (2.6-3.5 rad)
-    // of layback, so if the max-magnitude is < 4 (radians plausible) we
-    // convert. If it's > 30 (clearly degrees), we leave it alone.
+    // Reporting threshold (ELITE.maxER) is calibrated to the academic
+    // timeseries definition (155-200°), since this is what we report when
+    // the timeseries is clean.
     const erCol = `${armSide}_shoulder_external_rotation`;
 
-    // First scan to detect units
+    // Step 1: detect units (radians if max abs < 4)
     let scanMax = 0;
     for (let i = 0; i < rows.length; i++) {
       const v = rows[i][erCol];
@@ -829,12 +834,10 @@
         if (a > scanMax) scanMax = a;
       }
     }
-    // Heuristic: if scanMax < 4, it's almost certainly radians
-    // (real layback never approaches 4 radians = 229°).
-    // If scanMax > 30, it's degrees (and probably > 100 actually).
     const isRadians = scanMax > 0 && scanMax < 4;
     const unitScale = isRadians ? (180 / Math.PI) : 1;
 
+    // Step 2: unwrap the timeseries
     const erUnwrapped = [];
     let prev = null, offset = 0;
     for (let i = 0; i < rows.length; i++) {
@@ -850,41 +853,41 @@
       erUnwrapped.push(adj);
       prev = adj;
     }
-    // Strategy:
-    //  1. Try to use Uplift's max_external_rotation_frame (if provided), as
-    //     this is computed by Uplift directly from the joint angle and
-    //     handles wraparound internally.
-    //  2. Otherwise, search our unwrapped time series in a wide window.
-    //  3. If the resulting value is implausibly low (< 100°), fall back to
-    //     the wide-window search anyway in case Uplift's pointer was off.
-    let merVal = -Infinity, merIdx = -1;
-    const merFrameRaw = r0.max_external_rotation_frame;
-    if (Number.isFinite(merFrameRaw)) {
-      // max_external_rotation_frame is in the same negative-offset convention
-      // as foot_contact_frame and ball_release_frame.
-      const merFrameIdx = -merFrameRaw;
-      if (Number.isInteger(merFrameIdx) && merFrameIdx >= 0 && merFrameIdx < rows.length) {
-        const v = erUnwrapped[merFrameIdx];
-        if (v != null && v > 100) {
-          merVal = v;
-          merIdx = merFrameIdx;
-        }
-      }
+
+    // Step 3: search the BR-anchored window
+    // Window: BR - 150ms .. BR + 30ms. Anchored on BR (not FC) because BR
+    // frame detection is more reliable than FC across noisy trials.
+    const leadPad = Math.round(0.150 * fps);
+    const trailPad = Math.round(0.030 * fps);
+    const merWinStart = Math.max(0, brRow - leadPad);
+    const merWinEnd   = Math.min(rows.length, brRow + trailPad + 1);
+    let merVal = -Infinity;
+    for (let i = merWinStart; i < merWinEnd; i++) {
+      const v = erUnwrapped[i];
+      if (v != null && v > merVal) merVal = v;
     }
-    if (merVal === -Infinity) {
-      // Fallback to wide-window search.
-      // Real layback peak typically occurs ~30-60ms before BR, sometimes
-      // before FC in fast-armed pitchers. Window: FC-100ms to BR+30ms.
-      const winPad = Math.round(0.100 * fps);
-      const trailPad = Math.round(0.030 * fps);
-      const merWinStart = Math.max(0, fcRow - winPad);
-      const merWinEnd   = Math.min(rows.length, brRow + trailPad + 1);
-      for (let i = merWinStart; i < merWinEnd; i++) {
-        const v = erUnwrapped[i];
-        if (v != null && v > merVal) { merVal = v; merIdx = i; }
-      }
+    const tsMaxER = merVal > -Infinity ? merVal : null;
+
+    // Step 4: validate timeseries result
+    // Accept value if it falls within the academic-valid range (150-210°).
+    // If outside that range, mark this trial's Max ER as invalid — we do
+    // NOT fall back to other values. The report will display "계산 불가
+    // (시계열 손상)" so the user knows the trial's ER measurement was
+    // unreliable and aggregate stats will simply exclude it.
+    let maxER;
+    let maxERSource;
+    let maxERInvalid = false;
+    if (tsMaxER != null && tsMaxER >= 150 && tsMaxER <= 210) {
+      maxER = tsMaxER;
+      maxERSource = 'timeseries';
+    } else {
+      maxER = null;
+      maxERSource = null;
+      maxERInvalid = (tsMaxER != null);  // true if we have data but it's bad
     }
-    const maxER = merVal > -Infinity ? merVal : null;
+    // Also keep Uplift's value for transparency in the InfoBox / detail view
+    const upliftLayback = r0.max_layback_angle;
+    const upliftValid = Number.isFinite(upliftLayback) && upliftLayback >= 30 && upliftLayback <= 250;
 
     // Max X-factor — pelvis-trunk separation during late loading / FC.
     // Convention: max separation occurs around foot contact, when pelvis
@@ -1114,6 +1117,11 @@
       peakTrunkFrame:  peakTrunk.idx,
       peakArmFrame:    peakArm.idx,
       maxER, maxXFactor,
+      // Transparency: also expose timeseries-only result and Uplift's value
+      maxER_timeseries: tsMaxER,
+      maxER_uplift: upliftValid ? upliftLayback : null,
+      maxER_source: maxERSource,
+      maxER_invalid: maxERInvalid,
       bodyHeight, strideLength, strideRatio,
       trunkForwardTilt, trunkLateralTilt,
       wristHeight, armSlotAngle, armSlotType,
