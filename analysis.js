@@ -1363,7 +1363,7 @@
   }
 
   function analyze(input) {
-    const { pitcher, trials } = input;
+    const { pitcher, trials, allTrials } = input;
     if (!pitcher || !trials) return null;
     const handedness = pitcher.throwingHand === 'L' ? 'left' : 'right';
     // Anthropometric inputs for segment energy calculation (estimation-based)
@@ -1375,6 +1375,15 @@
 
     const perTrialStats = trials.map(t => extractTrial(t, handedness, anthroParams)).filter(t => t != null);
     if (!perTrialStats.length) return { error: 'No trials with data' };
+
+    // Command/consistency uses ALL trials (including outlier-excluded ones)
+    // because release-consistency is best evaluated over the entire pitching
+    // session. Quality-control exclusion is intended for biomechanics metric
+    // accuracy, but every actual delivery counts toward repeatability.
+    // If allTrials not provided (legacy callers), fall back to included trials.
+    const allTrialStats = Array.isArray(allTrials) && allTrials.length
+      ? allTrials.map(t => extractTrial(t, handedness, anthroParams)).filter(t => t != null)
+      : perTrialStats;
 
     // Use real input height (cm → m) for stride ratio if available,
     // otherwise fall back to model-derived body height.
@@ -1458,7 +1467,29 @@
 
     const energy = computeEnergy(perTrialStats, summary);
     const factors = compute7Factors(summary, faultRates);
-    const command = computeCommand(summary);
+
+    // Command uses summary built from ALL trials (release-consistency context).
+    // Apply same strideRatio derivation so the command axis values are comparable.
+    allTrialStats.forEach(s => {
+      if (s.strideLength != null) {
+        const ref = inputHeightM != null ? inputHeightM
+                  : (s.bodyHeight != null && s.bodyHeight > 0 ? s.bodyHeight : null);
+        s.strideRatio = ref != null ? s.strideLength / ref : null;
+      }
+    });
+    const commandSummary = {
+      wristHeight:      agg(allTrialStats.map(s => s.wristHeight)),
+      armSlotAngle:     agg(allTrialStats.map(s => s.armSlotAngle)),
+      trunkForwardTilt: agg(allTrialStats.map(s => s.trunkForwardTilt)),
+      maxER:            agg(allTrialStats.map(s => s.maxER)),
+      strideLength:     agg(allTrialStats.map(s => s.strideLength)),
+      fcBrMs:           agg(allTrialStats.map(s => s.fcBrMs))
+    };
+    const command = computeCommand(commandSummary);
+    command.nUsedForCommand = allTrialStats.length;
+    command.nUsedForBiomechanics = perTrialStats.length;
+    command.includedAllTrials = allTrialStats.length > perTrialStats.length;
+
     const evaluation = generateEvaluation(summary, energy, command, factors);
     const trainingTips = generateTrainingTips(summary, energy, command);
 

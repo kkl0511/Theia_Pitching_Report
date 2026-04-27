@@ -2025,8 +2025,25 @@ function VideoPreview({ url, filename, size, duration, onReplace, onRemove }) {
 // ---------- Router + App ----------
 function getRoute() {
   const hash = window.location.hash.slice(1) || '/input';
+  if (hash.startsWith('/share/') || hash.startsWith('/share?') || hash === '/share') return 'share';
   if (hash.startsWith('/report')) return 'report';
   return 'input';
+}
+
+function getSharePayload() {
+  // Hash format: #/share/<lz-string-compressed-base64>
+  const hash = window.location.hash.slice(1);
+  if (!hash.startsWith('/share/')) return null;
+  const compressed = hash.slice('/share/'.length);
+  if (!compressed) return null;
+  try {
+    const json = window.LZString.decompressFromEncodedURIComponent(compressed);
+    if (!json) return null;
+    return JSON.parse(json);
+  } catch (e) {
+    console.error('Share payload decode failed:', e);
+    return null;
+  }
 }
 
 function App() {
@@ -2041,6 +2058,30 @@ function App() {
   const navigate = (path) => {
     window.location.hash = path;
   };
+
+  // Shared (read-only) report — link recipient sees this, no input needed
+  if (route === 'share') {
+    if (typeof window.ReportView !== 'function') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-red-600">
+          ReportView 로드 실패
+        </div>
+      );
+    }
+    const payload = getSharePayload();
+    if (!payload) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+          <div className="max-w-md text-center">
+            <div className="text-amber-400 text-3xl mb-3">⚠</div>
+            <h2 className="text-xl font-bold text-white mb-2">공유 링크 손상</h2>
+            <p className="text-sm text-slate-400">링크가 잘못되었거나 데이터가 손상되었습니다. 코치에게 새 링크를 요청해주세요.</p>
+          </div>
+        </div>
+      );
+    }
+    return <window.ReportView sharedPayload={payload} />;
+  }
 
   // Wrap InputView with a tab bar at the top of the body
   if (route === 'report') {
