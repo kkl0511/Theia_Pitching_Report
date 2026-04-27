@@ -270,9 +270,9 @@
       neck:     [478, 153],
       rShoulder:[520, 177],   // throwing-side shoulder
       lShoulder:[438, 173],   // glove-side shoulder
-      rElbow:   [555, 110],   // up at head height (late-cocking pose)
-      rWrist:   [535, 50],    // forearm vertical, laid back
-      ball:     [510, 30],    // above head, slightly back
+      rElbow:   [580, 177],   // horizontal upper arm (level with shoulder)
+      rWrist:   [565, 100],   // forearm UP from elbow (laid back)
+      ball:     [540, 80],    // ball just past wrist, above head
       lElbow:   [410, 215],   // glove arm bent, elbow tucked
       lWrist:   [455, 195],   // glove hand UP near chest level
       pelvisR:  [506, 295],
@@ -641,9 +641,9 @@
       neck:     [478, 153],
       rShoulder:[520, 177],   // throwing-side shoulder
       lShoulder:[438, 173],   // glove-side shoulder
-      rElbow:   [555, 110],   // up at head height (late-cocking pose)
-      rWrist:   [535, 50],    // forearm vertical, laid back
-      ball:     [510, 30],    // above head, slightly back
+      rElbow:   [580, 177],   // horizontal upper arm (level with shoulder)
+      rWrist:   [565, 100],   // forearm UP from elbow (laid back)
+      ball:     [540, 80],    // ball just past wrist, above head
       lElbow:   [410, 215],   // glove arm bent, elbow tucked
       lWrist:   [455, 195],   // glove hand UP near chest level
       pelvisR:  [506, 295],
@@ -968,9 +968,9 @@
       neck:     [478, 153],
       rShoulder:[520, 177],
       lShoulder:[438, 173],
-      rElbow:   [555, 110],   // up at head height (late-cocking pose)
-      rWrist:   [535, 50],    // forearm vertical, laid back
-      ball:     [510, 30],    // above head, slightly back
+      rElbow:   [580, 177],   // horizontal upper arm (level with shoulder)
+      rWrist:   [565, 100],   // forearm UP from elbow (laid back)
+      ball:     [540, 80],    // ball just past wrist, above head
       lElbow:   [410, 215],   // glove arm bent, elbow tucked
       lWrist:   [455, 195],   // glove hand UP near chest level
       pelvisR:  [506, 295],
