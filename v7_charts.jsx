@@ -860,19 +860,19 @@
     const uid = useMemo(() => Math.random().toString(36).slice(2, 8), []);
 
     // Right-handed pose keypoints — LAYBACK / MER (Maximum External Rotation):
-    // upper arm abducted ~90° (elbow elevated to near shoulder height),
-    // forearm rotated externally so wrist lays back behind body line near
-    // elbow height, ball just past wrist. This dynamic pose better shows
-    // the kinetic chain at the late-cocking / acceleration transition,
-    // and gives a clear path for visualizing energy flow shoulder→elbow
+    // upper arm abducted (elbow elevated above shoulder line),
+    // elbow BENT ~70° so forearm hangs DOWNWARD toward the ground,
+    // wrist directly below elbow, ball just past wrist.
+    // This pose clearly shows the bent-elbow cocking shape and gives
+    // a clean L-shaped path for visualizing energy flow shoulder→elbow
     // →wrist→ball along the throwing arm.
     const K = {
       head:     [400, 95],
       neck:     [402, 138],
       rShoulder:[450, 165],
-      rElbow:   [585, 135],   // elevated, abducted (90° look)
-      rWrist:   [470, 148],   // laid back behind shoulder line, near elbow height
-      ball:     [453, 158],   // at hand position, slightly below wrist
+      rElbow:   [582, 115],   // elevated, far right (well above shoulder)
+      rWrist:   [560, 245],   // below elbow, angled slightly back toward body (layback)
+      ball:     [553, 268],   // ball just below wrist, at hand position
       lShoulder:[365, 158],
       lElbow:   [305, 175],
       lWrist:   [355, 218],
@@ -914,14 +914,42 @@
             <marker id={`pe-arrow-${uid}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 Z" fill="currentColor"/>
             </marker>
-            {/* v41-2: Energy flow with 3 per-segment gradients so colors
-                progress correctly along the Z-shaped layback arm path.
-                A single gradient from shoulder to ball doesn't work because
-                those points are only ~7px apart in straight-line distance
-                while the actual path length is ~270px. Per-segment gradients:
-                  Segment 1 (shoulder→elbow): cyan → green   (energy entering arm)
-                  Segment 2 (elbow→wrist):    green → amber  (transferred to forearm)
-                  Segment 3 (wrist→ball):     amber → red    (release peak) */}
+            {/* === High-quality body silhouette gradients (matching EnergyFlow) === */}
+            <linearGradient id={`pe-bg-${uid}`} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stopColor="#0b1220" stopOpacity="0"/>
+              <stop offset="1" stopColor="#0b1220" stopOpacity="0.35"/>
+            </linearGradient>
+            <radialGradient id={`pe-mSphere-${uid}`} cx="35%" cy="30%" r="75%">
+              <stop offset="0%" stopColor="#f1f5f9"/>
+              <stop offset="45%" stopColor="#cbd5e1"/>
+              <stop offset="85%" stopColor="#64748b"/>
+              <stop offset="100%" stopColor="#334155"/>
+            </radialGradient>
+            <linearGradient id={`pe-mLimb-${uid}`} x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stopColor="#e2e8f0"/>
+              <stop offset="50%" stopColor="#94a3b8"/>
+              <stop offset="100%" stopColor="#475569"/>
+            </linearGradient>
+            <linearGradient id={`pe-mLimbD-${uid}`} x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stopColor="#94a3b8"/>
+              <stop offset="55%" stopColor="#64748b"/>
+              <stop offset="100%" stopColor="#1e293b"/>
+            </linearGradient>
+            <linearGradient id={`pe-mTorso-${uid}`} x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stopColor="#e2e8f0"/>
+              <stop offset="40%" stopColor="#94a3b8"/>
+              <stop offset="100%" stopColor="#334155"/>
+            </linearGradient>
+            <radialGradient id={`pe-mJoint-${uid}`} cx="35%" cy="30%" r="70%">
+              <stop offset="0%" stopColor="#f8fafc"/>
+              <stop offset="60%" stopColor="#94a3b8"/>
+              <stop offset="100%" stopColor="#334155"/>
+            </radialGradient>
+            <radialGradient id={`pe-aoShadow-${uid}`} cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#000" stopOpacity="0.45"/>
+              <stop offset="100%" stopColor="#000" stopOpacity="0"/>
+            </radialGradient>
+            {/* === Energy flow segment gradients (cyan→green→amber→red) === */}
             <linearGradient id={`pe-armSeg1-${uid}`} gradientUnits="userSpaceOnUse"
               x1={K.rShoulder[0]} y1={K.rShoulder[1]} x2={K.rElbow[0]} y2={K.rElbow[1]}>
               <stop offset="0%"   stopColor="#22d3ee"/>
@@ -946,66 +974,113 @@
             </filter>
           </defs>
 
-          {/* Ground line */}
+          {/* Background + ground */}
+          <rect x="0" y="0" width="800" height="520" fill={`url(#pe-bg-${uid})`}/>
           <line x1="40" y1="478" x2="760" y2="478" stroke="#2a3a5a" strokeWidth="1.5" strokeDasharray="3 6"/>
+          <ellipse cx={(K.lAnkle[0] + K.rAnkle[0]) / 2} cy="488" rx="180" ry="12" fill={`url(#pe-aoShadow-${uid})`}/>
 
-          {/* === Schematic body silhouette (muted, lets indicators stand out) === */}
-          <g stroke="#475569" strokeLinecap="round" fill="none" opacity="0.85">
-            {/* Throwing arm in LAYBACK: shoulder→elbow (upper arm) →wrist (forearm laid back) */}
-            <line x1={K.rShoulder[0]} y1={K.rShoulder[1]} x2={K.rElbow[0]} y2={K.rElbow[1]} strokeWidth="11"/>
-            <line x1={K.rElbow[0]} y1={K.rElbow[1]} x2={K.rWrist[0]} y2={K.rWrist[1]} strokeWidth="9"/>
-            <line x1={K.rWrist[0]} y1={K.rWrist[1]} x2={K.ball[0]} y2={K.ball[1]} strokeWidth="7"/>
-            {/* Glove arm (left) */}
-            <line x1={K.lShoulder[0]} y1={K.lShoulder[1]} x2={K.lElbow[0]} y2={K.lElbow[1]} strokeWidth="9"/>
-            <line x1={K.lElbow[0]} y1={K.lElbow[1]} x2={K.lWrist[0]} y2={K.lWrist[1]} strokeWidth="7"/>
-            {/* Pivot leg (right, back) */}
-            <line x1={K.pelvisR[0]} y1={K.pelvisR[1]} x2={K.rKnee[0]} y2={K.rKnee[1]} strokeWidth="13"/>
-            <line x1={K.rKnee[0]} y1={K.rKnee[1]} x2={K.rAnkle[0]} y2={K.rAnkle[1]} strokeWidth="11"/>
-            {/* Stride leg (left, front) */}
-            <line x1={K.pelvisL[0]} y1={K.pelvisL[1]} x2={K.lKnee[0]} y2={K.lKnee[1]} strokeWidth="13"/>
-            <line x1={K.lKnee[0]} y1={K.lKnee[1]} x2={K.lAnkle[0]} y2={K.lAnkle[1]} strokeWidth="11"/>
-            {/* Shoulder line */}
-            <line x1={K.lShoulder[0]} y1={K.lShoulder[1]} x2={K.rShoulder[0]} y2={K.rShoulder[1]} strokeWidth="22"/>
-            {/* Spine */}
-            <line x1={(K.lShoulder[0]+K.rShoulder[0])/2} y1={(K.lShoulder[1]+K.rShoulder[1])/2 + 6}
-                  x2={K.pelvisC[0]} y2={K.pelvisC[1] - 8} strokeWidth="36"/>
-            {/* Pelvis line */}
-            <line x1={K.pelvisL[0]} y1={K.pelvisL[1]} x2={K.pelvisR[0]} y2={K.pelvisR[1]} strokeWidth="22"/>
-            {/* Neck */}
-            <line x1={K.neck[0]} y1={K.neck[1] - 4} x2={K.neck[0]} y2={K.neck[1] + 8} strokeWidth="9"/>
+          {/* === HIGH-QUALITY BODY SILHOUETTE (matching EnergyFlow style) === */}
+          {/* Glove-side arm (left, dark gradient — behind body) */}
+          <g>
+            <line x1={K.lShoulder[0]} y1={K.lShoulder[1]} x2={K.lElbow[0]} y2={K.lElbow[1]}
+                  stroke={`url(#pe-mLimbD-${uid})`} strokeWidth="22" strokeLinecap="round"/>
+            <circle cx={K.lElbow[0]} cy={K.lElbow[1]} r="12" fill={`url(#pe-mJoint-${uid})`}/>
+            <line x1={K.lElbow[0]} y1={K.lElbow[1]} x2={K.lWrist[0]} y2={K.lWrist[1]}
+                  stroke={`url(#pe-mLimbD-${uid})`} strokeWidth="19" strokeLinecap="round"/>
+            <circle cx={K.lWrist[0]} cy={K.lWrist[1]} r="13" fill={`url(#pe-mSphere-${uid})`}/>
           </g>
-          {/* Head */}
-          <circle cx={K.head[0]} cy={K.head[1]} r="22" fill="#1e293b" stroke="#475569" strokeWidth="1.5"/>
-          {/* Joint dots */}
-          {[K.lShoulder, K.lElbow, K.lWrist, K.rAnkle, K.lAnkle].map((p, i) => (
-            <circle key={i} cx={p[0]} cy={p[1]} r="4" fill="#334155" stroke="#475569" strokeWidth="1"/>
-          ))}
+
+          {/* Pivot leg (right, back — dark gradient) */}
+          <g>
+            <line x1={K.pelvisR[0] - 2} y1={K.pelvisR[1]} x2={K.rKnee[0]} y2={K.rKnee[1]}
+                  stroke={`url(#pe-mLimbD-${uid})`} strokeWidth="34" strokeLinecap="round"/>
+            <circle cx={K.rKnee[0]} cy={K.rKnee[1]} r="17" fill={`url(#pe-mJoint-${uid})`}/>
+            <line x1={K.rKnee[0]} y1={K.rKnee[1]} x2={K.rAnkle[0]} y2={K.rAnkle[1]}
+                  stroke={`url(#pe-mLimbD-${uid})`} strokeWidth="26" strokeLinecap="round"/>
+            <circle cx={K.rAnkle[0]} cy={K.rAnkle[1]} r="12" fill={`url(#pe-mJoint-${uid})`}/>
+          </g>
+
+          {/* Stride leg (left, front — light gradient) */}
+          <g>
+            <line x1={K.pelvisL[0] + 2} y1={K.pelvisL[1]} x2={K.lKnee[0]} y2={K.lKnee[1]}
+                  stroke={`url(#pe-mLimb-${uid})`} strokeWidth="34" strokeLinecap="round"/>
+            <circle cx={K.lKnee[0]} cy={K.lKnee[1]} r="17" fill={`url(#pe-mJoint-${uid})`}/>
+            <line x1={K.lKnee[0]} y1={K.lKnee[1]} x2={K.lAnkle[0]} y2={K.lAnkle[1]}
+                  stroke={`url(#pe-mLimb-${uid})`} strokeWidth="26" strokeLinecap="round"/>
+            <circle cx={K.lAnkle[0]} cy={K.lAnkle[1]} r="12" fill={`url(#pe-mJoint-${uid})`}/>
+          </g>
+
+          {/* Torso */}
+          <line x1={K.lShoulder[0] + 2} y1={K.lShoulder[1] + 4}
+                x2={K.rShoulder[0] - 2} y2={K.rShoulder[1] + 4}
+                stroke={`url(#pe-mLimb-${uid})`} strokeWidth="34" strokeLinecap="round"/>
+          <path d={`
+            M ${K.lShoulder[0] + 4} ${K.lShoulder[1] + 8}
+            C ${K.lShoulder[0] - 2} ${K.lShoulder[1] + 50}, ${K.pelvisL[0] + 2} ${K.pelvisL[1] - 68}, ${K.pelvisL[0] + 6} ${K.pelvisL[1] - 20}
+            L ${K.pelvisR[0] - 6} ${K.pelvisR[1] - 20}
+            C ${K.pelvisR[0] - 2} ${K.pelvisR[1] - 68}, ${K.rShoulder[0] + 2} ${K.rShoulder[1] + 50}, ${K.rShoulder[0] - 4} ${K.rShoulder[1] + 8}
+            Z
+          `} fill={`url(#pe-mTorso-${uid})`} stroke="#1e293b" strokeWidth="1.2"/>
+          <path d={`
+            M ${K.pelvisL[0] + 6} ${K.pelvisL[1] - 22}
+            C ${K.pelvisL[0] + 2} ${K.pelvisL[1] - 12}, ${K.pelvisL[0] - 2} ${K.pelvisL[1] - 2}, ${K.pelvisL[0] - 6} ${K.pelvisL[1] + 10}
+            L ${K.pelvisR[0] + 6} ${K.pelvisR[1] + 10}
+            C ${K.pelvisR[0] + 2} ${K.pelvisR[1] - 2}, ${K.pelvisR[0] - 2} ${K.pelvisR[1] - 12}, ${K.pelvisR[0] - 6} ${K.pelvisR[1] - 22}
+            Z
+          `} fill={`url(#pe-mTorso-${uid})`} stroke="#1e293b" strokeWidth="1"/>
+          <path d={`M ${(K.lShoulder[0] + K.rShoulder[0]) / 2} ${(K.lShoulder[1] + K.rShoulder[1]) / 2 + 12}
+                    L ${K.pelvisC[0] + 2} ${K.pelvisC[1] - 12}`}
+                stroke="#334155" strokeWidth="1" strokeOpacity="0.35" fill="none"/>
+          <circle cx={K.lShoulder[0]} cy={K.lShoulder[1]} r="15" fill={`url(#pe-mJoint-${uid})`}/>
+          <circle cx={K.rShoulder[0]} cy={K.rShoulder[1]} r="16" fill={`url(#pe-mJoint-${uid})`}/>
+
+          {/* Neck + head */}
+          <line x1={K.neck[0] - 2} y1={K.neck[1] - 6} x2={K.neck[0] + 2} y2={K.neck[1] + 8}
+                stroke={`url(#pe-mLimb-${uid})`} strokeWidth="16" strokeLinecap="round"/>
+          <circle cx={K.head[0]} cy={K.head[1]} r="28" fill={`url(#pe-mSphere-${uid})`} stroke="#1e293b" strokeWidth="1"/>
+          <path d={`M ${K.head[0] - 28} ${K.head[1] - 4} Q ${K.head[0] - 10} ${K.head[1] + 10} ${K.head[0] + 22} ${K.head[1] + 4}`}
+                stroke="#475569" strokeWidth="1" strokeOpacity="0.4" fill="none"/>
+
+          {/* === THROWING ARM (body silhouette + energy flow overlay) === */}
+          {/* Body silhouette of throwing arm — full quality gradient */}
+          <g>
+            <line x1={K.rShoulder[0]} y1={K.rShoulder[1]} x2={K.rElbow[0]} y2={K.rElbow[1]}
+                  stroke={`url(#pe-mLimb-${uid})`} strokeWidth="26" strokeLinecap="round"/>
+            <circle cx={K.rElbow[0]} cy={K.rElbow[1]} r="13" fill={`url(#pe-mJoint-${uid})`}/>
+            <line x1={K.rElbow[0]} y1={K.rElbow[1]} x2={K.rWrist[0]} y2={K.rWrist[1]}
+                  stroke={`url(#pe-mLimb-${uid})`} strokeWidth="20" strokeLinecap="round"/>
+            <circle cx={K.rWrist[0]} cy={K.rWrist[1]} r="11" fill={`url(#pe-mJoint-${uid})`}/>
+          </g>
 
           {/* === ⚡ ENERGY FLOW along throwing arm (shoulder→elbow→wrist→ball) === */}
+          {/* Dark shadow underlay for energy contrast against body silhouette */}
+          <path d={`M ${K.rShoulder[0]} ${K.rShoulder[1]} L ${K.rElbow[0]} ${K.rElbow[1]} L ${K.rWrist[0]} ${K.rWrist[1]} L ${K.ball[0]} ${K.ball[1]}`}
+                stroke="#0f1a30" strokeOpacity="0.55" strokeWidth="14" fill="none"
+                strokeLinecap="round" strokeLinejoin="round"/>
           {/* 3 segments each with its own gradient → clear color progression
-              along the Z-shaped layback arm path (cyan→green→amber→red).
+              along the bent-elbow arm path (cyan→green→amber→red).
               Animated dashed stroke creates a flowing-wave effect. */}
           <line x1={K.rShoulder[0]} y1={K.rShoulder[1]} x2={K.rElbow[0]} y2={K.rElbow[1]}
-                stroke={`url(#pe-armSeg1-${uid})`} strokeWidth="6.5"
-                strokeLinecap="round" opacity="0.9"
+                stroke={`url(#pe-armSeg1-${uid})`} strokeWidth="9"
+                strokeLinecap="round" opacity="0.95"
                 strokeDasharray="20 12" filter={`url(#pe-glow-${uid})`}>
             <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite"/>
           </line>
           <line x1={K.rElbow[0]} y1={K.rElbow[1]} x2={K.rWrist[0]} y2={K.rWrist[1]}
-                stroke={`url(#pe-armSeg2-${uid})`} strokeWidth="6.5"
-                strokeLinecap="round" opacity="0.9"
+                stroke={`url(#pe-armSeg2-${uid})`} strokeWidth="9"
+                strokeLinecap="round" opacity="0.95"
                 strokeDasharray="20 12" filter={`url(#pe-glow-${uid})`}>
             <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite"/>
           </line>
           <line x1={K.rWrist[0]} y1={K.rWrist[1]} x2={K.ball[0]} y2={K.ball[1]}
-                stroke={`url(#pe-armSeg3-${uid})`} strokeWidth="6.5"
-                strokeLinecap="round" opacity="0.9"
+                stroke={`url(#pe-armSeg3-${uid})`} strokeWidth="9"
+                strokeLinecap="round" opacity="0.95"
                 strokeDasharray="20 12" filter={`url(#pe-glow-${uid})`}>
             <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite"/>
           </line>
           {/* Flowing particles along the arm */}
           {[0, 0.5, 1.0].map(i => (
-            <circle key={`p-${i}`} r="3.5" fill="#ffffff" opacity="0">
+            <circle key={`p-${i}`} r="4" fill="#ffffff" opacity="0">
               <animateMotion dur="1.5s" repeatCount="indefinite" begin={`${-i * 0.5}s`}>
                 <mpath href={`#pe-armPath-${uid}`}/>
               </animateMotion>
