@@ -131,7 +131,319 @@
   }
 
   // ---------- Per-trial extraction (SELF-COMPUTED) ----------
-  function extractTrial(trial, handedness) {
+  // ─────────────────────────────────────────────────────────────────────
+  // Anthropometric segment parameters
+  //
+  // Source: Ae, M., Tang, H., Yokoi, T. (1992). "Estimation of inertia
+  //   properties of the body segments in Japanese athletes." Biomechanism 11:
+  //   23-33. Society of Biomechanisms Japan.
+  //
+  // Validation: This same Ae 1992 table is used by Yanai et al. (2023,
+  //   Scientific Reports) for elbow varus torque inverse dynamics in their
+  //   UCL injury risk assessment of professional NPB pitchers — the same
+  //   approach we follow here.
+  //
+  // Sample: 215 male + 80 female Japanese collegiate athletes, photogrammetric
+  // elliptical-zone modeling. Most appropriate reference for East Asian
+  // athletes (closer match for Korean baseball pitchers than Western tables
+  // like de Leva 1996 or Dempster 1955).
+  //
+  // Mass values are fractions of total body mass.
+  // comProx = COM location measured from proximal joint, as fraction of segment length.
+  // rhoTrans = transverse radius of gyration about COM, as fraction of segment length
+  //   (used for swing-type rotations like arm around shoulder).
+  //
+  // NOTE: This is an ESTIMATION based on body height, mass, and segment
+  // lengths. Reported uncertainty is approximately ±10-15% for moments of
+  // inertia (Ae 1992 reports r²=0.83-0.95 for regression equations).
+  // ─────────────────────────────────────────────────────────────────────
+  const AE1992 = {
+    pelvis:    { mass: 0.179, comProx: 0.488 },     // lower trunk
+    trunkFull: { mass: 0.483 },                      // full trunk for axial rotation
+    upperArm:  { mass: 0.027, comProx: 0.529, rhoTrans: 0.28 },
+    forearm:   { mass: 0.016, comProx: 0.415, rhoTrans: 0.27 },
+    hand:      { mass: 0.006, comProx: 0.891, rhoTrans: 0.51 }
+  };
+  const SEGMENT_INERTIA_UNCERTAINTY = 0.12;  // ±12% (Ae 1992 reported r²~0.85-0.95)
+  const BALL_MASS_KG = 0.143;  // Official NPB/MLB baseball mass: 5 oz ≈ 142-149g (use 143g)
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Yanai 2023 reference values for elbow varus torque (UCL injury risk)
+  // Source: Yanai T, Onuma K, Crotin RL, Monda D (2023). Sci Rep 13: 12253.
+  //   "A novel method intersecting 3D motion capture and medial elbow
+  //   strength dynamometry to assess elbow injury risk in baseball pitchers."
+  //
+  // Subjects: 2 NPB professional pitchers (UCL reconstructed, healthy)
+  // Pitch type benchmarks (peak elbow varus torque in N·m):
+  //   Fastball:  54.2 - 62.9 N·m  (highest valgus stress)
+  //   Slider:    57.3 - 58.3 N·m
+  //   Curveball: 51.5 - 55.0 N·m
+  //   Sinker:    53.9 N·m
+  //   Cut ball:  55.7 N·m
+  //   Changeup:  43.1 N·m  (lowest)
+  //
+  // Joint failure thresholds (cadaveric, Ahmad 2003 / McGraw 2013):
+  //   Intact UCL:        ~35 N·m
+  //   Reconstructed UCL: ~20-30 N·m
+  //
+  // Risk classification used in our analysis (fastball):
+  //   < 35 N·m: 안전 (intact UCL withstands)
+  //   35-55:    보통 (within typical range)
+  //   55-80:    높음 (typical pro range, requires muscular stress-shielding)
+  //   > 80:     매우 높음 (volume-dependent injury risk)
+  // ─────────────────────────────────────────────────────────────────────
+  const UCL_RISK = {
+    intact_failure: 35,        // N·m — Ahmad 2003
+    reconstructed_failure: 25, // N·m — McGraw 2013
+    pro_fastball_low: 50,      // N·m — Yanai 2023 lower
+    pro_fastball_high: 65,     // N·m — Yanai 2023 upper
+    danger: 80                 // N·m — volume-dependent injury concern
+  };
+
+  // Segment-length helper: average joint-to-joint distance in middle 1/3 of trial
+  function meanSegLength(rows, jc1Name, jc2Name) {
+    const lens = [];
+    const start = Math.floor(rows.length / 3);
+    const end = Math.floor(2 * rows.length / 3);
+    for (let i = start; i < end; i++) {
+      const j1 = jc(rows[i], jc1Name);
+      const j2 = jc(rows[i], jc2Name);
+      if (!j1 || !j2) continue;
+      lens.push(Math.sqrt((j1.x-j2.x)**2 + (j1.y-j2.y)**2 + (j1.z-j2.z)**2));
+    }
+    return lens.length > 0 ? lens.reduce((a,b)=>a+b,0)/lens.length : null;
+  }
+
+  // Compute estimated moments of inertia for pelvis/trunk/arm
+  // using Ae 1992 (Japanese athletes) anthropometric model.
+  function computeSegmentInertia(rows, armSide, heightM, massKg) {
+    if (!heightM || !massKg) return null;
+
+    // Segment lengths (joint-to-joint)
+    const trunkLen = meanSegLength(rows, 'pelvis', 'proximal_neck');
+    const upperArmLen = meanSegLength(rows, `${armSide}_shoulder_jc`, `${armSide}_elbow_jc`);
+    const forearmLen = meanSegLength(rows, `${armSide}_elbow_jc`, `${armSide}_wrist_jc`);
+    if (!trunkLen || !upperArmLen || !forearmLen) return null;
+    const handLen = 0.108 * heightM;  // anthropometric default
+
+    // Body widths (used for axial inertia approximation)
+    const widths = [];
+    const start = Math.floor(rows.length / 3);
+    const end = Math.floor(2 * rows.length / 3);
+    for (let i = start; i < end; i++) {
+      const r = rows[i];
+      const lx = r.left_shoulder_jc_3d_x, lz = r.left_shoulder_jc_3d_z;
+      const rx = r.right_shoulder_jc_3d_x, rz = r.right_shoulder_jc_3d_z;
+      if ([lx, rx, lz, rz].every(v => v != null)) {
+        widths.push(Math.sqrt((lx-rx)**2 + (lz-rz)**2));
+      }
+    }
+    if (!widths.length) return null;
+    const shoulderWidth = widths.reduce((a,b)=>a+b,0) / widths.length;
+    const pelvisWidth = shoulderWidth * 0.85;
+
+    // Masses (Ae 1992)
+    const m_pelvis = AE1992.pelvis.mass * massKg;
+    const m_trunk  = AE1992.trunkFull.mass * massKg;
+    const m_ua = AE1992.upperArm.mass * massKg;
+    const m_fa = AE1992.forearm.mass * massKg;
+    const m_hd = AE1992.hand.mass * massKg;
+    const m_ball = BALL_MASS_KG;  // Ball added per Yanai 2023 / Feltner 1989 approach
+
+    // Pelvis as solid cylinder: I_axial = ½ m r²
+    const pelvisR = pelvisWidth / 2;
+    const I_pelvis = 0.5 * m_pelvis * pelvisR * pelvisR;
+
+    // Trunk as elliptical cylinder: I_axial = ¼ m (a² + b²)
+    const trunkHalfW = shoulderWidth / 2;
+    const trunkHalfD = trunkHalfW * 0.6;
+    const I_trunk = 0.25 * m_trunk * (trunkHalfW*trunkHalfW + trunkHalfD*trunkHalfD);
+
+    // Arm-as-rotating-unit around shoulder (parallel axis theorem)
+    // Following Yanai 2023 / Feltner 1989: ball is rigidly held at fingertips
+    // and treated as part of the forearm-hand-ball (FHB) system.
+    const ua_p = AE1992.upperArm;
+    const fa_p = AE1992.forearm;
+    const hd_p = AE1992.hand;
+
+    // Upper arm: I_about_shoulder = I_com + m·d²
+    const I_UA_com = m_ua * Math.pow(ua_p.rhoTrans * upperArmLen, 2);
+    const d_UA = upperArmLen * (1 - ua_p.comProx);
+    const I_UA = I_UA_com + m_ua * d_UA * d_UA;
+
+    // Forearm
+    const I_FA_com = m_fa * Math.pow(fa_p.rhoTrans * forearmLen, 2);
+    const d_FA = upperArmLen + forearmLen * (1 - fa_p.comProx);
+    const I_FA = I_FA_com + m_fa * d_FA * d_FA;
+
+    // Hand
+    const I_HD_com = m_hd * Math.pow(hd_p.rhoTrans * handLen, 2);
+    const d_HD = upperArmLen + forearmLen + handLen * 0.5;
+    const I_HD = I_HD_com + m_hd * d_HD * d_HD;
+
+    // Ball as point mass at distal end (Yanai 2023)
+    const d_ball = upperArmLen + forearmLen + handLen;
+    const I_BALL = m_ball * d_ball * d_ball;
+
+    const I_arm = I_UA + I_FA + I_HD + I_BALL;
+
+    return {
+      I_pelvis, I_trunk, I_arm,
+      m_pelvis, m_trunk, m_arm: m_ua + m_fa + m_hd + m_ball,  // arm system includes ball (Yanai 2023)
+      m_fa, m_hd, m_ball, // expose individual masses for elbow torque calculation
+      lengths: { trunkLen, upperArmLen, forearmLen, handLen, shoulderWidth, pelvisWidth },
+      uncertainty: SEGMENT_INERTIA_UNCERTAINTY
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Elbow varus torque computation (inverse dynamics, Yanai 2023 approach)
+  //
+  // Following Yanai et al. (2023, Sci Rep 13: 12253) and Feltner (1989):
+  // - Treat forearm + hand + ball (FHB) as a single rigid body.
+  // - Compute COM position of FHB system at each frame.
+  // - Use Newton-Euler equations to solve for joint resultant torque at elbow.
+  // - The magnitude of the resultant torque (combining inertial + force×r terms)
+  //   is reported as the "elbow varus torque" — a UCL injury risk indicator.
+  //
+  // Returns peak resultant moment (N·m) over the cocking phase (FC to BR window).
+  // ─────────────────────────────────────────────────────────────────────
+  function computeElbowVarusTorque(rows, armSide, fps, fcRow, brRow, inertia) {
+    if (!inertia || !inertia.lengths) return null;
+    const dt = 1 / fps;
+    const { upperArmLen, forearmLen, handLen } = inertia.lengths;
+    const m_fa = inertia.m_fa, m_hd = inertia.m_hd, m_ball = inertia.m_ball;
+    const m_FHB = m_fa + m_hd + m_ball;
+
+    // FHB COM measured from elbow (along long axis)
+    const d_fa_com  = (1 - AE1992.forearm.comProx) * forearmLen;  // elbow to forearm COM (proximal-end based... but Ae's comProx is from proximal of forearm = elbow. So COM is at comProx*forearmLen FROM elbow.)
+    // Re-check: Ae's comProx is the fraction of segment length from PROXIMAL JOINT to COM.
+    // Forearm proximal joint = elbow. So forearm COM is at AE1992.forearm.comProx * forearmLen FROM elbow.
+    const d_fa_com_from_elbow = AE1992.forearm.comProx * forearmLen;
+    const d_hd_com_from_elbow = forearmLen + AE1992.hand.comProx * handLen;
+    const d_ball_from_elbow = forearmLen + handLen;
+    const d_FHB_com = (m_fa * d_fa_com_from_elbow + m_hd * d_hd_com_from_elbow + m_ball * d_ball_from_elbow) / m_FHB;
+
+    // FHB inertia about its COM (transverse axis, Ae 1992 rhoTrans)
+    const I_fa_com = m_fa * Math.pow(AE1992.forearm.rhoTrans * forearmLen, 2);
+    const d_fa_to_FHB = Math.abs(d_FHB_com - d_fa_com_from_elbow);
+    const I_fa_about_FHB = I_fa_com + m_fa * d_fa_to_FHB * d_fa_to_FHB;
+
+    const I_hd_com = m_hd * Math.pow(AE1992.hand.rhoTrans * handLen, 2);
+    const d_hd_to_FHB = Math.abs(d_hd_com_from_elbow - d_FHB_com);
+    const I_hd_about_FHB = I_hd_com + m_hd * d_hd_to_FHB * d_hd_to_FHB;
+
+    const d_ball_to_FHB = Math.abs(d_ball_from_elbow - d_FHB_com);
+    const I_ball_about_FHB = m_ball * d_ball_to_FHB * d_ball_to_FHB;
+
+    const I_FHB = I_fa_about_FHB + I_hd_about_FHB + I_ball_about_FHB;
+
+    // Build FHB COM trajectory in 3D (along elbow→wrist axis)
+    const com_x = [], com_y = [], com_z = [];
+    const ux = [], uy = [], uz = [];  // unit vector elbow→wrist
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const ex = r[`${armSide}_elbow_jc_3d_x`];
+      const ey = r[`${armSide}_elbow_jc_3d_y`];
+      const ez = r[`${armSide}_elbow_jc_3d_z`];
+      const wx = r[`${armSide}_wrist_jc_3d_x`];
+      const wy = r[`${armSide}_wrist_jc_3d_y`];
+      const wz = r[`${armSide}_wrist_jc_3d_z`];
+      if ([ex,ey,ez,wx,wy,wz].some(v => v == null)) {
+        com_x.push(null); com_y.push(null); com_z.push(null);
+        ux.push(null); uy.push(null); uz.push(null);
+        continue;
+      }
+      const dx = wx - ex, dy = wy - ey, dz = wz - ez;
+      const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      const t = d_FHB_com / d;  // fractional position
+      com_x.push(ex + t*dx);
+      com_y.push(ey + t*dy);
+      com_z.push(ez + t*dz);
+      ux.push(dx/d); uy.push(dy/d); uz.push(dz/d);
+    }
+
+    // Compute angular velocity of FHB long axis (transverse swing)
+    // ω = u × du/dt
+    const omega = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (i < 1 || i >= rows.length - 1 || ux[i-1] == null || ux[i+1] == null || ux[i] == null) {
+        omega.push(null); continue;
+      }
+      const dux = (ux[i+1] - ux[i-1]) / (2*dt);
+      const duy = (uy[i+1] - uy[i-1]) / (2*dt);
+      const duz = (uz[i+1] - uz[i-1]) / (2*dt);
+      const wx = uy[i]*duz - uz[i]*duy;
+      const wy = uz[i]*dux - ux[i]*duz;
+      const wz = ux[i]*duy - uy[i]*dux;
+      omega.push({ x: wx, y: wy, z: wz, mag: Math.sqrt(wx*wx + wy*wy + wz*wz) });
+    }
+
+    // Find peak resultant torque magnitude in cocking-end window (FC to BR + small margin)
+    // Yanai found peak torque at "immediately before max external rotation" — typically
+    // 50ms before BR.
+    const winStart = Math.max(0, fcRow);
+    const winEnd = Math.min(rows.length - 1, brRow + 5);
+
+    let peakTorque = 0, peakTorqueFrame = -1;
+    for (let i = winStart + 1; i < winEnd - 1; i++) {
+      // COM acceleration (central difference)
+      if (com_x[i-1] == null || com_x[i+1] == null) continue;
+      const ax = (com_x[i+1] - 2*com_x[i] + com_x[i-1]) / (dt*dt);
+      const ay = (com_y[i+1] - 2*com_y[i] + com_y[i-1]) / (dt*dt);
+      const az = (com_z[i+1] - 2*com_z[i] + com_z[i-1]) / (dt*dt);
+      // Angular acceleration of FHB
+      if (omega[i-1] == null || omega[i+1] == null) continue;
+      const alphaX = (omega[i+1].x - omega[i-1].x) / (2*dt);
+      const alphaY = (omega[i+1].y - omega[i-1].y) / (2*dt);
+      const alphaZ = (omega[i+1].z - omega[i-1].z) / (2*dt);
+      const alphaMag = Math.sqrt(alphaX**2 + alphaY**2 + alphaZ**2);
+
+      // Elbow joint reaction force F = m·a + m·g (gravity is -9.81 in Y, Y is up)
+      const Fx = m_FHB * ax;
+      const Fy = m_FHB * (ay + 9.81);
+      const Fz = m_FHB * az;
+
+      // Moment arm from elbow to FHB COM
+      const r = rows[i];
+      const ex = r[`${armSide}_elbow_jc_3d_x`];
+      const ey = r[`${armSide}_elbow_jc_3d_y`];
+      const ez = r[`${armSide}_elbow_jc_3d_z`];
+      if (ex == null || com_x[i] == null) continue;
+      const rx = com_x[i] - ex, ry = com_y[i] - ey, rz = com_z[i] - ez;
+
+      // Joint resultant torque = r × F + I·α
+      // (Newton-Euler, neglecting ω×(I·ω) for simplicity since we use scalar I)
+      const Mx_force = ry*Fz - rz*Fy;
+      const My_force = rz*Fx - rx*Fz;
+      const Mz_force = rx*Fy - ry*Fx;
+
+      // Inertial torque = I·α (vector)
+      const Mx_inertia = I_FHB * alphaX;
+      const My_inertia = I_FHB * alphaY;
+      const Mz_inertia = I_FHB * alphaZ;
+
+      const Mx = Mx_force + Mx_inertia;
+      const My = My_force + My_inertia;
+      const Mz = Mz_force + Mz_inertia;
+      const Mmag = Math.sqrt(Mx*Mx + My*My + Mz*Mz);
+
+      if (Mmag > peakTorque) {
+        peakTorque = Mmag;
+        peakTorqueFrame = i;
+      }
+    }
+
+    return {
+      peakTorqueNm: peakTorque,
+      peakTorqueFrame,
+      I_FHB,
+      m_FHB,
+      d_FHB_com_from_elbow: d_FHB_com
+    };
+  }
+
+  function extractTrial(trial, handedness, anthroParams) {
     if (!trial.data || !trial.data.length) return null;
     const rows = trial.data;
     const r0 = rows[0];
@@ -156,6 +468,203 @@
     const fcBrMs  = ((brRow         - fcRow)          / fps) * 1000;
     const etiPT = peakTrunk.val / peakPelvis.val;
     const etiTA = peakArm.val   / peakTrunk.val;
+
+    // ─────────────────────────────────────────────────────────────────
+    // Segment rotational kinetic energy (estimation-based)
+    // KE_rot = ½ · I · ω²
+    //   I from Ae 1992 (Japanese athletes) anthropometric model
+    //   ω from Uplift's rotational velocity columns
+    // Energy transfer (peak basis): KE_trunk_peak / KE_pelvis_peak
+    // Power (instantaneous): dKE/dt time series → peak power
+    // ─────────────────────────────────────────────────────────────────
+    let segmentEnergy = null;
+    if (anthroParams && anthroParams.heightM && anthroParams.massKg) {
+      const inertia = computeSegmentInertia(rows, armSide, anthroParams.heightM, anthroParams.massKg);
+      if (inertia) {
+        const omegaP = Math.abs(peakPelvis.val) * Math.PI / 180;
+        const omegaT = Math.abs(peakTrunk.val)  * Math.PI / 180;
+        const omegaA = Math.abs(peakArm.val)    * Math.PI / 180;
+        const KE_pelvis = 0.5 * inertia.I_pelvis * omegaP * omegaP;
+        const KE_trunk  = 0.5 * inertia.I_trunk  * omegaT * omegaT;
+        const KE_arm    = 0.5 * inertia.I_arm    * omegaA * omegaA;
+
+        // Transfer ratios (peak KE basis)
+        const transferPT_KE = KE_pelvis > 0 ? KE_trunk / KE_pelvis : null;
+        const transferTA_KE = KE_trunk > 0 ? KE_arm / KE_trunk : null;
+
+        // Instantaneous power: differentiate KE time series
+        // Build KE time series for each segment, then dKE/dt at each frame.
+        // Peak power = max instantaneous gain per second (W).
+        const dt = 1 / fps;
+        const colP = 'pelvis_rotational_velocity_with_respect_to_ground';
+        const colT = 'trunk_rotational_velocity_with_respect_to_ground';
+        const colA = `${armSide}_arm_rotational_velocity_with_respect_to_ground`;
+        function keSeries(I, col) {
+          const ke = new Array(rows.length).fill(null);
+          for (let i = 0; i < rows.length; i++) {
+            const w = rows[i][col];
+            if (w == null || isNaN(w)) continue;
+            const wRad = Math.abs(w) * Math.PI / 180;
+            ke[i] = 0.5 * I * wRad * wRad;
+          }
+          return ke;
+        }
+        const KE_p_ts = keSeries(inertia.I_pelvis, colP);
+        const KE_t_ts = keSeries(inertia.I_trunk, colT);
+        const KE_a_ts = keSeries(inertia.I_arm, colA);
+
+        // Peak power INTO each segment (max dKE/dt)
+        // We use central difference for smoother derivative.
+        // The full power time series is also returned for downstream
+        // phase-windowed analyses (e.g. cocking-phase peak per Wasserberger 2024).
+        function peakPower(keSeries) {
+          let maxP = -Infinity, maxIdx = -1;
+          const powerSeries = new Array(keSeries.length).fill(null);
+          for (let i = 1; i < keSeries.length - 1; i++) {
+            if (keSeries[i+1] == null || keSeries[i-1] == null) continue;
+            const p = (keSeries[i+1] - keSeries[i-1]) / (2 * dt);
+            powerSeries[i] = p;
+            if (p > maxP) { maxP = p; maxIdx = i; }
+          }
+          return {
+            peakPower: maxP === -Infinity ? null : maxP,
+            peakPowerFrame: maxIdx,
+            powerSeries
+          };
+        }
+        const trunkPower = peakPower(KE_t_ts);
+        const armPower = peakPower(KE_a_ts);
+
+        // Power averaged between peak events (legacy, also useful)
+        const dtPT = (peakTrunk.idx - peakPelvis.idx) / fps;
+        const dtTA = (peakArm.idx - peakTrunk.idx) / fps;
+        const avgPowerPT = dtPT > 0 ? (KE_trunk - KE_pelvis) / dtPT : null;
+        const avgPowerTA = dtTA > 0 ? (KE_arm   - KE_trunk)  / dtTA : null;
+
+        segmentEnergy = {
+          KE_pelvis, KE_trunk, KE_arm,
+          transferPT_KE, transferTA_KE,
+          // Instantaneous peak power into each segment (true dE/dt max)
+          peakPowerTrunk: trunkPower.peakPower,
+          peakPowerTrunkFrame: trunkPower.peakPowerFrame,
+          peakPowerArm: armPower.peakPower,
+          peakPowerArmFrame: armPower.peakPowerFrame,
+          // Average power between peak events (peak-to-peak basis)
+          avgPowerPT, avgPowerTA,
+          // Anthropometric details for transparency
+          I_pelvis: inertia.I_pelvis, I_trunk: inertia.I_trunk, I_arm: inertia.I_arm,
+          m_pelvis: inertia.m_pelvis, m_trunk: inertia.m_trunk, m_arm: inertia.m_arm,
+          lengths: inertia.lengths,
+          uncertainty: inertia.uncertainty,
+          source: 'Ae, M., Tang, H., Yokoi, T. (1992)'
+        };
+
+        // ─────────────────────────────────────────────────────────────
+        // Elbow varus torque (Yanai 2023 inverse dynamics approach)
+        // Treats forearm + hand + ball as single rigid body, computes
+        // peak resultant joint moment magnitude during cocking phase.
+        // ─────────────────────────────────────────────────────────────
+        const elbowResult = computeElbowVarusTorque(rows, armSide, fps, fcRow, brRow, inertia);
+        if (elbowResult) {
+          segmentEnergy.elbowPeakTorqueNm = elbowResult.peakTorqueNm;
+          segmentEnergy.elbowPeakTorqueFrame = elbowResult.peakTorqueFrame;
+          segmentEnergy.elbowI_FHB = elbowResult.I_FHB;
+          segmentEnergy.elbowM_FHB = elbowResult.m_FHB;
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // v27: Energy-flow metrics from baseball pitching literature
+        //
+        // 1) Howenstein, Kipp, Sabick (2019). Med Sci Sports Exerc 51:523-531.
+        //    "Energy flow analysis to investigate youth pitching velocity and
+        //    efficiency." Introduces "Joint Load Efficiency" = peak joint torque
+        //    / pitch velocity, an indicator that combines performance and load.
+        //    Lower value = same velocity at lower joint cost.
+        //
+        // 2) Wasserberger, Giordano, de Swart, Barfield, Oliver (2024).
+        //    Sports Biomechanics 23(9):1160-1175. "Energy generation, absorption,
+        //    and transfer at the shoulder and elbow in youth baseball pitchers."
+        //    Reports peak distal energy transfer rate during arm cocking phase
+        //    as a key descriptor (range 39-47 W/kg in youth, higher in pros).
+        //
+        // 3) Aguinaldo & Escamilla (2022). Sports Biomechanics 21(7):824-836.
+        //    Induced power analysis showing 86% of forearm KE during cocking
+        //    comes from trunk motion (rotation + flexion components). Reinforces
+        //    that T→A KE amplification is the central transfer mechanism.
+        //
+        // 4) Matsuda, Hirano, Umakoshi, Kimura (2025). Front Sports Act Living
+        //    7:1534596. Stride-length manipulation study: lower-extremity output
+        //    can change without changing total trunk outflow. Implies P→T
+        //    amplification ratio is the bottleneck, not raw lower-body energy.
+        //
+        // 5) de Swart, van Trigt, Wasserberger, Hoozemans, Veeger, Oliver (2022).
+        //    Sports Biomechanics 24(10):2916-2930. Documents asymmetric leg
+        //    roles: pivot (drive) leg generates energy primarily at the hip;
+        //    stride (lead) leg acts as a kinetic-chain conduit (distal→proximal
+        //    transfer). We reflect this with separate pivot/stride leg ω.
+        // ─────────────────────────────────────────────────────────────
+        const trialVelocityKmh = parseFloat(trial.velocity);
+        if (trialVelocityKmh && elbowResult) {
+          const ballVelocityMs = trialVelocityKmh / 3.6;
+          // (1) Howenstein "Joint Load Efficiency": peak elbow moment per m/s.
+          // Lower is better — means less elbow load per unit velocity.
+          segmentEnergy.elbowLoadEfficiency = elbowResult.peakTorqueNm / ballVelocityMs;
+        }
+
+        // (2) Wasserberger "cocking-phase peak distal transfer rate"
+        // Reuse the dKE/dt arm power series and find peak inside FC..(BR-30ms)
+        if (armPower && armPower.powerSeries && fcRow != null && brRow != null) {
+          const cockEnd = Math.max(brRow - Math.round(0.030 * fps), fcRow + 5);
+          let peakCockPower = -Infinity;
+          let peakCockFrame = -1;
+          for (let i = fcRow; i <= cockEnd && i < armPower.powerSeries.length; i++) {
+            const p = armPower.powerSeries[i];
+            if (p != null && p > peakCockPower) {
+              peakCockPower = p;
+              peakCockFrame = i;
+            }
+          }
+          if (peakCockPower > -Infinity) {
+            segmentEnergy.cockingPhaseArmPowerW = peakCockPower;
+            segmentEnergy.cockingPhaseArmPowerFrame = peakCockFrame;
+            segmentEnergy.cockingPhaseArmPowerWPerKg = anthroParams ? peakCockPower / anthroParams.massKg : null;
+          }
+        }
+
+        // (3) Aguinaldo "trunk-driven arm acceleration" — KE amplification
+        // ratio is already exposed as transferTA_KE (T→A ratio). Add a
+        // descriptive "trunk dominance %" for the report.
+        if (KE_trunk > 0 && KE_arm > 0) {
+          // Aguinaldo found ~86% of forearm power comes from trunk in pros.
+          // We approximate "trunk contribution" as the share of total upper-body KE
+          // that grew from trunk peak to arm peak (i.e., arm gained how much beyond trunk?)
+          // Simple proxy: trunk_KE / (trunk_KE + arm_KE_above_trunk_baseline)
+          // Cleaner reporting: just flag T→A ratio against Aguinaldo benchmark.
+          segmentEnergy.aguinaldoTAReference = 'Aguinaldo 2022: 86% of forearm power from trunk motion';
+        }
+
+        // (5) de Swart pivot vs stride leg ω separation.
+        // Sample pelvis ω instantaneous values from CSV — Uplift exposes only
+        // pelvis_global_omega and right/left arm ω at segment level. Hip flexion
+        // velocity (relative to trunk) is per-side, which lets us at least show
+        // pivot vs stride hip activity asymmetry.
+        const pivotSide = armSide; // throwing-arm side = pivot leg side
+        const strideSide = (armSide === 'right') ? 'left' : 'right';
+        let peakPivotHipVel = 0, peakStrideHipVel = 0;
+        const pivotCol = `${pivotSide}_hip_flexion_velocity_with_respect_to_trunk`;
+        const strideCol = `${strideSide}_hip_flexion_velocity_with_respect_to_trunk`;
+        for (const r of rows) {
+          const p = r[pivotCol], s = r[strideCol];
+          if (p != null && Math.abs(p) > peakPivotHipVel) peakPivotHipVel = Math.abs(p);
+          if (s != null && Math.abs(s) > peakStrideHipVel) peakStrideHipVel = Math.abs(s);
+        }
+        if (peakPivotHipVel > 0 && peakStrideHipVel > 0) {
+          segmentEnergy.peakPivotHipVel = peakPivotHipVel;
+          segmentEnergy.peakStrideHipVel = peakStrideHipVel;
+          segmentEnergy.legAsymmetryRatio = peakPivotHipVel / peakStrideHipVel;
+        }
+      }
+    }
 
     // Body height: max over frames of (head_Y - min_ankle_Y)
     let bodyHeight = 0;
@@ -449,6 +958,8 @@
       trunkForwardTilt, trunkLateralTilt,
       wristHeight, armSlotAngle, armSlotType,
       frontKneeFlex,
+      // Segment kinetic energy (estimation-based, requires height + mass)
+      segmentEnergy,
       // New energy-leak indicators
       flyingOpenPct,
       trunkFlexAtFC,
@@ -745,7 +1256,14 @@
     const { pitcher, trials } = input;
     if (!pitcher || !trials) return null;
     const handedness = pitcher.throwingHand === 'L' ? 'left' : 'right';
-    const perTrialStats = trials.map(t => extractTrial(t, handedness)).filter(t => t != null);
+    // Anthropometric inputs for segment energy calculation (estimation-based)
+    const heightM = (pitcher.heightCm && !isNaN(parseFloat(pitcher.heightCm)))
+      ? parseFloat(pitcher.heightCm) / 100 : null;
+    const massKg = (pitcher.weightKg && !isNaN(parseFloat(pitcher.weightKg)))
+      ? parseFloat(pitcher.weightKg) : null;
+    const anthroParams = (heightM && massKg) ? { heightM, massKg } : null;
+
+    const perTrialStats = trials.map(t => extractTrial(t, handedness, anthroParams)).filter(t => t != null);
     if (!perTrialStats.length) return { error: 'No trials with data' };
 
     // Use real input height (cm → m) for stride ratio if available,
@@ -773,7 +1291,7 @@
       ptLagMs:           agg(perTrialStats.map(s => s.ptLagMs)),
       taLagMs:           agg(perTrialStats.map(s => s.taLagMs)),
       fcBrMs:            agg(perTrialStats.map(s => s.fcBrMs)),
-      maxER:        aggRobust(perTrialStats.map(s => s.maxER)),
+      maxER:        agg(perTrialStats.map(s => s.maxER)),
       maxXFactor:        agg(perTrialStats.map(s => s.maxXFactor)),
       bodyHeight:        agg(perTrialStats.map(s => s.bodyHeight)),
       strideLength:      agg(perTrialStats.map(s => s.strideLength)),
@@ -788,7 +1306,28 @@
       kneeSscScore:      agg(perTrialStats.map(s => s.kneeSSC?.sscScore)),
       kneeNetChange:     agg(perTrialStats.map(s => s.kneeSSC?.netChange)),
       kneeDipMagnitude:  agg(perTrialStats.map(s => s.kneeSSC?.dipMagnitude)),
-      kneeTransitionMs:  agg(perTrialStats.map(s => s.kneeSSC?.transitionMs))
+      kneeTransitionMs:  agg(perTrialStats.map(s => s.kneeSSC?.transitionMs)),
+      // Segment kinetic energy aggregations
+      KE_pelvis:         agg(perTrialStats.map(s => s.segmentEnergy?.KE_pelvis)),
+      KE_trunk:          agg(perTrialStats.map(s => s.segmentEnergy?.KE_trunk)),
+      KE_arm:            agg(perTrialStats.map(s => s.segmentEnergy?.KE_arm)),
+      transferPT_KE:     agg(perTrialStats.map(s => s.segmentEnergy?.transferPT_KE)),
+      transferTA_KE:     agg(perTrialStats.map(s => s.segmentEnergy?.transferTA_KE)),
+      // Instantaneous peak power (dE/dt, W) — most accurate transfer indicator
+      peakPowerTrunk:    agg(perTrialStats.map(s => s.segmentEnergy?.peakPowerTrunk)),
+      peakPowerArm:      agg(perTrialStats.map(s => s.segmentEnergy?.peakPowerArm)),
+      // Average power between peak events (peak-to-peak)
+      avgPowerPT:        agg(perTrialStats.map(s => s.segmentEnergy?.avgPowerPT)),
+      avgPowerTA:        agg(perTrialStats.map(s => s.segmentEnergy?.avgPowerTA)),
+      // Elbow varus torque (Yanai 2023 method) — UCL injury risk indicator
+      elbowPeakTorqueNm: agg(perTrialStats.map(s => s.segmentEnergy?.elbowPeakTorqueNm)),
+      // v27 — Energy-flow metrics from baseball pitching literature
+      elbowLoadEfficiency:        agg(perTrialStats.map(s => s.segmentEnergy?.elbowLoadEfficiency)),
+      cockingPhaseArmPowerW:      agg(perTrialStats.map(s => s.segmentEnergy?.cockingPhaseArmPowerW)),
+      cockingPhaseArmPowerWPerKg: agg(perTrialStats.map(s => s.segmentEnergy?.cockingPhaseArmPowerWPerKg)),
+      peakPivotHipVel:            agg(perTrialStats.map(s => s.segmentEnergy?.peakPivotHipVel)),
+      peakStrideHipVel:           agg(perTrialStats.map(s => s.segmentEnergy?.peakStrideHipVel)),
+      legAsymmetryRatio:          agg(perTrialStats.map(s => s.segmentEnergy?.legAsymmetryRatio))
     };
 
     const armSlotTypes = perTrialStats.map(s => s.armSlotType).filter(x => x);

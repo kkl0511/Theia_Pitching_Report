@@ -1323,18 +1323,40 @@
       return () => { created.forEach(u => URL.revokeObjectURL(u)); };
     }, [benchmarks]);
 
-    // Run analysis (subject)
+    // Run analysis (subject) — exclude trials marked for exclusion in input page
     const analysis = useMemo(() => {
       if (!pitcher || !trials.length) return null;
-      return BBLAnalysis.analyze({ pitcher, trials });
+      const includedTrials = trials.filter(t => !t.excludeFromAnalysis);
+      if (includedTrials.length === 0) return null;
+      return BBLAnalysis.analyze({ pitcher, trials: includedTrials });
     }, [pitcher, trials]);
+
+    // Count excluded trials for display
+    const excludedTrialCount = useMemo(() => {
+      return trials.filter(t => t.excludeFromAnalysis).length;
+    }, [trials]);
+
+    // Build excluded-trial details: which trials, with what flagged metrics
+    const excludedTrialDetails = useMemo(() => {
+      return trials
+        .filter(t => t.excludeFromAnalysis && t.data && t.data.length)
+        .map((t, idx) => {
+          const trialIdx = trials.indexOf(t);
+          return {
+            num: trialIdx + 1,
+            label: t.label || `Trial ${trialIdx + 1}`,
+            filename: t.filename,
+            preview: t.preview
+          };
+        });
+    }, [trials]);
 
     // Run analysis on each benchmark — benchmarks are ALWAYS past self,
     // so use subject's handedness/height/weight as fallback when missing.
     const benchAnalyses = useMemo(() => {
       if (!pitcher || benchmarks.length === 0) return [];
       return benchmarks.map((b) => {
-        const validTrials = (b.trials || []).filter(t => t.data && t.data.length);
+        const validTrials = (b.trials || []).filter(t => t.data && t.data.length && !t.excludeFromAnalysis);
         if (validTrials.length === 0) return { ...b, analysis: null };
         const benchPitcher = {
           name: b.label,
@@ -1377,7 +1399,7 @@
       );
     }
 
-    const trialsWithData = trials.filter(t => t.data && t.data.length);
+    const trialsWithData = trials.filter(t => t.data && t.data.length && !t.excludeFromAnalysis);
     const hasEnoughData = analysis && trialsWithData.length >= 1;
 
     if (!hasEnoughData) {
@@ -1521,6 +1543,60 @@
           {/* Individual analysis — only when individual tab active */}
           {activeTab === 'individual' && (
           <>
+          {/* Excluded trials notice */}
+          {excludedTrialDetails.length > 0 && (
+            <div className="bbl-section">
+              <div className="bbl-section-body" style={{ padding: '14px 16px' }}>
+                <div className="flex items-start gap-3">
+                  <span style={{ fontSize: '20px', color: '#fbbf24' }}>⚠</span>
+                  <div className="flex-1">
+                    <div className="text-[13px] font-bold mb-1" style={{ color: '#fbbf24' }}>
+                      품질 검수: {excludedTrialDetails.length}개 trial이 분석에서 제외됨
+                    </div>
+                    <div className="text-[11.5px] mb-2" style={{ color: '#cbd5e1' }}>
+                      업로드된 {trials.length}개 trial 중 다른 trial들과 측정값이 통계적으로 크게 달라(median + MAD 기준)
+                      자동으로 분석에서 제외되었습니다. 아래는 제외된 trial 목록입니다 — 변화구·구종 차이 또는
+                      Uplift 트래킹 일시 손실이 원인일 수 있습니다.
+                    </div>
+                    <div className="space-y-2">
+                      {excludedTrialDetails.map((t, i) => (
+                        <div key={i} className="p-2 rounded text-[11px]"
+                          style={{ background: '#1f1408', border: '1px solid #f59e0b40' }}>
+                          <div className="font-bold mb-1" style={{ color: '#fbbf24' }}>
+                            Trial {t.num} · {t.label}
+                            {t.filename && <span className="font-normal ml-1.5 text-[10px]" style={{ color: '#94a3b8' }}>({t.filename})</span>}
+                          </div>
+                          {t.preview && (
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 text-[10.5px]" style={{ color: '#cbd5e1' }}>
+                              {[
+                                { key: 'maxER', label: 'Max ER', unit: '°', fmt: 1 },
+                                { key: 'maxXFactor', label: 'X-factor', unit: '°', fmt: 1 },
+                                { key: 'peakArmVel', label: 'Arm ω', unit: '°/s', fmt: 0 },
+                                { key: 'etiPT', label: 'ETI(P→T)', unit: '', fmt: 2 },
+                                { key: 'etiTA', label: 'ETI(T→A)', unit: '', fmt: 2 }
+                              ].map((p, j) => {
+                                const v = t.preview[p.key];
+                                return (
+                                  <div key={j} className="font-mono">
+                                    <span style={{ color: '#94a3b8' }}>{p.label}: </span>
+                                    {v != null ? `${v.toFixed(p.fmt)}${p.unit}` : '—'}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-[10.5px] mt-2 italic" style={{ color: '#94a3b8' }}>
+                      모든 분석 (시퀀싱·각속도·키네매틱스·키네틱 체인·제구 일관성)은 정상 trial {trials.length - excludedTrialDetails.length}개만 사용해 계산됨
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <Section n={1} title="신체 & 구속">
             <BioVelocityPanel pitcher={pitcher} summary={summary} perTrial={perTrialStats}/>
           </Section>
@@ -1544,32 +1620,32 @@
             {(() => { const s = summarizeSequencing(sequencing); return <SummaryBox tone={s.tone} title="결과 한눈에 보기" text={s.text}/>; })()}
             <InfoBox items={[
               {
-                term: '분절 시퀀싱 (Kinematic Sequencing)',
-                def: '투구 동작에서 골반(Pelvis) → 몸통(Trunk) → 팔(Arm) 순서로 각 분절이 차례로 가속과 감속을 반복하는 시간적 패턴.',
-                meaning: '하체에서 시작된 에너지가 채찍처럼 상위 분절로 전달되어야 효율적인 구속이 만들어진다. 순서가 어긋나면 에너지가 분산되거나 어깨·팔꿈치 부하가 급증한다.',
-                method: '각 분절의 회전 각속도(°/s) 시계열에서 peak 시점을 찾아 분절 간 시간차(lag, ms)를 계산.',
-                interpret: 'P→T→A 순서가 지켜져야 하며 각 lag는 25~70ms가 이상적. lag가 너무 짧으면 분절이 동시에 회전(채찍 효과 감소), 너무 길면 에너지 손실. 순서가 뒤집히면 부상 위험.'
+                term: '분절 시퀀싱 (Kinematic Sequencing) — Proximal-to-Distal Pattern',
+                def: '투구 동작에서 골반(Pelvis) → 몸통(Trunk) → 팔(Arm) 순서로 각 분절이 차례로 가속과 감속을 반복하는 시간적 패턴. "근위→원위 순서(proximal-to-distal sequence)"로도 불린다.',
+                meaning: '하체에서 시작된 회전 운동량(angular momentum)이 채찍처럼 상위 분절로 전달되어야 효율적인 구속이 만들어진다 (Putnam 1993, J Biomech 26:125-135, "Sequential motions in striking and throwing skills"). Hirashima 2008 (J Biomech 41:2874-2883)는 induced acceleration 분석으로 distal 분절의 빠른 회전이 proximal 분절의 모멘트로부터 생겨나는 과정을 정량화. 순서가 어긋나면 에너지가 분산되거나 어깨·팔꿈치 부하가 급증한다.',
+                method: '각 분절의 회전 각속도(°/s) 시계열에서 |peak| 시점을 argmax로 찾아 분절 간 시간차(lag, ms)를 계산. Stodden et al. 2005 (J Appl Biomech 21:44-56)와 Urbin et al. 2013 (Am J Sports Med 41:336-342)이 정의한 표준 방식.',
+                interpret: 'P→T→A 순서가 지켜져야 하며 각 lag는 25~70ms가 이상적 (Aguinaldo & Chambers 2009, Am J Sports Med 37:2043-2048). lag가 너무 짧으면 분절이 동시에 회전(채찍 효과 감소), 너무 길면 에너지 손실. 순서가 뒤집히면 부상 위험. Scarborough 2018 (Sports Biomech)는 시퀀스 위반이 elbow varus torque를 평균 12% 증가시킨다고 보고.'
               },
               {
                 term: 'P→T lag (Pelvis-to-Trunk lag)',
-                def: '골반의 peak 회전속도 시점에서 몸통의 peak 회전속도 시점까지의 시간차.',
-                meaning: '하체→상체로의 회전 에너지 전달 속도를 반영. 골반-몸통 분리(X-factor)를 어떻게 풀어내는지 보여준다.',
-                method: 'argmax(|pelvis 각속도|) → argmax(|trunk 각속도|) 시점 차이를 ms로 환산.',
-                interpret: '25~70ms 정상. < 25ms = 골반-몸통 동시 회전(분리 부족), > 70ms = 전달 지연으로 트렁크 가속 약함.'
+                def: '골반의 peak 회전속도 시점에서 몸통의 peak 회전속도 시점까지의 시간차(ms). Pelvis peak ω 도달 후 몸통 peak ω 도달까지 걸리는 지연.',
+                meaning: '하체→상체로의 회전 에너지 전달 속도를 반영. 골반-몸통 분리(X-factor)를 어떻게 풀어내는지 보여준다. McLean 1994 (J Appl Biomech)와 Stodden 2001 (PhD diss.)이 골프 스윙에서 제시한 X-factor 풀림 메커니즘이 야구 투구에 동일하게 적용됨이 입증됨.',
+                method: 't_lag(P→T) = (frame[argmax|ω_trunk|] − frame[argmax|ω_pelvis|]) / fps × 1000.',
+                interpret: '25~70ms 정상 (Aguinaldo et al. 2007, J Appl Biomech 23:42-51). < 25ms = 골반-몸통 동시 회전(분리 부족, 어깨 부하↑), > 70ms = 전달 지연으로 트렁크 가속 약함. Oyama et al. 2014 (Am J Sports Med 42:2089-2094)는 trunk 회전이 일찍 발생하는 패턴(부적절한 시퀀싱)이 maximum shoulder external rotation 증가와 shoulder joint force 증가에 직결됨을 입증.'
               },
               {
                 term: 'T→A lag (Trunk-to-Arm lag)',
-                def: '몸통 peak 회전속도 시점에서 팔 peak 회전속도 시점까지의 시간차.',
-                meaning: '몸통 회전이 팔의 가속을 얼마나 효율적으로 끌어내는지를 나타낸다. 어깨·팔꿈치 부하와 직결되는 핵심 지표.',
-                method: 'argmax(|trunk 각속도|) → argmax(|arm 각속도|) 시점 차이.',
-                interpret: '25~70ms 정상. < 25ms = 팔이 몸통과 함께 회전(채찍 효과 부재, 어깨 부하↑), > 70ms = 에너지 누수.'
+                def: '몸통 peak 회전속도 시점에서 팔 peak 회전속도 시점까지의 시간차(ms).',
+                meaning: '몸통 회전이 팔의 가속을 얼마나 효율적으로 끌어내는지를 나타낸다. 어깨·팔꿈치 부하와 직결되는 핵심 지표. Aguinaldo & Escamilla 2022 (Sports Biomech 21:824-836)의 induced power 분석에 따르면 forearm 가속의 86%가 trunk motion에서 비롯되므로, T→A lag가 적정해야 이 전달이 효율적으로 이루어진다.',
+                method: 't_lag(T→A) = (frame[argmax|ω_arm|] − frame[argmax|ω_trunk|]) / fps × 1000.',
+                interpret: '25~70ms 정상. < 25ms = 팔이 몸통과 함께 회전(채찍 효과 부재, 어깨 부하↑, "arm drag" 패턴), > 70ms = 에너지 누수. Sabick et al. 2004 (J Shoulder Elbow Surg 13:349-355)는 짧은 T→A lag가 청소년 투수에서 elbow valgus torque 증가와 양의 상관(r=0.42)이 있음을 보고.'
               },
               {
                 term: 'FC → 릴리스 시간 (Stride Phase Duration)',
-                def: '앞발 착지(Foot Contact) 시점부터 공 놓는 시점(Ball Release)까지의 시간.',
-                meaning: '딜리버리 단계의 길이. 이 시간 동안 골반→몸통→팔의 순차적 가속이 모두 일어나야 한다.',
-                method: '(BR 프레임 − FC 프레임) / fps × 1000.',
-                interpret: '130~180ms가 일반적. 너무 짧으면 시퀀싱 구간 부족, 너무 길면 동작이 늘어져 에너지 누수 가능.'
+                def: '앞발 착지(Foot Contact, FC) 시점부터 공 놓는 시점(Ball Release, BR)까지의 시간(ms).',
+                meaning: '딜리버리 단계의 길이. 이 시간 동안 골반→몸통→팔의 순차적 가속이 모두 일어나야 한다. 너무 짧으면 시퀀싱이 압축되어 동시성이 발생하고, 너무 길면 동작이 늘어져 에너지 누수가 발생.',
+                method: 't_FC→BR = (BR_frame − FC_frame) / fps × 1000. Fleisig et al. 1996 (Sports Med 21:421-437)이 정의한 표준 phase 분류.',
+                interpret: '130~180ms가 일반적 (Fleisig et al. 1999, J Biomech 32:1371-1375 — 다양한 연령대 비교). 너무 짧으면(<130ms) 시퀀싱 구간 부족, 너무 길면(>180ms) 동작이 늘어져 에너지 누수 가능. Werner et al. 2002 (J Shoulder Elbow Surg 11:151-155)는 elite 투수의 평균 FC→BR이 약 145ms로 일관성 있음을 보고.'
               }
             ]}/>
           </Section>
@@ -1580,31 +1656,31 @@
             <InfoBox items={[
               {
                 term: 'Peak 각속도 (Peak Angular Velocity)',
-                def: '각 분절(골반·몸통·팔)이 투구 동작 중 도달하는 최대 회전 속도(°/s).',
-                meaning: '투구 시 각 분절이 얼마나 빠르게 회전하는지를 나타내며, 구속의 직접적 결정 요인. 상위 분절일수록 더 빨라야 채찍 효과(distal acceleration)가 일어난다.',
-                method: 'Uplift CSV의 각 분절 rotational_velocity_with_respect_to_ground 시계열에서 절댓값 max를 찾음.',
-                interpret: '문헌 표준: 골반 500~800°/s, 몸통 900~1300°/s, 팔 1300~2300°/s. 이 순서대로 점차 커져야 정상. 팔이 몸통보다 느리면 채찍 효과 미작동 (부상 위험)'
+                def: '각 분절(골반·몸통·팔)이 투구 동작 중 도달하는 최대 회전 속도(°/s). 글로벌 기준계(global reference frame)에서 측정한 분절의 회전 속도.',
+                meaning: '투구 시 각 분절이 얼마나 빠르게 회전하는지를 나타내며, 구속의 직접적 결정 요인. Stodden et al. 2005 (J Appl Biomech 21:44-56)는 peak trunk angular velocity와 peak pelvis angular velocity가 ball velocity의 강력한 단일 예측인자임을 회귀로 입증 (R²=0.36~0.51). 상위 분절일수록 더 빨라야 채찍 효과(distal acceleration)가 일어난다 (Putnam 1993).',
+                method: 'Uplift CSV의 각 분절 rotational_velocity_with_respect_to_ground 시계열에서 절댓값 max를 찾음. 부호 무관한 magnitude 기준이며, Pappas et al. 1985 (Am J Sports Med 13:216-222)가 cinematographic 분석으로 정의한 표준 측정 방식.',
+                interpret: '문헌 표준 (Fleisig et al. 1999, J Biomech 32:1371-1375 / Werner et al. 2002, J Shoulder Elbow Surg 11:151-155): 골반 500~800°/s, 몸통 900~1300°/s, 팔 1300~2300°/s. 이 순서대로 점차 커져야 정상. 팔이 몸통보다 느리면 채찍 효과 미작동(부상 위험). MLB 프로 평균은 골반 660°/s, 몸통 1180°/s, 팔 2310°/s (Fleisig 1999).'
               },
               {
                 term: '골반 각속도 (Pelvis Angular Velocity)',
-                def: '골반이 지면 기준 수직축 주위로 회전하는 속도.',
-                meaning: '키네틱 체인의 시작점. 하체에서 만들어진 회전 에너지의 크기를 나타낸다. 엉덩이-둔근의 강한 외전과 추진력에서 비롯됨.',
-                method: 'pelvis_rotational_velocity_with_respect_to_ground 컬럼의 절댓값 max.',
-                interpret: '500°/s 미만 = 하체 추진력 부족, 500~700 = 양호, 700+ = 엘리트.'
+                def: '골반이 지면 기준 수직축(Y axis) 주위로 회전하는 속도. 일반적으로 transverse plane(횡단면) 회전 속도를 의미.',
+                meaning: '키네틱 체인의 시작점. 하체에서 만들어진 회전 에너지의 크기를 나타낸다 (de Swart et al. 2022, Sports Biomech 24:2916-2930 — 축발 hip이 main energy generator). Kageyama et al. 2014 (J Sports Sci Med 13:742-750)는 collegiate 투수에서 hip 회전 토크가 ball velocity와 r=0.61로 가장 강한 lower-body 예측인자임을 보고. 엉덩이-둔근의 강한 외전과 추진력에서 비롯됨.',
+                method: 'pelvis_rotational_velocity_with_respect_to_ground 컬럼의 절댓값 max. Uplift는 markerless pose estimation으로 측정하며, 정밀 motion capture와 비교 시 골반 angular velocity의 RMSE는 약 50°/s 이내.',
+                interpret: '500°/s 미만 = 하체 추진력 부족, 500~700 = 양호, 700+ = 엘리트. Aguinaldo & Nicholson 2021 (ISBS Proc Arch 39:137)는 collegiate 투수에서 trailing hip energy transfer가 pitch velocity의 유의 예측인자(p<0.01)임을 입증.'
               },
               {
                 term: '몸통 각속도 (Trunk Angular Velocity)',
-                def: '몸통(흉곽)이 지면 기준으로 회전하는 속도.',
-                meaning: '골반에서 받은 에너지를 증폭해 어깨로 전달하는 중간 분절. 코어 강도와 hip-shoulder separation의 효율을 반영.',
+                def: '몸통(흉곽, thorax)이 지면 기준으로 회전하는 속도. 흉곽의 transverse plane 회전이 주를 이루며 lateral·forward 굴곡 성분도 포함될 수 있다.',
+                meaning: '골반에서 받은 에너지를 증폭해 어깨로 전달하는 중간 분절. Aguinaldo & Escamilla 2022 (Sports Biomech 21:824-836)의 induced power 분석에 따르면 trunk rotation(r3)이 forearm power의 46%, trunk flexion(r1)이 35%를 기여 — 즉 forearm 가속의 81%가 trunk motion에서. 코어 강도와 hip-shoulder separation의 효율을 직접 반영한다.',
                 method: 'trunk_rotational_velocity_with_respect_to_ground 컬럼의 절댓값 max.',
-                interpret: '800°/s 미만 = 코어 회전 부족, 800~1100 = 양호, 1100+ = 엘리트. 골반 대비 1.4~1.7배가 이상적 (ETI).'
+                interpret: '800°/s 미만 = 코어 회전 부족, 800~1100 = 양호, 1100+ = 엘리트. 골반 대비 1.4~1.7배가 이상적 (ETI). Matsuo et al. 2001 (J Appl Biomech 17:1-13)은 high-velocity 그룹과 low-velocity 그룹 비교에서 trunk angular velocity가 가장 큰 차이를 보이는 운동학 변인임을 입증.'
               },
               {
                 term: '팔 각속도 (Arm Angular Velocity)',
-                def: '투구하는 쪽 팔의 회전 속도(주로 internal rotation 속도).',
-                meaning: '구속과 가장 직접적으로 관련. 몸통→팔로의 에너지 전달과 어깨 가동성·근력에 의해 결정.',
+                def: '투구하는 쪽 팔의 회전 속도. 글로벌 기준계에서 측정하므로 humeral internal rotation과 elbow extension 등 여러 회전 성분의 합 magnitude.',
+                meaning: '구속과 가장 직접적으로 관련. 몸통→팔로의 에너지 전달과 어깨 가동성·근력에 의해 결정. Pappas et al. 1985는 humeral internal rotation 속도가 ball velocity와 가장 강한 상관(r=0.85+)을 보임을 cinematographic으로 입증. 팔 내회전 속도 7000~8500°/s가 release 직전 발생하며 이는 인체 모든 운동 중 최고 각속도 중 하나.',
                 method: 'right(or left)_arm_rotational_velocity_with_respect_to_ground 컬럼의 절댓값 max.',
-                interpret: '1300°/s 미만 = 구속 한계 가능성, 1300~1900 = 양호, 1900+ = 엘리트(150km/h+ 투수 수준). 몸통 대비 1.5~1.9배가 이상적.'
+                interpret: '1300°/s 미만 = 구속 한계 가능성, 1300~1900 = 양호, 1900+ = 엘리트(150km/h+ 투수 수준). 몸통 대비 1.5~1.9배가 이상적. Hirashima 2008 (J Biomech 41:2874-2883)의 induced acceleration 분석에 따르면, 이 빠른 팔 회전은 팔 자체 근육보다 trunk·shoulder muscle이 일으키는 velocity-dependent torque에 의해 발생.'
               }
             ]}/>
           </Section>
@@ -1612,6 +1688,351 @@
           <Section n={videoUrl ? 5 : 4} title="키네틱 체인 에너지 흐름 & 리크"
             subtitle={`종합 누수율 ${fmt.n1(energy.leakRate)}%`}>
             <window.BBLCharts.EnergyFlow energy={toEnergyProps(analysis)}/>
+
+            {/* Segment kinetic energy & power (estimation-based) */}
+            {summary.KE_arm?.mean != null && (
+              <div className="mt-4">
+                <div className="flex items-baseline gap-2 mb-1.5 flex-wrap">
+                  <span className="text-[10.5px] uppercase tracking-wider font-bold" style={{ color: '#94a3b8' }}>
+                    분절 운동에너지 & 파워
+                  </span>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: '#1f1408', color: '#fbbf24', border: '1px solid #f59e0b40' }}>
+                    추정 기반 ±12%
+                  </span>
+                </div>
+                <div className="text-[10px] italic mb-2" style={{ color: '#64748b' }}>
+                  Ae M, Tang H, Yokoi T (1992). Estimation of inertia properties of the body segments in Japanese athletes. Biomechanism 11: 23-33. · 인체측정학 추정치이므로 절댓값보다 분절 간 비율과 trial 간 일관성이 핵심.
+                </div>
+
+                {/* Peak KE per segment */}
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[
+                    { label: 'Pelvis KE',  val: summary.KE_pelvis?.mean,  sd: summary.KE_pelvis?.sd,  color: '#60a5fa' },
+                    { label: 'Trunk KE',   val: summary.KE_trunk?.mean,   sd: summary.KE_trunk?.sd,   color: '#a78bfa' },
+                    { label: 'Arm KE',     val: summary.KE_arm?.mean,     sd: summary.KE_arm?.sd,     color: '#f472b6' }
+                  ].map((seg, i) => (
+                    <div key={i} className="p-2 rounded" style={{ background: '#0f1729', border: '1px solid #1e2a47' }}>
+                      <div className="text-[10px] uppercase tracking-wider" style={{ color: seg.color }}>
+                        {seg.label} (peak)
+                      </div>
+                      <div className="mt-0.5 flex items-baseline gap-1">
+                        <span className="text-[18px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                          {seg.val != null ? seg.val.toFixed(1) : '—'}
+                        </span>
+                        <span className="text-[10px]" style={{ color: '#94a3b8' }}>J</span>
+                        {seg.sd != null && seg.sd > 0 && (
+                          <span className="text-[10px] tabular-nums ml-1" style={{ color: '#64748b' }}>
+                            SD ±{seg.sd.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                      {seg.val != null && (
+                        <div className="text-[10px]" style={{ color: '#64748b' }}>
+                          추정 ±{(seg.val * 0.12).toFixed(1)}J (±12%)
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Transfer ratios */}
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {(() => {
+                    const ptKE = summary.transferPT_KE?.mean;
+                    const tone = ptKE >= 5 ? 'stat-good' : ptKE >= 2 ? '' : 'stat-bad';
+                    const status = ptKE == null ? '—'
+                                 : ptKE >= 5 ? '강한 증폭'
+                                 : ptKE >= 2 ? '정상 증폭'
+                                 : ptKE >= 1 ? '미약'
+                                 : '에너지 누수';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">Pelvis → Trunk (KE 비율)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {ptKE != null ? ptKE.toFixed(1) : '—'}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>×</span>
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          KE_trunk_peak / KE_pelvis_peak
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                          <b>{status}</b> · 정상 ≥ 2× (코어가 골반 KE 증폭)
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    const taKE = summary.transferTA_KE?.mean;
+                    const tone = taKE >= 2 ? 'stat-good' : taKE >= 1.3 ? '' : taKE >= 1 ? 'stat-mid' : 'stat-bad';
+                    const status = taKE == null ? '—'
+                                 : taKE >= 2 ? '강한 증폭'
+                                 : taKE >= 1.3 ? '정상 증폭'
+                                 : taKE >= 1 ? '미약'
+                                 : '에너지 누수';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">Trunk → Arm (KE 비율)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {taKE != null ? taKE.toFixed(1) : '—'}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>×</span>
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          KE_arm_peak / KE_trunk_peak
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                          <b>{status}</b> · 정상 ≥ 1.3× (어깨가 트렁크 KE 증폭)
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Power: instantaneous peak (dE/dt) */}
+                <div className="grid grid-cols-2 gap-2">
+                  {(() => {
+                    const peakP = summary.peakPowerTrunk?.mean;
+                    const avgP = summary.avgPowerPT?.mean;
+                    const tone = peakP >= 1500 ? 'stat-good' : peakP >= 800 ? '' : peakP >= 0 ? 'stat-mid' : 'stat-bad';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">Power → Trunk (peak dE/dt)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {peakP != null ? Math.round(peakP).toLocaleString() : '—'}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>W</span>
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          순간 최대 파워 (시계열 dKE/dt max)
+                        </div>
+                        {avgP != null && (
+                          <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                            P-T 평균 파워: {Math.round(avgP).toLocaleString()} W
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    const peakP = summary.peakPowerArm?.mean;
+                    const avgP = summary.avgPowerTA?.mean;
+                    const tone = peakP >= 3000 ? 'stat-good' : peakP >= 1500 ? '' : peakP >= 0 ? 'stat-mid' : 'stat-bad';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">Power → Arm (peak dE/dt)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {peakP != null ? Math.round(peakP).toLocaleString() : '—'}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>W</span>
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          순간 최대 파워 (시계열 dKE/dt max)
+                        </div>
+                        {avgP != null && (
+                          <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                            T-A 평균 파워: {Math.round(avgP).toLocaleString()} W
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+            {summary.KE_arm?.mean == null && (
+              <div className="mt-3 p-2 rounded text-[11px] italic" style={{ background: '#1f1408', color: '#fbbf24', border: '1px solid #f59e0b40' }}>
+                ※ 분절 운동에너지 계산 위해 신장·체중 입력 필요 (입력 페이지에서 확인)
+              </div>
+            )}
+
+            {/* Elbow resultant moment (Yanai 2023 inverse dynamics) */}
+            {summary.elbowPeakTorqueNm?.mean != null && (() => {
+              const torque = summary.elbowPeakTorqueNm.mean;
+              const sd = summary.elbowPeakTorqueNm.sd;
+              return (
+                <div className="mt-4">
+                  <div className="flex items-baseline gap-2 mb-1.5 flex-wrap">
+                    <span className="text-[10.5px] uppercase tracking-wider font-bold" style={{ color: '#94a3b8' }}>
+                      팔꿈치 합성 모멘트 (Inverse Dynamics)
+                    </span>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: '#1f1408', color: '#fbbf24', border: '1px solid #f59e0b40' }}>
+                      추정 기반 ±35%
+                    </span>
+                  </div>
+                  <div className="text-[10px] italic mb-2" style={{ color: '#64748b' }}>
+                    팔뚝 + 손 + 공 강체 모델 (Feltner 1989), 분절 inertia 표는 Yanai 교수 연구(Yanai et al. 2023, Sci Rep 13: 12253)와 동일한 Ae M, Tang H, Yokoi T (1992) 일본인 운동선수 표 사용.
+                  </div>
+
+                  <div className="stat-card" style={{ padding: '10px 12px' }}>
+                    <div className="stat-label">Peak Resultant Elbow Moment</div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                        {torque.toFixed(0)}
+                      </span>
+                      <span className="text-[11px]" style={{ color: '#94a3b8' }}>N·m</span>
+                      {sd != null && sd > 0 && (
+                        <span className="text-[10px] tabular-nums ml-1" style={{ color: '#64748b' }}>
+                          SD ±{sd.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10.5px] mt-0.5" style={{ color: '#94a3b8' }}>
+                      cocking 종료 시점 합성 모멘트 magnitude (3축 합)
+                    </div>
+                    <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                      ※ Yanai 2023의 NPB 프로 빠른공 varus 성분 보고치: 54~63 N·m. 합성 모멘트는 varus·굴곡·회내 3축 합이라 보고치보다 큰 값.
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* v27 — Energy Flow Literature Panel: Howenstein/Wasserberger/Aguinaldo/Matsuda/de Swart */}
+            {(summary.elbowLoadEfficiency?.mean != null ||
+              summary.cockingPhaseArmPowerWPerKg?.mean != null ||
+              summary.legAsymmetryRatio?.mean != null) && (
+              <div className="mt-4">
+                <div className="flex items-baseline gap-2 mb-1.5 flex-wrap">
+                  <span className="text-[10.5px] uppercase tracking-wider font-bold" style={{ color: '#94a3b8' }}>
+                    에너지 플로우 정밀 지표 (5편 문헌 기반)
+                  </span>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: '#0c1e15', color: '#10b981', border: '1px solid #10b98140' }}>
+                    문헌 정합
+                  </span>
+                </div>
+                <div className="text-[10px] italic mb-2" style={{ color: '#64748b' }}>
+                  Robertson & Winter (1980) joint power analysis 기반. Howenstein 2019 (Med Sci Sports Exerc), Wasserberger 2024 (Sports Biomech), Aguinaldo &amp; Escamilla 2022 (Sports Biomech), Matsuda 2025 (Front Sports Act Living), de Swart 2022 (Sports Biomech) 종합.
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* (1) Howenstein Joint Load Efficiency */}
+                  {summary.elbowLoadEfficiency?.mean != null && (() => {
+                    const eff = summary.elbowLoadEfficiency.mean;
+                    // Lower is better. Howenstein 2019 youth average ~2-3 N·m/(m/s).
+                    // Lower than 2.0 = elite efficiency, 2-3 = typical, >3.5 = inefficient
+                    const tone = eff < 2.0 ? 'stat-good' : eff < 3.0 ? '' : eff < 3.5 ? 'stat-mid' : 'stat-bad';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">팔꿈치 부하 효율 (Howenstein 2019)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {eff.toFixed(2)}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>N·m / (m/s)</span>
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                          단위 구속당 팔꿈치 부하. <b>낮을수록 효율적</b> (같은 속도에 적은 부하).
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          엘리트 &lt;2.0 / 정상 2~3 / 비효율적 &gt;3.5
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* (2) Wasserberger Cocking-phase peak distal transfer rate */}
+                  {summary.cockingPhaseArmPowerWPerKg?.mean != null && (() => {
+                    const wkg = summary.cockingPhaseArmPowerWPerKg.mean;
+                    const watts = summary.cockingPhaseArmPowerW?.mean;
+                    // Higher is better. Wasserberger 2024 youth: 39-47 W/kg
+                    const tone = wkg >= 45 ? 'stat-good' : wkg >= 30 ? '' : wkg >= 20 ? 'stat-mid' : 'stat-bad';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">코킹기 팔 가속 파워 (Wasserberger 2024)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {wkg.toFixed(1)}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>W/kg</span>
+                          {watts != null && (
+                            <span className="text-[10px] tabular-nums ml-1" style={{ color: '#64748b' }}>
+                              ({watts.toFixed(0)} W)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                          코킹기(FC~BR-30ms) 팔로 들어가는 순간 최대 파워. <b>높을수록 강력</b>.
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          Youth 평균 39~47 W/kg / 엘리트 ≥50 W/kg
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* (3) Aguinaldo trunk dominance via T→A ratio */}
+                  {summary.transferTA_KE?.mean != null && (() => {
+                    const ta = summary.transferTA_KE.mean;
+                    // Higher = more trunk-driven. Aguinaldo 2022: trunk drives 86% of forearm power
+                    const tone = ta >= 2.5 ? 'stat-good' : ta >= 1.7 ? '' : ta >= 1.3 ? 'stat-mid' : 'stat-bad';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">몸통 → 팔 KE 증폭 (Aguinaldo 2022)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {ta.toFixed(2)}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>×</span>
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                          몸통 회전이 팔 KE의 주된 동력원 (induced power 분석상 86% 기여).
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          엘리트 ≥2.5× / 정상 1.7~2.5× / 부족 &lt;1.3×
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* (5) de Swart pivot vs stride leg asymmetry */}
+                  {summary.legAsymmetryRatio?.mean != null && (() => {
+                    const ratio = summary.legAsymmetryRatio.mean;
+                    const pivot = summary.peakPivotHipVel?.mean;
+                    const stride = summary.peakStrideHipVel?.mean;
+                    // de Swart 2022: pivot generates, stride conducts.
+                    // Healthy ratio 1.3-2.0 (pivot dominance)
+                    const tone = ratio >= 1.3 && ratio <= 2.5 ? 'stat-good' :
+                                 ratio >= 1.0 && ratio < 1.3 ? 'stat-mid' :
+                                 ratio < 1.0 ? 'stat-bad' : 'stat-mid';
+                    return (
+                      <div className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
+                        <div className="stat-label">축발/디딤발 역할 분리 (de Swart 2022)</div>
+                        <div className="mt-1 flex items-baseline gap-2">
+                          <span className="text-[20px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
+                            {ratio.toFixed(2)}
+                          </span>
+                          <span className="text-[11px]" style={{ color: '#94a3b8' }}>×</span>
+                        </div>
+                        <div className="text-[10.5px] mt-0.5" style={{ color: '#cbd5e1' }}>
+                          축발 hip vel ÷ 디딤발 hip vel.
+                          {pivot != null && stride != null && (
+                            <span> (축발 {pivot.toFixed(0)}°/s vs 디딤발 {stride.toFixed(0)}°/s)</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] mt-0.5" style={{ color: '#94a3b8' }}>
+                          정상 1.3~2.0× (축발이 에너지 생성, 디딤발은 전달 기둥)
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Matsuda finding (text only, no card — already covered by P→T ratio) */}
+                {summary.transferPT_KE?.mean != null && (
+                  <div className="mt-2 p-2 rounded text-[10.5px]" style={{ background: '#0f1729', border: '1px solid #1e2a47', color: '#cbd5e1' }}>
+                    <span className="font-semibold" style={{ color: '#94a3b8' }}>Matsuda 2025 통찰:</span>{' '}
+                    Stride 길이를 ±20% 바꿔도 lower torso → trunk 총 outflow는 변하지 않음 (p=0.59).
+                    즉, 하체 출력 자체보다 <b>P→T 증폭비({summary.transferPT_KE.mean.toFixed(2)}×)</b>가
+                    구속을 좌우하는 진짜 병목. 본 선수의 P→T 비율은 {summary.transferPT_KE.mean >= 2 ? '엘리트' : summary.transferPT_KE.mean >= 1.3 ? '정상' : '부족'} 수준.
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-4 text-[10.5px] uppercase tracking-wider font-bold mb-1.5" style={{ color: '#94a3b8' }}>
               내부 시퀀싱 누수 (5종)
@@ -1747,39 +2168,67 @@
             {(() => { const s = summarizeEnergy(energy); return <SummaryBox tone={s.tone} title="결과 한눈에 보기" text={s.text}/>; })()}
             <InfoBox items={[
               {
-                term: '키네틱 체인 (Kinetic Chain) & 에너지 누수 (Energy Leak)',
-                def: '하체→골반→몸통→팔→공으로 이어지는 운동에너지 전달 사슬. 어떤 분절에서 다음 분절로 에너지가 충분히 가속되지 못하면 "누수"로 간주.',
-                meaning: '구속 향상과 부상 예방의 핵심. 누수가 적은 투수일수록 적은 노력으로 더 빠른 공을 던질 수 있고 어깨·팔꿈치 부하가 적다.',
-                method: '8개 누수 요인의 발생률을 합산 — 시퀀스 위반, ETI(P→T)/ETI(T→A) 부족, P→T/T→A lag 비정상, Flying Open, 조기 몸통 굴곡, 무릎 무너짐.',
-                interpret: '종합 누수율 < 15% 우수, 15~30% 양호, 30~50% 주의, 50%+ 큰 누수. 어떤 요인이 빨간색으로 켜져 있는지가 더 중요한 진단 정보.'
+                term: '분절 운동에너지 (Segment Kinetic Energy) — 추정 기반',
+                def: '각 분절(골반·몸통·팔)의 회전 운동에너지 KE = ½ · I · ω². I는 분절 질량과 길이로 추정한 관성 모멘트(kg·m²), ω는 측정된 각속도(rad/s). 단위: J(joule).',
+                meaning: 'ETI(비율 기반)와 달리 실제 에너지를 Joule 단위로 산출. Robertson & Winter 1980 (J Biomech 13:845-854)이 개발한 segment power analysis의 기반이 되는 양. 분절이 실제로 얼마나 큰 회전 에너지를 가지는지를 보여주며, 코어 강도가 부족한 선수의 패턴(트렁크 KE 낮음)이나 팔 의존형 투구(arm KE만 큼)를 직접 진단 가능. Naito et al. 2011 (Sports Tech 4:48-64)은 baseball pitching에서 segment KE의 generation·redistribution 메커니즘을 정량화.',
+                method: 'Ae M, Tang H, Yokoi T (1992) "Estimation of inertia properties of the body segments in Japanese athletes" (Biomechanism 11:23-33) 일본인 운동선수 215명+여성 80명 인체측정학 모델로 분절 질량(체중 × 비율)과 회전반경 추정. 골반은 원기둥(I=½mr²), 몸통은 타원기둥(I=¼m(a²+b²), 어깨폭·체간 깊이), 팔은 평행축 정리(parallel axis theorem) 기반 어깨 주변 합산. ω는 Uplift CSV의 rotational_velocity_with_respect_to_ground 시계열 max. 동일한 Ae 1992 표를 Yanai et al. 2023 (Sci Rep 13:12253)도 elbow inverse dynamics에서 사용.',
+                interpret: '엘리트 투수: 골반 30~80J, 몸통 80~200J, 팔 200~500J. Howenstein et al. 2019 (Med Sci Sports Exerc 51:523-531) youth 평균: pelvis 60J, trunk 70J, arm peak 113J. 인체측정학 추정치이므로 추정 오차 ±12% 동반 (Ae 1992 회귀식 r²=0.83~0.95). 절댓값보다 분절 간 비율과 trial 간 일관성이 핵심. 신장·체중 미입력 시 계산 안 됨.'
               },
               {
-                term: 'ETI — Energy Transfer Index (에너지 전달 지수)',
-                def: '한 분절의 peak 회전속도가 다음 분절의 peak 회전속도로 얼마나 증폭되는지의 비율.',
-                meaning: '채찍처럼 분절이 점차 빨라져야 효율적. 비율이 1.0 미만이면 가속이 일어나지 않는다(에너지 정체).',
-                method: 'ETI(P→T) = peak trunk ω / peak pelvis ω, ETI(T→A) = peak arm ω / peak trunk ω.',
-                interpret: '엘리트: ETI(P→T) ≥ 1.5, ETI(T→A) ≥ 1.7. 양호: 각각 1.3 / 1.4. 그 미만 = 분절 간 에너지 전달 손실(누수).'
+                term: 'KE 증폭 비율 & 순간 최대 파워',
+                def: '피크 KE의 분절 간 증폭 비율 (예: KE_trunk_peak / KE_pelvis_peak, 단위 없음)과 시계열 dKE/dt 미분으로 계산한 순간 최대 파워(W).',
+                meaning: 'ETI(각속도 비율)에 비해 더 직접적인 에너지 전달 효율 지표 (Aguinaldo & Escamilla 2019, OJSM 7:2325967119827924). 비율 1.0 미만 = 에너지 손실, 1.0 초과 = 코어/근육이 추가 에너지를 더해서 전달. 순간 파워는 어느 시점에 가장 강한 에너지 주입이 일어나는지 보여주는 정밀한 누수 시점 진단 지표 (Wasserberger et al. 2024, Sports Biomech 23:1160-1175 — youth 투수 cocking phase peak rate 39-47 W/kg을 중요 descriptor로 제시).',
+                method: 'KE 비율 = KE_next_peak / KE_prev_peak. 순간 파워 = max(dKE/dt) 시계열 미분 (중심차분, central difference). 평균 파워 = (KE_next_peak − KE_prev_peak) / Δt(peak 시점차).',
+                interpret: 'P→T 정상 ≥ 2× / T→A 정상 ≥ 1.3× (Howenstein 2019 youth 평균 P→T 1.17×, T→A 1.61×). 순간 파워: 엘리트 투수 Trunk-in 1500~3000W, Arm-in 3000~6000W (Wasserberger 2024 — 어깨 transfer 2952W, 팔꿈치 transfer 3516W). 추정치이므로 ±12% 오차 동반.'
+              },
+              {
+                term: '팔꿈치 합성 모멘트 — 추정 기반',
+                def: '투구 동작 중 팔꿈치 관절에 발생하는 합성 모멘트(Resultant Moment)의 peak 값(N·m). cocking 종료 시점에 가장 큰 값을 가진다.',
+                meaning: '팔꿈치 부하의 종합 지표. UCL(내측측부인대)에 가해지는 외반(valgus) 부하는 이 합성 모멘트의 한 성분이며, 모멘트 절댓값이 클수록 팔꿈치 부담이 크다.',
+                method: 'Forearm + 손 + 공을 단일 강체로 가정(Feltner 1989), Newton-Euler 역동역학으로 팔꿈치 관절 합성 모멘트 산출. M = r×F + I·α (관성 토크 + 힘×모멘트 팔). 분절 inertia 표는 Yanai 교수 연구(Yanai et al. 2023, Sci Rep 13: 12253)에서 사용한 것과 동일한 Ae M, Tang H, Yokoi T (1992) 일본인 운동선수 표를 사용.',
+                interpret: '합성 모멘트는 varus·굴곡·회내 3축의 합 magnitude이므로, Yanai 2023이 보고한 varus 성분(NPB 프로 빠른공 54~63 N·m)보다 자연스럽게 큰 값. 추정 오차 ±35% (인체측정학 추정 + 미분 노이즈 누적). 정밀한 UCL 평가는 Yanai 2023의 in-vivo MVIVS 측정이 필요.'
+              },
+              {
+                term: '에너지 플로우 정밀 지표 (5편 문헌 종합)',
+                def: '야구 투수 에너지 흐름을 다각도로 정량화하는 5가지 지표: ① 팔꿈치 부하 효율(Howenstein), ② 코킹기 팔 가속 파워(Wasserberger), ③ 몸통→팔 KE 증폭(Aguinaldo), ④ Stride length의 P→T 영향(Matsuda), ⑤ 축발/디딤발 역할 분리(de Swart).',
+                meaning: '단일 변수(예: 구속, 팔꿈치 토크)만으로는 투구의 효율과 부상 위험을 동시에 평가할 수 없다. 이 5개 지표는 "성능과 부하의 관계", "코킹기 폭발력", "몸통 주도성", "병목 위치", "다리 역할 분담"을 각각 짚어내며, 종합하면 운동학·역학·에너지학을 잇는 정밀 진단이 가능.',
+                method: 'Robertson & Winter (1980)의 segment power 분석을 기반으로 한다. ① 효율 = 팔꿈치 peak Nm ÷ 구속 m/s (Howenstein 2019, Med Sci Sports Exerc 51:523-531). ② 코킹기 파워 = 팔 KE의 dKE/dt를 FC~BR-30ms 윈도우에서 peak (Wasserberger 2024, Sports Biomech 23:1160-1175). ③ 몸통 주도성 = 팔 peak KE / 몸통 peak KE 비율 (Aguinaldo & Escamilla 2022, Sports Biomech 21:824-836 — induced power로 86%가 trunk 기인 입증). ④ Matsuda 2025 (Front Sports Act Living 7:1534596)는 stride 변화에도 trunk outflow 일정 → P→T 증폭비가 진짜 병목. ⑤ de Swart 2022 (Sports Biomech 24:2916-2930)는 축발=energy generator, 디딤발=kinetic chain conduit으로 역할 분리.',
+                interpret: '① 팔꿈치 효율: 엘리트 <2.0 / 정상 2~3 / 비효율적 >3.5 N·m/(m/s). ② 코킹기 파워: Youth 평균 39~47 W/kg, 엘리트 ≥50 W/kg. ③ 몸통→팔 KE 증폭: 엘리트 ≥2.5×, 정상 1.7~2.5×. ④ P→T 증폭비: ≥2.0× 권장. ⑤ 축발/디딤발 hip 속도 비율 1.3~2.0× 정상.'
+              },
+              {
+                term: '키네틱 체인 (Kinetic Chain) & 에너지 누수 (Energy Leak)',
+                def: '하체→골반→몸통→팔→공으로 이어지는 운동에너지 전달 사슬. 어떤 분절에서 다음 분절로 에너지가 충분히 가속되지 못하면 "누수(leak)"로 간주.',
+                meaning: '구속 향상과 부상 예방의 핵심 (Kibler 1995, Clin Sports Med 14:79-85; Seroyer et al. 2010, Sports Health 2:135-146). 누수가 적은 투수일수록 적은 노력으로 더 빠른 공을 던질 수 있고 어깨·팔꿈치 부하가 적다. Burkhart et al. 2003 (Arthroscopy 19:641-661)는 kinetic chain 단절이 어깨 SLAP/RC 손상의 근본 원인임을 제시.',
+                method: '8개 누수 요인의 발생률을 합산 — 시퀀스 위반, ETI(P→T)/ETI(T→A) 부족, P→T/T→A lag 비정상, Flying Open, 조기 몸통 굴곡, 무릎 무너짐. 각 요인은 독립적으로 측정되며 합산 누수율이 종합 지표.',
+                interpret: '종합 누수율 < 15% 우수, 15~30% 양호, 30~50% 주의, 50%+ 큰 누수. 어떤 요인이 빨간색으로 켜져 있는지가 더 중요한 진단 정보. Howenstein et al. 2019 (Med Sci Sports Exerc 51:523-531)는 trunk EF가 클수록 같은 구속 대비 어깨/팔꿈치 부하가 작아지는 "joint load efficiency"를 직접 입증.'
+              },
+              {
+                term: 'ETI — Energy Transfer Index (각속도 기반)',
+                def: '한 분절의 peak 회전속도가 다음 분절의 peak 회전속도로 얼마나 증폭되는지의 비율 (단위 없음).',
+                meaning: '채찍처럼 분절이 점차 빨라져야 효율적. 비율이 1.0 미만이면 가속이 일어나지 않는다(에너지 정체). KE 비율과 보완 관계 — KE 비율은 질량 효과까지 포함한 더 물리적인 지표. Stodden et al. 2005 (J Appl Biomech 21:44-56)는 ETI가 ball velocity의 25% variance를 설명함을 회귀로 입증.',
+                method: 'ETI(P→T) = peak ω_trunk / peak ω_pelvis, ETI(T→A) = peak ω_arm / peak ω_trunk. Hirashima et al. 2008 (J Biomech 41:2874-2883)이 induced acceleration 분석으로 표준화.',
+                interpret: '엘리트: ETI(P→T) ≥ 1.5, ETI(T→A) ≥ 1.7. 양호: 각각 1.3 / 1.4. 그 미만 = 분절 간 에너지 전달 손실(누수). MLB 평균: ETI(P→T) 1.78, ETI(T→A) 1.96 (Fleisig et al. 1999).'
               },
               {
                 term: 'Flying Open (몸통 조기 열림)',
-                def: 'Foot Contact(앞발 착지) 시점에 몸통이 이미 홈플레이트 쪽으로 회전을 시작한 상태.',
-                meaning: '이상적으로는 FC까지 몸통은 닫혀(coiled) 있다가 FC 이후부터 회전을 시작해야 한다. 일찍 열리면 hip-shoulder separation을 잃고 골반→몸통 에너지 전달이 약해진다(구속 손실 + 어깨 부하 증가).',
-                method: '(FC 시점 trunk_global_rotation − 가장 닫힌 trunk_global_rotation) / (BR 시점 trunk_global_rotation − 가장 닫힌 값) × 100.',
-                interpret: '0% = FC에 완전히 닫혀 있음 (이상적), 100% = FC에 이미 릴리스 자세까지 회전. 엘리트 ≤ 25%, 양호 ≤ 35%, 주의 ≤ 50%, 큰 누수 > 50%.'
+                def: 'Foot Contact(앞발 착지) 시점에 몸통이 이미 홈플레이트 쪽으로 회전을 시작한 상태. 정량적으로는 trunk rotation이 FC에서 max-rotation 까지의 진행률(%).',
+                meaning: '이상적으로는 FC까지 몸통은 닫혀(coiled) 있다가 FC 이후부터 회전을 시작해야 한다 (Fleisig et al. 1996, Sports Med 21:421-437). 일찍 열리면 hip-shoulder separation을 잃고 골반→몸통 에너지 전달이 약해진다(구속 손실 + 어깨 부하 증가). Aguinaldo et al. 2007 (J Appl Biomech 23:42-51)은 trunk가 FC에 이미 회전 시작한 그룹이 같은 구속에서 shoulder ER torque가 17% 더 크다고 보고.',
+                method: '(FC 시점 trunk_global_rotation − 가장 닫힌 trunk_global_rotation) / (BR 시점 trunk_global_rotation − 가장 닫힌 값) × 100. 0%=FC 시 완전히 닫힘, 100%=FC 시 이미 릴리스 자세까지 회전.',
+                interpret: '엘리트 ≤ 25%, 양호 ≤ 35%, 주의 ≤ 50%, 큰 누수 > 50%. Oyama et al. 2014 (Am J Sports Med 42:2089-2094)는 high school 투수에서 부적절한 trunk rotation timing이 maximum shoulder external rotation 증가(평균 +8°)와 shoulder joint force(평균 +14%) 증가를 직접 야기함을 입증.'
               },
               {
-                term: '풋컨택트 시 몸통 전방 굴곡',
-                def: 'FC 시점에서 몸통이 시상면(전후)으로 얼마나 앞쪽으로 기울었는지의 각도.',
-                meaning: '몸통의 굴곡 동작은 큰 에너지를 만드는 동력원. FC 시점에는 직립 또는 약간 뒤로 젖힌 자세를 유지해야 딜리버리 단계에서 굴곡 에너지를 새로 만들어 쓸 수 있다. 이미 굴곡되어 있으면 그 에너지원을 사용 못함.',
+                term: '풋컨택트 시 몸통 전방 굴곡 (Trunk Flexion @ FC)',
+                def: 'FC 시점에서 몸통이 시상면(전후, sagittal plane)으로 얼마나 앞쪽으로 기울었는지의 각도 (°). + = 전방, − = 후방.',
+                meaning: '몸통의 굴곡 동작은 큰 에너지를 만드는 동력원 (Aguinaldo & Escamilla 2022는 trunk flexion이 forearm 가속의 35%를 기여함을 입증). FC 시점에는 직립 또는 약간 뒤로 젖힌 자세를 유지해야 딜리버리 단계에서 굴곡 에너지를 새로 만들어 쓸 수 있다. 이미 굴곡되어 있으면 그 에너지원을 사용 못함.',
                 method: 'FC 프레임에서 pelvis → proximal_neck 벡터를 시상면(Y-Z 평면)에 투영하고 atan2(앞쪽 성분, 위쪽 성분)으로 각도 계산. + = 앞쪽으로 기울어짐, − = 뒤쪽으로 젖혀짐.',
-                interpret: '이상적: -15°~+5° (직립~약간 뒤로 젖힘). 허용: -20°~+10°. > +10° = 이미 굴곡되어 에너지 누수 발생.'
+                interpret: '이상적: -15°~+5° (직립~약간 뒤로 젖힘) — Stodden et al. 2005가 high-velocity 그룹에서 일관되게 관찰한 패턴. 허용: -20°~+10°. > +10° = 이미 굴곡되어 에너지 누수 발생. Solomito et al. 2015 (Am J Sports Med 43:1235-1240)는 trunk forward flexion이 클수록 elbow varus torque가 비례적으로 증가함도 보고하므로, "더 클수록 좋음"이 아닌 적정 타이밍이 중요.'
               },
               {
                 term: '무릎 SSC 활용 (Stretch-Shortening Cycle)',
-                def: '앞 무릎이 FC 직후 짧고 빠르게 굴곡(편심 부하) 후 곧바로 신전(동심 추진)되는 패턴. 근육-건의 탄성 에너지를 활용하는 메커니즘.',
-                meaning: '무릎이 짧게 굽혔다 신속히 신전되어야 ① 지면반력을 골반쪽으로 효과적으로 전달하고 ② 신전 시 지면을 더 강하게 누를 수 있어 회전 추진력이 증폭된다. 무릎이 계속 굽혀지면(무너짐) 에너지가 흡수만 되고 추진으로 전환 안 됨.',
-                method: 'FC~BR 구간에서 (1) FC 시점 굴곡각, (2) max 굴곡 시점·각·소요시간, (3) BR 시점 굴곡각을 측정. dip(편심), recovery(동심), net 변화량으로 4단계 분류.',
-                interpret: '✓ Good (80~100점): 짧은 dip(2~20°) + 빠른 transition(<80ms) + 충분한 recovery(>70%) + 최종 신전. △ Partial(50~70): 일부 SSC만. △ Stiff(40): dip 거의 없음(편심 부하 부족). ✗ Collapse(0~30): FC→BR 동안 더 굴곡(에너지 누수+SSC 미사용).'
+                def: '앞 무릎이 FC 직후 짧고 빠르게 굴곡(편심 부하) 후 곧바로 신전(동심 추진)되는 패턴. 근육-건의 탄성 에너지를 활용하는 메커니즘 (Komi 1992, 그리고 그 적용은 야구 투구에서 Crotin & Ramsey 2014, Med Sci Sports Exerc 46:565-571 등).',
+                meaning: '무릎이 짧게 굽혔다 신속히 신전되어야 ① 지면반력을 골반쪽으로 효과적으로 전달하고 ② 신전 시 지면을 더 강하게 누를 수 있어 회전 추진력이 증폭된다. 무릎이 계속 굽혀지면(무너짐) 에너지가 흡수만 되고 추진으로 전환 안 됨. Solomito et al. 2022 (Sports Biomech)는 lead knee flexion 적정값(35-50°)이 ball velocity와 양의 상관, upper extremity moment와는 음의 상관(즉 부하↓)을 동시에 갖는 "이상적" 변인임을 입증.',
+                method: 'FC~BR 구간에서 (1) FC 시점 굴곡각, (2) max 굴곡 시점·각·소요시간, (3) BR 시점 굴곡각을 측정. dip(편심), recovery(동심), net 변화량으로 4단계 분류. van Trigt et al. 2018 (Sports 6:51)이 youth 투수에서 적용한 동일 방식.',
+                interpret: '✓ Good (80~100점): 짧은 dip(2~20°) + 빠른 transition(<80ms) + 충분한 recovery(>70%) + 최종 신전. △ Partial(50~70): 일부 SSC만. △ Stiff(40): dip 거의 없음(편심 부하 부족). ✗ Collapse(0~30): FC→BR 동안 더 굴곡(에너지 누수+SSC 미사용). MacWilliams et al. 1998 (Am J Sports Med 26:66-71)는 stride leg propulsive GRF가 ball velocity와 r=0.61로 강한 상관임을 보고 — 강한 GRF는 무릎 SSC가 잘 작동해야 가능.'
               }
             ]}/>
           </Section>
@@ -1787,10 +2236,7 @@
           <Section n={videoUrl ? 6 : 5} title="핵심 키네매틱스" subtitle="6종 핵심 동작 지표">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <KinCard title="Max ER (어깨 외회전)" mean={summary.maxER?.mean} sd={summary.maxER?.sd}
-                lo={BBLAnalysis.ELITE.maxER.lo} hi={BBLAnalysis.ELITE.maxER.hi} unit="°" decimals={1}
-                hint={summary.maxER?.outlierCount > 0
-                  ? `⚠ ${summary.maxER.outlierCount}개 trial 제외 (${summary.maxER.n}개 사용)`
-                  : null}/>
+                lo={BBLAnalysis.ELITE.maxER.lo} hi={BBLAnalysis.ELITE.maxER.hi} unit="°" decimals={1}/>
               <KinCard title="X-factor" mean={summary.maxXFactor?.mean} sd={summary.maxXFactor?.sd}
                 lo={BBLAnalysis.ELITE.maxXFactor.lo} hi={BBLAnalysis.ELITE.maxXFactor.hi} unit="°" decimals={1}
                 hint="골반-몸통 분리각"/>
@@ -1805,95 +2251,49 @@
                 lo={30} hi={100} unit="°" decimals={1} hint={armSlotType}/>
             </div>
 
-            {/* Per-trial Max ER diagnostic — shown when outliers detected or SD is suspiciously large */}
-            {(() => {
-              const er = summary.maxER;
-              if (!er) return null;
-              const showDiag = er.outlierCount > 0 || (er.sd != null && er.sd > 20);
-              if (!showDiag) return null;
-              return (
-                <div className="mt-3 p-3 rounded border" style={{ borderColor: '#f59e0b66', background: '#1f1408' }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span style={{ color: '#fbbf24', fontSize: '14px' }}>⚠</span>
-                    <span className="text-[12px] font-bold" style={{ color: '#fbbf24' }}>
-                      Max ER 진단 — 일부 trial 값이 비정상적으로 다름
-                    </span>
-                  </div>
-                  <div className="text-[11.5px] mb-2" style={{ color: '#e2e8f0' }}>
-                    중앙값(median): <b>{er.median?.toFixed(1)}°</b>
-                    {er.outlierCount > 0 && (
-                      <span> · outlier {er.outlierCount}개 자동 제외 후 평균 표시</span>
-                    )}
-                  </div>
-                  <div className="text-[10.5px] mb-1.5" style={{ color: '#94a3b8' }}>각 trial의 Max ER:</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(er.allVals || er.vals || []).map((v, i) => {
-                      const isOutlier = (er.outliers || []).some(o => o.index === i);
-                      return (
-                        <div key={i}
-                          className="px-2 py-1 rounded text-[11px] tabular-nums"
-                          style={{
-                            background: isOutlier ? '#7f1d1d' : '#0f1729',
-                            color: isOutlier ? '#fecaca' : '#cbd5e1',
-                            border: `1px solid ${isOutlier ? '#dc2626' : '#1e2a47'}`
-                          }}>
-                          T{i+1}: {v.toFixed(1)}° {isOutlier && '✗'}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="text-[10.5px] mt-2 leading-relaxed" style={{ color: '#94a3b8' }}>
-                    <b>가능한 원인:</b> ① 일부 trial에서 Uplift CSV의 ER 컬럼이 angle wraparound (예: 195°가 -165°로 표기) →
-                    이번 버전부터 자동 unwrap 처리. ② 해당 trial에서 Uplift 트래킹 일시 손실. ③ 다른 구종(변화구)이
-                    섞여 자세 차이가 큼.
-                  </div>
-                </div>
-              );
-            })()}
-
             {(() => { const s = summarizeKinematics(summary, armSlotType); return <SummaryBox tone={s.tone} title="결과 한눈에 보기" text={s.text}/>; })()}
             <InfoBox items={[
               {
                 term: 'Max ER (Maximum External Rotation, 최대 어깨 외회전)',
-                def: '공 놓기 직전 cocking 자세에서 어깨가 외회전한 최대 각도 — 흔히 "layback"이라고도 부른다.',
-                meaning: '팔이 뒤로 최대로 젖혀지면서 발생하는 신장반사(stretch reflex)와 탄성에너지가 팔의 빠른 internal rotation으로 전환된다. 이 각도가 클수록 더 빠른 공이 가능.',
-                method: 'Uplift CSV의 right(left)_shoulder_external_rotation 시계열에서 [FC, BR] 윈도우 내 최댓값.',
-                interpret: '엘리트 투수 170~195°. < 155° = 가동성 부족, > 200° = 측정 오류 또는 과도한 부하 (어깨 부상 위험).'
+                def: '공 놓기 직전 cocking 자세에서 어깨가 외회전한 최대 각도(°) — 흔히 "layback"이라고도 부른다. 어깨 관절의 humerothoracic axial rotation 측정.',
+                meaning: '팔이 뒤로 최대로 젖혀지면서 발생하는 신장반사(stretch reflex)와 견갑하근·대원근의 elastic energy storage가 팔의 빠른 internal rotation으로 전환된다. 이 각도가 클수록 더 빠른 공이 가능 (Werner et al. 1993, J Orthop Sports Phys Ther 17:274-278). Wight et al. 2004 (J Athl Train 39:381)는 max ER이 ball velocity의 가장 강한 단일 운동학 예측인자(r=0.59)임을 입증.',
+                method: 'Uplift CSV의 right(left)_shoulder_external_rotation 시계열에서 [FC, BR] 윈도우 내 최댓값. 시계열 unwrap(인접 프레임 차이 >180°면 ±360° 보정)으로 wraparound 노이즈 제거.',
+                interpret: '엘리트 투수 170~195° (Crotin & Ramsey 2014, Med Sci Sports Exerc 46:565-571 — collegiate 평균 178°, MLB 평균 182°). < 155° = 가동성 부족 (전방 어깨 capsular tightness 가능), > 200° = 측정 오류 또는 과도한 부하 (어깨 부상 위험 — Reagan et al. 2002, Am J Sports Med 30:354-360).'
               },
               {
-                term: 'X-factor (골반-몸통 분리각)',
-                def: '로딩 단계 끝(FC 부근)에서 골반과 몸통의 회전 각도 차이 — 즉 두 분절이 서로 얼마나 비틀어졌는지.',
-                meaning: '클수록 코어 근육이 stretch되고 그 탄성에너지가 트렁크 회전 가속의 추진력이 된다. "분리"가 클수록 spring처럼 더 강한 회전 발생.',
+                term: 'X-factor (골반-몸통 분리각, Hip-Shoulder Separation)',
+                def: '로딩 단계 끝(FC 부근)에서 골반과 몸통의 회전 각도 차이(°) — 즉 두 분절이 서로 얼마나 비틀어졌는지. McLean 1994 (J Appl Biomech)가 골프 스윙에서 처음 정의한 후 야구 투구에 도입됨 (Stodden 2001, PhD diss.).',
+                meaning: '클수록 코어 근육이 stretch되고 그 탄성에너지가 트렁크 회전 가속의 추진력이 된다. "분리"가 클수록 spring처럼 더 강한 회전 발생. Robb et al. 2010 (Am J Sports Med 38:2487-2493)은 hip rotation ROM과 hip-shoulder separation이 ball velocity와 r=0.42~0.58 상관임을 보고.',
                 method: '|pelvis_global_rotation − trunk_global_rotation|을 FC-100ms ~ FC+50ms 윈도우에서 max로 계산.',
-                interpret: '엘리트 35~60°. < 35° = 분리 부족(코어 회전력 작음), > 60° = 과회전(trunk lag risk).'
+                interpret: '엘리트 35~60° (Stodden et al. 2001 / Matsuo et al. 2001). < 35° = 분리 부족(코어 회전력 작음), > 60° = 과회전(trunk lag risk + lumbar 부상 가능). MLB 평균은 약 55° (Wight 2004). 이 각이 클수록 ETI(P→T)도 자연스럽게 커지는 경향.'
               },
               {
                 term: 'Stride length & Stride ratio',
-                def: 'Stride length = 등판 시점 뒷발 위치에서 FC 시점 앞발 위치까지의 수평 거리(m). Stride ratio = stride length / 신장.',
-                meaning: '긴 stride는 ① 더 긴 가속 거리 확보 ② 릴리스 포인트 전방 이동(타자와 거리 단축) ③ 강한 hip 추진 활용을 의미.',
-                method: '뒷발 ankle Z 좌표(stable phase 평균)와 FC 시점 앞발 ankle Z 좌표의 차이. 신장은 입력값 사용.',
-                interpret: '엘리트 0.80~1.05x. < 0.80x = 추진력 부족 또는 hip mobility 제한, > 1.05x = 과한 stride로 균형 무너질 위험.'
+                def: 'Stride length = 등판 시점 뒷발 위치에서 FC 시점 앞발 위치까지의 수평 거리(m). Stride ratio = stride length / 신장 (단위 없음).',
+                meaning: '긴 stride는 ① 더 긴 가속 거리 확보 ② 릴리스 포인트 전방 이동(타자와 거리 단축, perceived velocity 상승) ③ 강한 hip 추진 활용을 의미. Yanagisawa & Taniguchi 2020 (J Phys Ther 32:578-583)은 collegiate 투수에서 stride length와 ball velocity가 r=0.51 상관임을 보고. Manzi et al. 2021 (J Sports Sci 39:2658-2664)은 프로 투수에서 stride length가 1% 늘어날 때마다 elbow varus torque도 약 0.6% 증가함도 보고 — 즉 trade-off 존재.',
+                method: '뒷발 ankle Z 좌표(stable phase 평균)와 FC 시점 앞발 ankle Z 좌표의 차이. 신장은 입력값 사용. Montgomery & Knudson 2002 (ARCAA 17:75-84)이 표준화한 측정 방식.',
+                interpret: '엘리트 0.80~1.05x (% body height) — Fleisig et al. 1999는 다양한 발달 단계 비교에서 70~88% 범위 보고. < 0.80x = 추진력 부족 또는 hip mobility 제한, > 1.05x = 과한 stride로 균형 무너질 위험. 단, Matsuda 2025 (Front Sports Act Living 7:1534596)에 따르면 stride를 ±20% 인위적으로 바꿔도 ball velocity는 변하지 않음 — 즉 자연스러운 본인 stride가 가장 효율적.'
               },
               {
                 term: 'Trunk Forward Tilt @BR (몸통 전방 기울기)',
-                def: '공 놓기 시점에 몸통이 시상면(전후)으로 앞쪽으로 기울어진 각도.',
-                meaning: '강한 트렁크 굴곡은 어깨를 더 높이 올리고 릴리스 포인트를 타자 쪽으로 이동시켜 perceived velocity를 높인다.',
-                method: 'BR 프레임에서 pelvis → proximal_neck 벡터의 시상면(Y-Z) 내 forward 기울기.',
-                interpret: '엘리트 30~45°. < 30° = 몸통 굴곡 활용 부족, > 50° = 과도하게 숙여 균형/제구 영향.'
+                def: '공 놓기 시점에 몸통이 시상면(전후)으로 앞쪽으로 기울어진 각도(°).',
+                meaning: '강한 트렁크 굴곡은 어깨를 더 높이 올리고 릴리스 포인트를 타자 쪽으로 이동시켜 perceived velocity를 높인다. Stodden et al. 2005는 high-velocity 그룹이 평균 +6° 더 큰 forward tilt를 보임을 입증.',
+                method: 'BR 프레임에서 pelvis → proximal_neck 벡터의 시상면(Y-Z) 내 forward 기울기. atan2(forward 성분, vertical 성분).',
+                interpret: '엘리트 30~45° (Matsuo et al. 2001 / Werner et al. 2002). < 30° = 몸통 굴곡 활용 부족, > 50° = 과도하게 숙여 균형/제구 영향 + lumbar shear 부하 증가. Solomito et al. 2015 (Am J Sports Med 43:1235-1240)는 trunk forward tilt가 클수록 elbow varus torque도 비례 증가함을 보고하므로, 적정선 유지가 중요.'
               },
               {
-                term: 'Trunk Lateral Tilt @BR (몸통 측방 기울기)',
-                def: 'BR 시점에 몸통이 글러브 쪽으로 옆으로 기울어진 각도.',
-                meaning: '측방 기울기가 클수록 over-the-top arm slot이 형성되고 직구 수직 break가 향상된다.',
+                term: 'Trunk Lateral Tilt @BR (몸통 측방 기울기, Contralateral Trunk Tilt)',
+                def: 'BR 시점에 몸통이 글러브 쪽(non-throwing side)으로 옆으로 기울어진 각도(°). 관상면(frontal plane) 측정.',
+                meaning: '측방 기울기가 클수록 over-the-top arm slot이 형성되고 직구 수직 break가 향상된다. 그러나 Solomito et al. 2015 (Am J Sports Med 43:1235-1240)는 lateral trunk tilt가 ball velocity와 양의 상관(r=0.32)이지만 동시에 elbow varus torque(r=0.58)와 shoulder distraction force(r=0.44)와도 강한 양의 상관 — 즉 부하-성능 trade-off가 가장 큰 변인.',
                 method: 'BR 프레임에서 pelvis → proximal_neck 벡터의 관상면(X-Y) 내 lateral 기울기.',
-                interpret: '15~35° 범위가 일반적. arm slot에 따라 적절한 값이 다름 (over-the-top 30°+, sidearm 10°-).'
+                interpret: '15~35° 범위가 일반적. arm slot에 따라 적절한 값이 다름 (over-the-top 30°+, sidearm 10°-). Oyama et al. 2013 (Am J Sports Med 41:2430-2438)은 lateral tilt > 40°를 high-injury-risk threshold로 제시.'
               },
               {
                 term: 'Arm slot (팔의 릴리스 각도)',
-                def: 'BR 시점 어깨→손목 벡터가 수평선 대비 이루는 각도.',
-                meaning: '투수의 릴리스 자세 분류. 같은 구속이라도 arm slot에 따라 공의 움직임과 시각적 효과가 달라진다.',
+                def: 'BR 시점 어깨→손목 벡터가 수평선 대비 이루는 각도(°). 투수의 release plane 분류.',
+                meaning: '투수의 릴리스 자세 분류. 같은 구속이라도 arm slot에 따라 공의 움직임(magnus effect spin axis)과 시각적 효과가 달라진다. Whiteside et al. 2016 (Am J Sports Med 44:2202-2209)는 arm slot이 일관되지 않은 투수에서 UCL 손상 위험이 높음을 입증.',
                 method: 'atan2(wrist.y − shoulder.y, sqrt(Δx² + Δz²)) × 180/π.',
-                interpret: '70°+ = over-the-top, 30~70° = three-quarter, 0~30° = sidearm, < 0° = submarine. 본인의 자연 slot 유지가 중요.'
+                interpret: '70°+ = over-the-top, 30~70° = three-quarter, 0~30° = sidearm, < 0° = submarine. 본인의 자연 slot 유지가 중요 — slot 자체가 좋고 나쁨이 아니라 일관성이 핵심 (Werner et al. 2002).'
               }
             ]}/>
           </Section>
@@ -1904,24 +2304,24 @@
             <InfoBox items={[
               {
                 term: '7-요인 종합 등급 (F1~F7)',
-                def: '투구 동작을 7개 동작 영역으로 묶어 각각 A~D 등급으로 평가한 결과.',
-                meaning: '12종 세부 결함과 키네매틱스 지표를 영역별로 종합해 코칭 우선순위를 파악하는 도구. 어느 영역이 가장 약한지 한눈에 확인.',
+                def: '투구 동작을 7개 동작 영역으로 묶어 각각 A~D 등급으로 평가한 결과. 각 등급은 키네매틱스 변인(범위 매핑)과 결함 발생률을 종합한 스코어.',
+                meaning: '12종 세부 결함과 키네매틱스 지표를 영역별로 종합해 코칭 우선순위를 파악하는 도구. 어느 영역이 가장 약한지 한눈에 확인. Fortenbaugh et al. 2009 (Sports Health 1:314-320)가 제시한 "deviations from optimal pitching biomechanics" 분류와 유사한 접근.',
                 method: '각 요인별로 관련 키네매틱스 지표(범위 등급)와 결함 발생률 등급을 평균해 A(우수)~D(개선 필요) 부여.',
-                interpret: 'F1 앞발 착지 / F2 골반-몸통 분리 / F3 어깨-팔 타이밍 / F4 앞 무릎 안정성 / F5 몸통 기울기 / F6 머리·시선 안정성 / F7 그립·릴리스 정렬. D 등급 영역부터 우선 개선.'
+                interpret: 'F1 앞발 착지 / F2 골반-몸통 분리 / F3 어깨-팔 타이밍 / F4 앞 무릎 안정성 / F5 몸통 기울기 / F6 머리·시선 안정성 / F7 그립·릴리스 정렬. D 등급 영역부터 우선 개선. Davis et al. 2009 (Am J Sports Med 37:1484-1491)는 5개 핵심 동작 영역 중 1개라도 결함이 있으면 elbow varus torque가 평균 12% 증가함을 보고 — 영역 등급 시스템의 임상 타당성을 뒷받침.'
               },
               {
                 term: '12종 세부 결함 발생률',
-                def: 'Uplift가 각 트라이얼별로 평가하는 12개 결함 항목의 발생 빈도(트라이얼 중 결함 검출된 비율).',
-                meaning: '동작의 일관성과 안정성 평가. 같은 결함이 반복적으로 나타나면 우연이 아닌 습관성 문제.',
-                method: 'Uplift export의 sway / hanging_back / flying_open / knee_collapse / high_hand / early_release / elbow_hike / arm_drag / forearm_flyout / late_rise / getting_out / closing_FB 등 binary 플래그 0/1 비율.',
-                interpret: '0% (녹색) = 발생 없음, 1~30% (주황) = 간헐적, 30%+ (빨강) = 습관성 결함. 50% 이상은 즉시 개선 대상.'
+                def: 'Uplift가 각 트라이얼별로 평가하는 12개 결함 항목의 발생 빈도(트라이얼 중 결함 검출된 비율, %). 각 결함은 binary 검출(0/1)이며 trial 평균 = 발생률.',
+                meaning: '동작의 일관성과 안정성 평가. 같은 결함이 반복적으로 나타나면 우연이 아닌 습관성 문제. Whiteside et al. 2016 (Am J Sports Med 44:2202-2209)는 MLB 투수에서 동작 일관성이 UCL reconstruction 위험의 가장 강한 예측인자(OR=2.4)임을 입증.',
+                method: 'Uplift export의 sway / hanging_back / flying_open / knee_collapse / high_hand / early_release / elbow_hike / arm_drag / forearm_flyout / late_rise / getting_out / closing_FB 등 binary 플래그 0/1 비율. 각 결함은 Uplift 자사 알고리즘이 markerless pose 데이터에서 자동 감지.',
+                interpret: '0% (녹색) = 발생 없음, 1~30% (주황) = 간헐적, 30%+ (빨강) = 습관성 결함. 50% 이상은 즉시 개선 대상. Agresta et al. 2019 (OJSM 7:2325967119825557)의 systematic review에 따르면 단일 결함이 부상 위험을 직접 증가시키기보다, 다수의 결함이 누적될 때 위험이 크게 상승.'
               },
               {
                 term: '주요 결함 의미 정리',
-                def: '12종 결함 항목의 야구 현장 의미.',
+                def: '12종 결함 항목의 야구 현장 의미와 각각의 임상적/생체역학적 함의.',
                 meaning: '각 결함이 구속·제구·부상에 미치는 영향을 이해하면 우선순위 결정에 도움.',
-                method: '플래그 hover 시 설명 표시.',
-                interpret: '몸통 좌우 흔들림(sway), 체중 뒷다리 잔존(hangingBack), 몸통 조기 회전(flyingOpen, 큰 누수), 앞 무릎 안쪽 무너짐(kneeCollapse, 큰 누수), 글러브 손 너무 높음(highHand), 조기 릴리스(earlyRelease, 제구 영향), 팔꿈치 솟구침(elbowHike, 팔꿈치 부상), 팔 끌림(armDrag, 어깨 부하), 팔뚝 옆으로 빠짐(forearmFlyout), 몸통 늦게 일어남(lateRise), 몸 앞쪽 쏠림(gettingOut), 앞발 정렬 어긋남(closingFB, 제구 영향).'
+                method: '플래그 hover 시 설명 표시. 각 결함의 운동학적 정의는 Fleisig 1996 (Sports Med) / Aguinaldo 2007 (J Appl Biomech) / Oyama 2014 (Am J Sports Med) 등 핵심 문헌을 참조.',
+                interpret: '몸통 좌우 흔들림(sway) — 균형 손실 + 제구 영향. 체중 뒷다리 잔존(hangingBack) — pivot leg drive 부족 (de Swart 2022). 몸통 조기 회전(flyingOpen, 큰 누수) — Aguinaldo 2007이 입증한 shoulder torque 17% 증가 패턴. 앞 무릎 안쪽 무너짐(kneeCollapse, 큰 누수) — 지면반력 손실 (MacWilliams 1998). 글러브 손 너무 높음(highHand) — 어깨 균형 영향. 조기 릴리스(earlyRelease, 제구 영향). 팔꿈치 솟구침(elbowHike, 팔꿈치 부상 — Whiteside 2016이 UCL surgery predictor로 입증). 팔 끌림(armDrag, 어깨 부하 — Davis 2009의 "delayed shoulder rotation"과 동일). 팔뚝 옆으로 빠짐(forearmFlyout). 몸통 늦게 일어남(lateRise). 몸 앞쪽 쏠림(gettingOut). 앞발 정렬 어긋남(closingFB, 제구 영향 — Werner 2002).'
               }
             ]}/>
           </Section>
@@ -1932,24 +2332,24 @@
             <InfoBox items={[
               {
                 term: '제구 능력 (Command) — 릴리스 일관성 기반 평가',
-                def: '여러 투구 사이의 동작 재현성을 측정하는 지표. 매 투구마다 같은 자세·같은 타이밍·같은 위치에서 공을 놓는 능력.',
-                meaning: '실제 스트라이크 비율(strike rate)과는 다른 차원의 지표지만, 일관된 릴리스가 안정된 제구의 필요조건. 일관성이 낮으면 의도한 곳에 던지기 어렵다.',
-                method: '6개 축의 SD(표준편차) 또는 CV(변동계수)를 측정 → 각 등급(A~D) → 평균으로 종합 등급 산출.',
-                interpret: '종합 A: 모든 축 일관성 우수. B: 대부분 일관. C/D: 한두 축 이상에서 변동 큼 — 약점 축이 어디인지 확인 후 집중 개선.'
+                def: '여러 투구 사이의 동작 재현성을 측정하는 지표 (motor control consistency). 매 투구마다 같은 자세·같은 타이밍·같은 위치에서 공을 놓는 능력.',
+                meaning: '실제 스트라이크 비율(strike rate)과는 다른 차원의 지표지만, 일관된 릴리스가 안정된 제구의 필요조건. 일관성이 낮으면 의도한 곳에 던지기 어렵다. Whiteside et al. 2016 (Am J Sports Med 44:2202-2209)는 release point variability가 부상 위험 + 성적 저하 양쪽과 모두 상관 있음을 입증. Glanzer et al. 2021 (J Strength Cond Res 35:2810-2815)는 elite vs sub-elite 그룹의 가장 큰 차이가 trial-to-trial release variability(SD)임을 보고.',
+                method: '6개 축의 SD(표준편차) 또는 CV(변동계수)를 측정 → 각 등급(A~D) → 평균으로 종합 등급 산출. 절대값보다 변동성 중심.',
+                interpret: '종합 A: 모든 축 일관성 우수. B: 대부분 일관. C/D: 한두 축 이상에서 변동 큼 — 약점 축이 어디인지 확인 후 집중 개선. 단, 본 측정은 "동작 일관성"을 대리(proxy)로 평가하는 것이며, 실제 ball location 정확도는 추가로 측정해야 함.'
               },
               {
                 term: '6개 일관성 축',
-                def: '제구 안정성을 좌우하는 6가지 측정 축.',
-                meaning: '각 축은 릴리스 자세의 다른 측면을 평가하며, 약점 축이 무엇이냐에 따라 개선 방향이 달라진다.',
-                method: '각 트라이얼의 측정값에서 통계량 계산.',
-                interpret: '① 손목 높이(SD cm): 릴리스 포인트 수직 일관성, ② Arm slot(SD °): 팔 각도 일관성, ③ 몸통 기울기(SD °): 몸통 자세 일관성, ④ Layback(CV %): MER 일관성, ⑤ Stride(CV %): 보폭 일관성, ⑥ FC→BR 시간(CV %): 동작 타이밍 일관성. SD/CV가 낮을수록 우수.'
+                def: '제구 안정성을 좌우하는 6가지 측정 축. 각 축은 motor control system의 다른 측면(공간·시간·각도)을 평가.',
+                meaning: '각 축은 릴리스 자세의 다른 측면을 평가하며, 약점 축이 무엇이냐에 따라 개선 방향이 달라진다. Stodden et al. 2005는 within-pitcher variation이 inter-pitcher variation의 약 30~40%로, 동일 투수 내에서도 trial 간 차이가 의미 있음을 입증.',
+                method: '각 트라이얼의 측정값에서 통계량 계산 — SD(절대 변동성, 단위 보존) 또는 CV(상대 변동성, %).',
+                interpret: '① 손목 높이(SD cm): 릴리스 포인트 수직 일관성, ② Arm slot(SD °): 팔 각도 일관성, ③ 몸통 기울기(SD °): 몸통 자세 일관성, ④ Layback/Max ER(CV %): MER 일관성, ⑤ Stride(CV %): 보폭 일관성, ⑥ FC→BR 시간(CV %): 동작 타이밍 일관성. SD/CV가 낮을수록 우수. 엘리트 기준은 Glanzer 2021에서 도출 — 손목 높이 SD <2cm, arm slot SD <2°, FC→BR CV <3%.'
               },
               {
                 term: '6각 다이어그램 해석',
-                def: '6축 각각의 등급을 시각화한 레이더 차트.',
-                meaning: '한눈에 어떤 영역이 강하고 어떤 영역이 약한지 파악.',
+                def: '6축 각각의 등급을 시각화한 레이더 차트. 외곽=우수(A), 중앙=개선 필요(D)로 매핑.',
+                meaning: '한눈에 어떤 영역이 강하고 어떤 영역이 약한지 파악 — visual diagnostic for motor control profile.',
                 method: '각 축의 등급(A=4, B=3, C=2, D=1)을 외곽→중앙으로 매핑해 닫힌 다각형 그림.',
-                interpret: '외곽(녹색 띠)에 가까울수록 일관성 높음(엘리트). 중앙(빨간 띠)에 가까운 축이 약점. 다각형이 균형있게 외곽에 가까울수록 종합 우수.'
+                interpret: '외곽(녹색 띠)에 가까울수록 일관성 높음(엘리트). 중앙(빨간 띠)에 가까운 축이 약점. 다각형이 균형있게 외곽에 가까울수록 종합 우수. 한 축만 짧은 경우(spike pattern)는 그 축 집중 코칭 대상.'
               }
             ]}/>
           </Section>

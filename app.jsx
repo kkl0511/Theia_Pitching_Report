@@ -126,6 +126,189 @@ const initialPitcher = {
   notes: ''
 };
 
+// ---------- Preview metric extraction (lightweight, for outlier QC) ----------
+// Extracts 10 key metrics from a trial's CSV without running full analysis.
+// Used at upload time to flag potential outliers before user submits for analysis.
+function extractPreviewMetrics(trial) {
+  if (!trial.data || trial.data.length === 0) return null;
+  const rows = trial.data;
+  const r0 = rows[0];
+  const fps = parseFloat(r0.fps);
+  const fcRow = -r0.foot_contact_frame;
+  const brRow = -r0.ball_release_frame;
+  if (!fps || !isFinite(fcRow) || !isFinite(brRow) || fcRow < 0 || brRow < 0) return null;
+  const handedness = (r0.handedness || 'R').toString().toUpperCase().startsWith('L') ? 'L' : 'R';
+  const armSide = handedness === 'L' ? 'left' : 'right';
+  const frontSide = handedness === 'L' ? 'right' : 'left';
+
+  // Max ER with wraparound unwrapping
+  const erCol = `${armSide}_shoulder_external_rotation`;
+  const unwrapped = [];
+  let prev = null, offset = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i][erCol];
+    if (raw == null || isNaN(raw)) { unwrapped.push(null); continue; }
+    if (prev != null) {
+      const diff = (raw + offset) - prev;
+      if (diff > 180) offset -= 360;
+      else if (diff < -180) offset += 360;
+    }
+    const adj = raw + offset;
+    unwrapped.push(adj);
+    prev = adj;
+  }
+  let maxER = -Infinity;
+  for (let i = Math.max(0, fcRow); i <= Math.min(rows.length - 1, brRow); i++) {
+    if (unwrapped[i] != null && unwrapped[i] > maxER) maxER = unwrapped[i];
+  }
+  if (maxER === -Infinity) maxER = null;
+
+  // Max X-factor (FC-100ms ~ FC+50ms)
+  let maxXF = -Infinity;
+  const xfStart = Math.max(0, fcRow - Math.round(0.10 * fps));
+  const xfEnd = Math.min(rows.length, fcRow + Math.round(0.05 * fps));
+  for (let i = xfStart; i < xfEnd; i++) {
+    const pr = rows[i].pelvis_global_rotation;
+    const tr = rows[i].trunk_global_rotation;
+    if (pr != null && tr != null) {
+      const xf = Math.abs(pr - tr);
+      if (xf > maxXF) maxXF = xf;
+    }
+  }
+  if (maxXF === -Infinity) maxXF = null;
+
+  // Peak angular velocities (across full trial)
+  const argmaxAbsVal = (col) => {
+    let m = -Infinity;
+    for (let i = 0; i < rows.length; i++) {
+      const v = rows[i][col];
+      if (v != null && !isNaN(v) && Math.abs(v) > m) m = Math.abs(v);
+    }
+    return m === -Infinity ? null : m;
+  };
+  const peakPelvisVel = argmaxAbsVal('pelvis_rotational_velocity_with_respect_to_ground');
+  const peakTrunkVel  = argmaxAbsVal('trunk_rotational_velocity_with_respect_to_ground');
+  const peakArmVel    = argmaxAbsVal(`${armSide}_arm_rotational_velocity_with_respect_to_ground`);
+
+  // ETI (Energy Transfer Index)
+  const etiPT = (peakPelvisVel != null && peakPelvisVel > 0 && peakTrunkVel != null)
+    ? peakTrunkVel / peakPelvisVel : null;
+  const etiTA = (peakTrunkVel != null && peakTrunkVel > 0 && peakArmVel != null)
+    ? peakArmVel / peakTrunkVel : null;
+
+  // Stride length (back ankle stable z minus front ankle z at FC)
+  let strideLength = null;
+  const backCol = `${frontSide === 'left' ? 'right' : 'left'}_ankle_jc_3d_z`;
+  const frontFcZ = rows[fcRow]?.[`${frontSide}_ankle_jc_3d_z`];
+  const stableEnd = Math.min(30, rows.length);
+  let backZSum = 0, backZCount = 0;
+  for (let i = 0; i < stableEnd; i++) {
+    const v = rows[i]?.[backCol];
+    if (v != null && !isNaN(v)) { backZSum += v; backZCount++; }
+  }
+  if (frontFcZ != null && backZCount > 0) {
+    strideLength = Math.abs(backZSum / backZCount - frontFcZ);
+  }
+
+  // Trunk forward tilt @BR (joint-based)
+  let trunkForwardTilt = null;
+  const brR = rows[brRow];
+  if (brR) {
+    const px = brR.pelvis_3d_x, py = brR.pelvis_3d_y, pz = brR.pelvis_3d_z;
+    const nx = brR.proximal_neck_3d_x, ny = brR.proximal_neck_3d_y, nz = brR.proximal_neck_3d_z;
+    if ([px,py,pz,nx,ny,nz].every(v => v != null)) {
+      const ty = ny - py, tz = nz - pz;
+      if (ty > 0.05) trunkForwardTilt = Math.atan2(-tz, ty) * 180 / Math.PI;
+    }
+  }
+
+  // Front knee flex @FC
+  let frontKneeFlex = null;
+  const ext = rows[fcRow]?.[`${frontSide}_knee_extension`];
+  if (ext != null && ext < 0) frontKneeFlex = -ext;
+
+  return {
+    maxER, maxXFactor: maxXF, strideLength, trunkForwardTilt, frontKneeFlex,
+    peakPelvisVel, peakTrunkVel, peakArmVel, etiPT, etiTA
+  };
+}
+
+// Median + MAD outlier detection across 10 metrics.
+// Returns { reasons: { trialId: [reason, ...] }, summary: {...} }
+function detectTrialOutliers(trials) {
+  const valid = trials.filter(t => t.preview);
+  if (valid.length < 3) return { reasons: {}, summary: {} };
+
+  const metrics = [
+    'maxER', 'maxXFactor', 'strideLength', 'trunkForwardTilt', 'frontKneeFlex',
+    'peakPelvisVel', 'peakTrunkVel', 'peakArmVel', 'etiPT', 'etiTA'
+  ];
+  const labels = {
+    maxER: 'Max ER',
+    maxXFactor: 'X-factor',
+    strideLength: 'Stride',
+    trunkForwardTilt: 'Trunk forward tilt',
+    frontKneeFlex: 'Front knee flex',
+    peakPelvisVel: 'Pelvis peak ω',
+    peakTrunkVel: 'Trunk peak ω',
+    peakArmVel: 'Arm peak ω',
+    etiPT: 'ETI(P→T)',
+    etiTA: 'ETI(T→A)'
+  };
+  const units = {
+    maxER: '°', maxXFactor: '°', strideLength: 'm',
+    trunkForwardTilt: '°', frontKneeFlex: '°',
+    peakPelvisVel: '°/s', peakTrunkVel: '°/s', peakArmVel: '°/s',
+    etiPT: '', etiTA: ''
+  };
+  // Reasonable absolute floor by metric (so MAD≈0 cases don't over-flag)
+  const absFloor = {
+    maxER: 15, maxXFactor: 8, strideLength: 0.15,
+    trunkForwardTilt: 8, frontKneeFlex: 8,
+    peakPelvisVel: 100, peakTrunkVel: 150, peakArmVel: 250,
+    etiPT: 0.3, etiTA: 0.3
+  };
+  const decimals = {
+    maxER: 1, maxXFactor: 1, strideLength: 2,
+    trunkForwardTilt: 1, frontKneeFlex: 1,
+    peakPelvisVel: 0, peakTrunkVel: 0, peakArmVel: 0,
+    etiPT: 2, etiTA: 2
+  };
+
+  const reasons = {};
+  const summary = {};
+
+  for (const m of metrics) {
+    const vals = valid.map(t => t.preview[m]).filter(v => v != null && !isNaN(v));
+    if (vals.length < 3) continue;
+    const sorted = [...vals].sort((a, b) => a - b);
+    const med = sorted[Math.floor(sorted.length / 2)];
+    const dev = vals.map(v => Math.abs(v - med));
+    const sortedDev = [...dev].sort((a, b) => a - b);
+    const mad = sortedDev[Math.floor(sortedDev.length / 2)];
+    const robustSD = mad * 1.4826;
+    const threshold = Math.max(3 * robustSD, absFloor[m] || 5);
+    summary[m] = { median: med, threshold, label: labels[m], unit: units[m], decimals: decimals[m] };
+    for (const t of valid) {
+      const v = t.preview[m];
+      if (v == null || isNaN(v)) continue;
+      if (Math.abs(v - med) > threshold) {
+        if (!reasons[t.id]) reasons[t.id] = [];
+        reasons[t.id].push({
+          metric: m,
+          label: labels[m],
+          value: v,
+          unit: units[m],
+          decimals: decimals[m],
+          median: med,
+          deviation: v - med
+        });
+      }
+    }
+  }
+  return { reasons, summary };
+}
+
 // ---------- Main component ----------
 function PitcherInputForm({ onOpenReport } = {}) {
   const [pitcher, setPitcher] = useState(initialPitcher);
@@ -165,10 +348,14 @@ function PitcherInputForm({ onOpenReport } = {}) {
                   const data = await idbKeyval.get(`${STORAGE_KEY}:data:${m.id}`);
                   if (Array.isArray(data)) {
                     savedDataMapRef.current.set(m.id, m.parsedAt);
-                    return { ...m, data };
+                    const t = { ...m, data };
+                    // Re-extract preview metrics on restore
+                    let preview = null;
+                    try { preview = extractPreviewMetrics(t); } catch (e) {}
+                    return { ...t, preview, excludeFromAnalysis: m.excludeFromAnalysis || false };
                   }
                 } catch (e) {}
-                return { ...m, data: null };
+                return { ...m, data: null, preview: null, excludeFromAnalysis: m.excludeFromAnalysis || false };
               })
             );
             setTrials(restored);
@@ -435,6 +622,32 @@ function PitcherInputForm({ onOpenReport } = {}) {
     return (w / Math.pow(h / 100, 2)).toFixed(1);
   }, [pitcher.heightCm, pitcher.weightKg]);
 
+  // Outlier detection across all uploaded trials
+  const outlierAnalysis = useMemo(() => {
+    return detectTrialOutliers(trials);
+  }, [trials]);
+
+  // Auto-mark outlier trials as excluded by default (when first detected)
+  const autoExcludedRef = useRef(new Set());
+  useEffect(() => {
+    if (!outlierAnalysis.reasons) return;
+    const newExclusions = [];
+    for (const tid of Object.keys(outlierAnalysis.reasons)) {
+      const trial = trials.find(t => t.id === tid);
+      if (!trial) continue;
+      // Only auto-exclude on FIRST detection (don't re-flip user's manual choice)
+      if (!autoExcludedRef.current.has(tid) && !trial.excludeFromAnalysis) {
+        newExclusions.push(tid);
+        autoExcludedRef.current.add(tid);
+      }
+    }
+    if (newExclusions.length > 0) {
+      setTrials((ts) => ts.map(t => newExclusions.includes(t.id)
+        ? { ...t, excludeFromAnalysis: true }
+        : t));
+    }
+  }, [outlierAnalysis, trials]);
+
   const videoPreviewUrl = useMemo(() => {
     if (!videoBlob) return null;
     return URL.createObjectURL(videoBlob);
@@ -478,7 +691,9 @@ function PitcherInputForm({ onOpenReport } = {}) {
         columnNames: [],
         rowCount: 0,
         data: null,
-        error: ''
+        error: '',
+        preview: null,
+        excludeFromAnalysis: false
       }
     ]);
   };
@@ -504,6 +719,10 @@ function PitcherInputForm({ onOpenReport } = {}) {
           return;
         }
         const cols = result.meta.fields || [];
+        const tempTrial = { data: result.data };
+        let preview = null;
+        try { preview = extractPreviewMetrics(tempTrial); }
+        catch (e) { preview = null; }
         updateTrial(id, {
           filename: file.name,
           fileSize: file.size,
@@ -511,7 +730,8 @@ function PitcherInputForm({ onOpenReport } = {}) {
           columnNames: cols,
           rowCount: result.data.length,
           data: result.data,
-          error: ''
+          error: '',
+          preview
         });
       },
       error: (err) => {
@@ -544,6 +764,8 @@ function PitcherInputForm({ onOpenReport } = {}) {
       rowCount: 0,
       data: null,
       error: '',
+      preview: null,
+      excludeFromAnalysis: false,
       _parsing: true
     }));
 
@@ -1030,6 +1252,32 @@ function PitcherInputForm({ onOpenReport } = {}) {
             ) : (
               <div className="space-y-2">
                 <DropZoneCompact onFiles={handleMultipleFiles} />
+
+                {/* Outlier QC summary */}
+                {(() => {
+                  const flagged = Object.keys(outlierAnalysis.reasons || {}).length;
+                  const excluded = trials.filter(t => t.excludeFromAnalysis).length;
+                  if (flagged === 0 && excluded === 0) return null;
+                  return (
+                    <div className="p-2.5 rounded-md text-[11.5px] flex items-start gap-2"
+                      style={{ background: '#fef3c7', border: '1px solid #fcd34d', color: '#78350f' }}>
+                      <span style={{ fontSize: '14px' }}>⚠</span>
+                      <div className="flex-1">
+                        <b>품질 검수: </b>
+                        {flagged > 0 && (
+                          <span>{trials.length}개 trial 중 <b>{flagged}개</b>가 다른 trial들과 차이가 큼 — 자동으로 "분석 제외" 표시됨. </span>
+                        )}
+                        {excluded > 0 && (
+                          <span>현재 <b>{trials.length - excluded}개</b>가 분석에 포함됨.</span>
+                        )}
+                        <div className="text-[10.5px] mt-0.5 italic" style={{ color: '#92400e' }}>
+                          체크박스로 직접 포함/제외할 수 있습니다. 변화구·다른 구종도 자세 차이로 outlier로 잡힐 수 있습니다.
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {trials.map((t, idx) => (
                   <TrialRow
                     key={t.id}
@@ -1038,6 +1286,7 @@ function PitcherInputForm({ onOpenReport } = {}) {
                     onUpdate={(patch) => updateTrial(t.id, patch)}
                     onUpload={(file) => handleFileUpload(t.id, file)}
                     onRemove={() => removeTrial(t.id)}
+                    outlierReasons={outlierAnalysis.reasons?.[t.id] || []}
                   />
                 ))}
                 <div className="text-[11px] text-slate-500 mt-3 pt-3 border-t border-slate-100">
@@ -1369,19 +1618,25 @@ function Field({ label, children, required }) {
   );
 }
 
-function TrialRow({ trial, index, onUpdate, onUpload, onRemove }) {
+function TrialRow({ trial, index, onUpdate, onUpload, onRemove, outlierReasons }) {
   const fileRef = useRef(null);
   const hasFile = trial.data && trial.data.length > 0;
   const isError = !!trial.error;
+  const isExcluded = !!trial.excludeFromAnalysis;
+  const hasOutlier = (outlierReasons || []).length > 0;
 
   let borderClass = 'border-slate-200 bg-slate-50/60';
-  if (hasFile) borderClass = 'border-emerald-300 bg-emerald-50/40';
-  else if (isError) borderClass = 'border-red-300 bg-red-50/40';
+  if (isError) borderClass = 'border-red-300 bg-red-50/40';
+  else if (isExcluded) borderClass = 'border-amber-300 bg-amber-50/50';
+  else if (hasOutlier) borderClass = 'border-amber-300 bg-amber-50/30';
+  else if (hasFile) borderClass = 'border-emerald-300 bg-emerald-50/40';
 
   return (
-    <div className={`border rounded-md p-3 ${borderClass}`}>
+    <div className={`border rounded-md p-3 ${borderClass} ${isExcluded ? 'opacity-75' : ''}`}>
       <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-7 h-7 mt-0.5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shadow-sm">
+        <div className={`flex-shrink-0 w-7 h-7 mt-0.5 rounded-full text-white text-[11px] font-bold flex items-center justify-center shadow-sm ${
+          isExcluded ? 'bg-slate-400' : hasOutlier ? 'bg-amber-500' : 'bg-blue-600'
+        }`}>
           {index + 1}
         </div>
         <div className="flex-1 grid grid-cols-12 gap-2 items-start">
@@ -1474,8 +1729,103 @@ function TrialRow({ trial, index, onUpdate, onUpload, onRemove }) {
                   </div>
                 </details>
               )}
+
+              {/* Preview metrics — 10 indicators */}
+              {trial.preview && (
+                <details className="mt-1.5">
+                  <summary className="text-blue-600 hover:text-blue-800 cursor-pointer select-none">
+                    미리보기 지표 (10종)
+                  </summary>
+                  <div className="mt-1.5 grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-[10.5px]">
+                    {[
+                      { key: 'maxER',          label: 'Max ER',     unit: '°',   fmt: 1 },
+                      { key: 'maxXFactor',     label: 'X-factor',   unit: '°',   fmt: 1 },
+                      { key: 'strideLength',   label: 'Stride',     unit: 'm',   fmt: 2 },
+                      { key: 'trunkForwardTilt', label: 'Trunk fwd', unit: '°',  fmt: 1 },
+                      { key: 'frontKneeFlex',  label: 'Knee flex',  unit: '°',   fmt: 1 },
+                      { key: 'peakPelvisVel',  label: 'Pelvis ω',   unit: '°/s', fmt: 0 },
+                      { key: 'peakTrunkVel',   label: 'Trunk ω',    unit: '°/s', fmt: 0 },
+                      { key: 'peakArmVel',     label: 'Arm ω',      unit: '°/s', fmt: 0 },
+                      { key: 'etiPT',          label: 'ETI(P→T)',   unit: '',    fmt: 2 },
+                      { key: 'etiTA',          label: 'ETI(T→A)',   unit: '',    fmt: 2 }
+                    ].map((p, i) => {
+                      const val = trial.preview[p.key];
+                      const isFlagged = (outlierReasons || []).some(r => r.metric === p.key);
+                      return (
+                        <div key={i}
+                          className="px-2 py-1 rounded font-mono"
+                          style={{
+                            background: isFlagged ? '#fee2e2' : 'white',
+                            color: isFlagged ? '#991b1b' : '#475569',
+                            border: `1px solid ${isFlagged ? '#fca5a5' : '#e2e8f0'}`
+                          }}>
+                          <div className="text-[9.5px] uppercase tracking-wider" style={{ color: isFlagged ? '#b91c1c' : '#94a3b8' }}>
+                            {p.label}
+                          </div>
+                          <div className="font-bold">
+                            {val != null ? `${val.toFixed(p.fmt)}${p.unit}` : '—'}
+                            {isFlagged && ' ⚠'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Outlier reasons + exclude toggle */}
+      {hasFile && (hasOutlier || isExcluded) && (
+        <div className="mt-2 ml-10 p-2 rounded text-[11px]"
+          style={{ background: '#fef3c7', border: '1px solid #fcd34d' }}>
+          {hasOutlier && (
+            <div style={{ color: '#78350f' }}>
+              <b>⚠ 다른 trial과 차이가 큰 항목:</b>
+              <ul className="mt-0.5 ml-3 space-y-0.5">
+                {outlierReasons.map((r, i) => {
+                  const d = r.decimals != null ? r.decimals : 1;
+                  return (
+                    <li key={i} style={{ fontSize: '10.5px' }}>
+                      · {r.label} <b>{r.value.toFixed(d)}{r.unit}</b>
+                      <span style={{ color: '#92400e' }}>
+                        {' '}(중앙값 {r.median.toFixed(d)}{r.unit}, 차이 {Math.abs(r.deviation).toFixed(d)}{r.unit})
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer select-none"
+            style={{ color: '#78350f' }}>
+            <input
+              type="checkbox"
+              checked={isExcluded}
+              onChange={(e) => onUpdate({ excludeFromAnalysis: e.target.checked })}
+              className="cursor-pointer"
+            />
+            <span className="text-[11px] font-semibold">분석에서 제외</span>
+            {isExcluded && <span className="text-[10px] ml-1">(이 trial은 리포트 계산에 포함되지 않음)</span>}
+          </label>
+        </div>
+      )}
+
+      {/* Exclude toggle when not flagged but file present (allow manual exclusion of any trial) */}
+      {hasFile && !hasOutlier && (
+        <div className="mt-1.5 ml-10">
+          <label className="flex items-center gap-1.5 cursor-pointer select-none text-[10.5px]"
+            style={{ color: isExcluded ? '#78350f' : '#94a3b8' }}>
+            <input
+              type="checkbox"
+              checked={isExcluded}
+              onChange={(e) => onUpdate({ excludeFromAnalysis: e.target.checked })}
+              className="cursor-pointer"
+            />
+            <span>{isExcluded ? '분석에서 제외됨' : '분석에서 제외하기'}</span>
+          </label>
         </div>
       )}
     </div>
