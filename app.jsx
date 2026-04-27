@@ -2081,7 +2081,8 @@ function QuickAnalysisPage({ onOpenReport }) {
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [throwingHand, setThrowingHand] = useState('R');
-  const [velocity, setVelocity] = useState('');
+  const [velocityMax, setVelocityMax] = useState('');
+  const [velocityAvg, setVelocityAvg] = useState('');
   const [busy, setBusy] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState('');
@@ -2098,6 +2099,8 @@ function QuickAnalysisPage({ onOpenReport }) {
         if (p.heightCm) setHeightCm(String(p.heightCm));
         if (p.weightKg) setWeightKg(String(p.weightKg));
         if (p.throwingHand) setThrowingHand(p.throwingHand);
+        if (p.velocityMax) setVelocityMax(String(p.velocityMax));
+        if (p.velocityAvg) setVelocityAvg(String(p.velocityAvg));
       }
     } catch (e) {}
   }, []);
@@ -2187,8 +2190,8 @@ function QuickAnalysisPage({ onOpenReport }) {
         throwingHand,
         heightCm: heightCm ? parseFloat(heightCm) : '',
         weightKg: weightKg ? parseFloat(weightKg) : '',
-        velocityMax: velocity ? parseFloat(velocity) : '',
-        velocityAvg: velocity ? parseFloat(velocity) : '',
+        velocityMax: velocityMax ? parseFloat(velocityMax) : '',
+        velocityAvg: velocityAvg ? parseFloat(velocityAvg) : '',
         level: '',
         grade: '',
         measurementDate
@@ -2199,7 +2202,9 @@ function QuickAnalysisPage({ onOpenReport }) {
           name: pitcher.name,
           heightCm: pitcher.heightCm,
           weightKg: pitcher.weightKg,
-          throwingHand
+          throwingHand,
+          velocityMax: pitcher.velocityMax,
+          velocityAvg: pitcher.velocityAvg
         }));
       } catch (e) {}
 
@@ -2315,26 +2320,44 @@ function QuickAnalysisPage({ onOpenReport }) {
             />
           </div>
           <div>
-            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>손/구속</label>
-            <div className="flex gap-1">
-              <select
-                value={throwingHand}
-                onChange={e => setThrowingHand(e.target.value)}
-                className="px-1.5 py-1.5 rounded text-[13px]"
-                style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
-              >
-                <option value="R">우</option>
-                <option value="L">좌</option>
-              </select>
-              <input
-                type="number"
-                value={velocity}
-                onChange={e => setVelocity(e.target.value)}
-                placeholder="km/h"
-                className="w-full px-2 py-1.5 rounded text-[13px] tabular-nums"
-                style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
-              />
-            </div>
+            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>투구 손</label>
+            <select
+              value={throwingHand}
+              onChange={e => setThrowingHand(e.target.value)}
+              className="w-full px-2 py-1.5 rounded text-[13px]"
+              style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+            >
+              <option value="R">우투</option>
+              <option value="L">좌투</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Velocity row — max + average separately (km/h) */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div>
+            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>최고 구속 (km/h)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={velocityMax}
+              onChange={e => setVelocityMax(e.target.value)}
+              placeholder="예: 140.5"
+              className="w-full px-2.5 py-1.5 rounded text-[13px] tabular-nums"
+              style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+            />
+          </div>
+          <div>
+            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>평균 구속 (km/h)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={velocityAvg}
+              onChange={e => setVelocityAvg(e.target.value)}
+              placeholder="예: 135.2"
+              className="w-full px-2.5 py-1.5 rounded text-[13px] tabular-nums"
+              style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+            />
           </div>
         </div>
 
@@ -2431,9 +2454,20 @@ function getRoute() {
 
 function getShortReportId() {
   // Hash format: #/r/<reportId>
+  // v41: decodeURIComponent — browsers auto-encode non-ASCII chars (like
+  // Korean) in URL hash, so what we read here is e.g. "%ED%99%A9..." not
+  // "황정윤". Without decoding, ShortReportLoader's encodeURIComponent()
+  // would double-encode (% → %25) and the resulting fetch URL would 404.
   const hash = window.location.hash.slice(1);
   if (!hash.startsWith('/r/')) return null;
-  return hash.slice('/r/'.length).trim() || null;
+  const raw = hash.slice('/r/'.length).trim();
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch (e) {
+    // Malformed encoding — return raw and let downstream surface a meaningful error
+    return raw;
+  }
 }
 
 function getSharePayload() {
