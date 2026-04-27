@@ -1230,6 +1230,261 @@
   }
 
   // ============================================================
+  // ShareReportButton — generates short URL by uploading JSON to GitHub
+  //
+  // Flow:
+  //  1. First click: prompt for GitHub Personal Access Token (saved to localStorage)
+  //  2. Generate report ID (date + pitcher name + random suffix)
+  //  3. Upload payload JSON to <repo>/reports/<id>.json via GitHub Contents API
+  //  4. Wait briefly for GitHub Pages to deploy (Pages picks up commit ~30-90s)
+  //  5. Copy the short URL #/r/<id> to clipboard
+  // ============================================================
+  const GITHUB_TOKEN_KEY = 'bbl:githubToken';
+  const GITHUB_CONFIG_KEY = 'bbl:githubConfig'; // { owner, repo, branch }
+
+  function getGithubConfig() {
+    try {
+      const saved = localStorage.getItem(GITHUB_CONFIG_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    // Default: infer from current URL (e.g. https://kkl0511.github.io/Uplift-Labs-Report/)
+    const host = window.location.hostname; // kkl0511.github.io
+    const path = window.location.pathname; // /Uplift-Labs-Report/
+    const owner = host.split('.')[0]; // kkl0511
+    const repo = path.replace(/^\/+|\/+$/g, '').split('/')[0] || 'Uplift-Labs-Report';
+    return { owner, repo, branch: 'main' };
+  }
+  function saveGithubConfig(cfg) {
+    localStorage.setItem(GITHUB_CONFIG_KEY, JSON.stringify(cfg));
+  }
+  function getGithubToken() {
+    try { return localStorage.getItem(GITHUB_TOKEN_KEY); } catch (e) { return null; }
+  }
+  function saveGithubToken(t) {
+    if (t) localStorage.setItem(GITHUB_TOKEN_KEY, t);
+    else localStorage.removeItem(GITHUB_TOKEN_KEY);
+  }
+
+  function makeReportId(pitcher) {
+    // Format: YYYYMMDD-name-XXXX (4-char random)
+    const d = new Date();
+    const date = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+    // Sanitize pitcher name: keep Korean/alphanumeric, replace others with '-'
+    const safeName = (pitcher?.name || 'pitcher').replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 12);
+    const rand = Math.random().toString(36).slice(2, 6);
+    return `${date}-${safeName}-${rand}`;
+  }
+
+  // base64 encode UTF-8 string (for GitHub Contents API)
+  function utf8ToBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+
+  async function uploadReportToGithub(payload, { owner, repo, branch }, token) {
+    const id = makeReportId(payload.pitcher);
+    const path = `reports/${id}.json`;
+    const json = JSON.stringify(payload);
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const body = {
+      message: `Add report ${id}`,
+      content: utf8ToBase64(json),
+      branch
+    };
+    const res = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const errJson = await res.json();
+        detail = errJson.message || JSON.stringify(errJson);
+      } catch (e) {}
+      throw new Error(`GitHub 업로드 실패 (${res.status}): ${detail}`);
+    }
+    return id;
+  }
+
+  function GitHubTokenSetupModal({ initialConfig, onSave, onClose }) {
+    const [token, setToken] = useState('');
+    const [owner, setOwner] = useState(initialConfig.owner);
+    const [repo, setRepo] = useState(initialConfig.repo);
+    const [branch, setBranch] = useState(initialConfig.branch || 'main');
+    const [showToken, setShowToken] = useState(false);
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+        <div className="bbl-section max-w-lg w-full p-6 print:hidden" style={{ background:'#0a0e1a', maxHeight:'90vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+          <h3 className="text-[16px] font-bold mb-2" style={{ color:'#f1f5f9' }}>GitHub 연동 설정 (1회)</h3>
+          <p className="text-[11.5px] mb-3" style={{ color:'#cbd5e1', lineHeight:1.6 }}>
+            짧은 URL을 만들기 위해 GitHub 토큰이 필요합니다. 토큰은 <b style={{ color:'#fbbf24' }}>본인 브라우저에만</b> 저장되며 외부로 전송되지 않습니다.
+          </p>
+
+          <details className="mb-3 rounded p-2" style={{ background:'#0f1729', border:'1px solid #1e2a47' }}>
+            <summary className="text-[12px] font-bold cursor-pointer" style={{ color:'#93c5fd' }}>📖 토큰 발급 방법 (5분)</summary>
+            <ol className="mt-2 text-[11px] space-y-1.5 list-decimal pl-4" style={{ color:'#cbd5e1', lineHeight:1.5 }}>
+              <li>새 탭에서 <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener" className="underline" style={{ color:'#60a5fa' }}>github.com/settings/tokens?type=beta</a> 열기</li>
+              <li><b>"Generate new token"</b> 버튼 클릭</li>
+              <li>Token name: <code style={{ background:'#1e2a47', padding:'1px 4px' }}>BBL-Report-Upload</code></li>
+              <li>Expiration: <b>No expiration</b> 또는 1년 권장</li>
+              <li>Repository access: <b>"Only select repositories"</b> → <code style={{ background:'#1e2a47', padding:'1px 4px' }}>Uplift-Labs-Report</code> 선택</li>
+              <li>Permissions → Repository permissions → <b>Contents: Read and write</b> 설정</li>
+              <li>맨 아래 <b>"Generate token"</b> 클릭 → 화면에 나온 <code style={{ background:'#1e2a47', padding:'1px 4px' }}>github_pat_...</code> 토큰 복사</li>
+              <li>이 창 토큰 입력란에 붙여넣고 저장</li>
+            </ol>
+          </details>
+
+          <div className="space-y-2.5">
+            <div>
+              <label className="text-[11px] font-bold block mb-1" style={{ color:'#93c5fd' }}>GitHub 토큰</label>
+              <div className="flex gap-1.5">
+                <input
+                  type={showToken ? 'text' : 'password'}
+                  value={token}
+                  onChange={e => setToken(e.target.value)}
+                  placeholder="github_pat_..."
+                  autoComplete="off"
+                  className="flex-1 px-2.5 py-1.5 rounded text-[12px] tabular-nums"
+                  style={{ background:'#1e2a47', color:'#f1f5f9', border:'1px solid #334155' }}
+                />
+                <button onClick={() => setShowToken(!showToken)} className="px-2 text-[11px] rounded" style={{ background:'#334155', color:'#cbd5e1' }}>
+                  {showToken ? '숨김' : '표시'}
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[11px] font-bold block mb-1" style={{ color:'#93c5fd' }}>Owner</label>
+                <input value={owner} onChange={e=>setOwner(e.target.value)} className="w-full px-2 py-1.5 rounded text-[12px]" style={{ background:'#1e2a47', color:'#f1f5f9', border:'1px solid #334155' }}/>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold block mb-1" style={{ color:'#93c5fd' }}>Repo</label>
+                <input value={repo} onChange={e=>setRepo(e.target.value)} className="w-full px-2 py-1.5 rounded text-[12px]" style={{ background:'#1e2a47', color:'#f1f5f9', border:'1px solid #334155' }}/>
+              </div>
+              <div>
+                <label className="text-[11px] font-bold block mb-1" style={{ color:'#93c5fd' }}>Branch</label>
+                <input value={branch} onChange={e=>setBranch(e.target.value)} className="w-full px-2 py-1.5 rounded text-[12px]" style={{ background:'#1e2a47', color:'#f1f5f9', border:'1px solid #334155' }}/>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end mt-4">
+            <button onClick={onClose} className="px-3 py-1.5 text-[12px] rounded" style={{ background:'#334155', color:'#cbd5e1' }}>취소</button>
+            <button
+              onClick={() => {
+                if (!token.trim()) { alert('토큰을 입력하세요'); return; }
+                if (!owner || !repo) { alert('Owner와 Repo를 입력하세요'); return; }
+                onSave({ token: token.trim(), owner: owner.trim(), repo: repo.trim(), branch: branch.trim() || 'main' });
+              }}
+              className="px-3 py-1.5 text-[12px] font-bold rounded"
+              style={{ background:'#10b981', color:'#fff' }}
+            >저장하고 계속</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function ShareReportButton({ pitcher, analysis, benchAnalyses }) {
+    const [showSetup, setShowSetup] = useState(false);
+    const [busy, setBusy] = useState(false);
+
+    const stripBenchTrials = (b) => ({
+      ...b,
+      trials: undefined,
+      videoBlob: undefined,
+      analysis: b.analysis || null,
+      resolvedPitcher: b.resolvedPitcher
+    });
+
+    const buildPayload = () => ({
+      v: 1,
+      pitcher,
+      analysis,
+      benchAnalyses: (benchAnalyses || []).map(stripBenchTrials),
+      createdAt: new Date().toISOString()
+    });
+
+    const generateAndShare = async (token, cfg) => {
+      setBusy(true);
+      try {
+        const payload = buildPayload();
+        const id = await uploadReportToGithub(payload, cfg, token);
+        const url = `${window.location.origin}${window.location.pathname}#/r/${id}`;
+        try { await navigator.clipboard.writeText(url); } catch (e) {}
+        const msg = `짧은 리포트 URL이 생성되었습니다 (클립보드 복사됨)\n\n${url}\n\n⚠️ GitHub Pages가 새 리포트를 배포하는 데 30-90초 정도 걸립니다.\n그 전에 클릭하면 "리포트를 찾을 수 없음"이 뜰 수 있으니, 1-2분 뒤 선수에게 보내주세요.`;
+        if (navigator.share) {
+          try {
+            await navigator.share({ title:`${pitcher?.name || '선수'} 리포트`, text:'BBL 투수 분석 리포트', url });
+          } catch (e) {
+            alert(msg);
+          }
+        } else {
+          alert(msg);
+        }
+      } catch (e) {
+        alert(`업로드 실패: ${e.message}\n\n토큰이 만료되었거나 권한이 부족할 수 있습니다. ⚙ 버튼으로 토큰을 재설정하세요.`);
+      } finally {
+        setBusy(false);
+      }
+    };
+
+    const onClick = () => {
+      const token = getGithubToken();
+      const cfg = getGithubConfig();
+      if (!token) {
+        setShowSetup(true);
+      } else {
+        generateAndShare(token, cfg);
+      }
+    };
+
+    const onSetupSave = ({ token, owner, repo, branch }) => {
+      saveGithubToken(token);
+      saveGithubConfig({ owner, repo, branch });
+      setShowSetup(false);
+      generateAndShare(token, { owner, repo, branch });
+    };
+
+    return (
+      <>
+        <div className="flex gap-1 print:hidden">
+          <button
+            onClick={onClick}
+            disabled={busy}
+            className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 text-[12px] font-semibold rounded-md flex items-center gap-1.5 transition disabled:opacity-50"
+            title="이 리포트를 짧은 URL로 만들어 선수에게 전달">
+            <span>🔗</span> {busy ? '업로드 중...' : '선수용 링크 생성'}
+          </button>
+          <button
+            onClick={() => setShowSetup(true)}
+            disabled={busy}
+            className="px-2 py-1.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 text-[12px] rounded-md flex items-center transition disabled:opacity-50"
+            title="GitHub 토큰 설정">
+            ⚙
+          </button>
+        </div>
+        {showSetup && (
+          <GitHubTokenSetupModal
+            initialConfig={getGithubConfig()}
+            onSave={onSetupSave}
+            onClose={() => setShowSetup(false)}
+          />
+        )}
+      </>
+    );
+  }
+
+  // ============================================================
   // Main ReportView
   //
   // Two modes:
@@ -1485,56 +1740,11 @@
             </div>
             <div className="flex items-center gap-2">
               {!isShared && analysis && (
-                <button
-                  onClick={() => {
-                    try {
-                      // Build share payload: pitcher info + computed analysis only.
-                      // We strip out raw CSV trial data (unnecessary for display
-                      // and would balloon URL size) but keep the full analysis
-                      // output that ReportView consumes.
-                      const stripBenchTrials = (b) => ({
-                        ...b,
-                        trials: undefined,
-                        videoBlob: undefined,
-                        analysis: b.analysis || null,
-                        resolvedPitcher: b.resolvedPitcher
-                      });
-                      const payload = {
-                        v: 1,
-                        pitcher,
-                        analysis,
-                        benchAnalyses: benchAnalyses.map(stripBenchTrials),
-                        createdAt: new Date().toISOString()
-                      };
-                      const json = JSON.stringify(payload);
-                      const compressed = window.LZString.compressToEncodedURIComponent(json);
-                      const url = `${window.location.origin}${window.location.pathname}#/share/${compressed}`;
-                      // Try Web Share API on mobile, otherwise copy to clipboard
-                      const sizeKB = (json.length / 1024).toFixed(0);
-                      const compressedKB = (compressed.length / 1024).toFixed(0);
-                      const msg = `${pitcher.name || '선수'} 리포트 공유 링크`;
-                      if (navigator.share) {
-                        navigator.share({ title: msg, text: msg, url }).catch(() => {
-                          navigator.clipboard.writeText(url).then(() => {
-                            alert(`공유 링크 복사 완료\n원본 ${sizeKB}KB → 압축 ${compressedKB}KB\n\n선수에게 이 URL을 보내세요. 클릭하면 바로 리포트가 열립니다.`);
-                          });
-                        });
-                      } else {
-                        navigator.clipboard.writeText(url).then(() => {
-                          alert(`공유 링크 복사 완료\n원본 ${sizeKB}KB → 압축 ${compressedKB}KB\n\n선수에게 이 URL을 보내세요. 클릭하면 바로 리포트가 열립니다.`);
-                        }).catch(err => {
-                          // Fallback: prompt with URL
-                          window.prompt('아래 URL을 복사해 선수에게 보내세요:', url);
-                        });
-                      }
-                    } catch (e) {
-                      alert(`공유 링크 생성 실패: ${e.message}`);
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 text-[12px] font-semibold rounded-md flex items-center gap-1.5 transition print:hidden"
-                  title="이 리포트를 선수에게 보낼 수 있는 링크 생성">
-                  <span>🔗</span> 선수용 링크 생성
-                </button>
+                <ShareReportButton
+                  pitcher={pitcher}
+                  analysis={analysis}
+                  benchAnalyses={benchAnalyses}
+                />
               )}
               <button onClick={() => window.print()} className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 text-[12px] font-semibold rounded-md flex items-center gap-1.5 transition">
                 <IconPrint size={13}/> 인쇄 / PDF

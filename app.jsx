@@ -2025,9 +2025,17 @@ function VideoPreview({ url, filename, size, duration, onReplace, onRemove }) {
 // ---------- Router + App ----------
 function getRoute() {
   const hash = window.location.hash.slice(1) || '/input';
+  if (hash.startsWith('/r/')) return 'shortReport';
   if (hash.startsWith('/share/') || hash.startsWith('/share?') || hash === '/share') return 'share';
   if (hash.startsWith('/report')) return 'report';
   return 'input';
+}
+
+function getShortReportId() {
+  // Hash format: #/r/<reportId>
+  const hash = window.location.hash.slice(1);
+  if (!hash.startsWith('/r/')) return null;
+  return hash.slice('/r/'.length).trim() || null;
 }
 
 function getSharePayload() {
@@ -2046,6 +2054,51 @@ function getSharePayload() {
   }
 }
 
+// Shared report loader for short URL (#/r/<id>) — fetches JSON from GitHub Pages
+function ShortReportLoader({ reportId }) {
+  const [payload, setPayload] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const url = `${window.location.origin}${window.location.pathname}reports/${encodeURIComponent(reportId)}.json`;
+    fetch(url, { cache: 'no-cache' })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status} — 리포트를 찾을 수 없습니다 (id: ${reportId})`);
+        return res.json();
+      })
+      .then(data => {
+        setPayload(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message || '리포트 로드 실패');
+        setLoading(false);
+      });
+  }, [reportId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <div className="text-slate-400">리포트 불러오는 중...</div>
+      </div>
+    );
+  }
+  if (error || !payload) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <div className="text-amber-400 text-3xl mb-3">⚠</div>
+          <h2 className="text-xl font-bold text-white mb-2">리포트를 불러올 수 없습니다</h2>
+          <p className="text-sm text-slate-400 mb-4">{error || '데이터 로드 실패'}</p>
+          <p className="text-xs text-slate-500">코치에게 새 링크를 요청해주세요.</p>
+        </div>
+      </div>
+    );
+  }
+  return <window.ReportView sharedPayload={payload} />;
+}
+
 function App() {
   const [route, setRoute] = useState(getRoute());
 
@@ -2058,6 +2111,26 @@ function App() {
   const navigate = (path) => {
     window.location.hash = path;
   };
+
+  // Short URL report — fetches JSON from GitHub Pages
+  if (route === 'shortReport') {
+    if (typeof window.ReportView !== 'function') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center text-sm text-red-600">
+          ReportView 로드 실패
+        </div>
+      );
+    }
+    const reportId = getShortReportId();
+    if (!reportId) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+          <div className="text-amber-400">잘못된 링크입니다</div>
+        </div>
+      );
+    }
+    return <ShortReportLoader reportId={reportId} />;
+  }
 
   // Shared (read-only) report — link recipient sees this, no input needed
   if (route === 'share') {
