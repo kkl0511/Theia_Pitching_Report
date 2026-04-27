@@ -808,31 +808,81 @@
     // posteriorly around humerus from "neutral" position at FC to "layback"
     // position just before release).
     //
-    // Robustness: Uplift's Euler-decomposed ER column can occasionally wrap
+    // Robustness #1: Uplift's Euler-decomposed ER column can occasionally wrap
     // around (e.g. 195° appearing as -165° = 195 - 360). We unwrap by
     // detecting jumps > 180° between adjacent frames and adding ±360° to
-    // restore continuity, then take the max.
+    // restore continuity.
+    //
+    // Robustness #2: Some Uplift export versions/locales emit this column in
+    // RADIANS instead of degrees. We auto-detect by checking the magnitude of
+    // the |max| in the FC..BR window — pitchers reach 150-200° (2.6-3.5 rad)
+    // of layback, so if the max-magnitude is < 4 (radians plausible) we
+    // convert. If it's > 30 (clearly degrees), we leave it alone.
     const erCol = `${armSide}_shoulder_external_rotation`;
+
+    // First scan to detect units
+    let scanMax = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const v = rows[i][erCol];
+      if (v != null && !isNaN(v)) {
+        const a = Math.abs(v);
+        if (a > scanMax) scanMax = a;
+      }
+    }
+    // Heuristic: if scanMax < 4, it's almost certainly radians
+    // (real layback never approaches 4 radians = 229°).
+    // If scanMax > 30, it's degrees (and probably > 100 actually).
+    const isRadians = scanMax > 0 && scanMax < 4;
+    const unitScale = isRadians ? (180 / Math.PI) : 1;
+
     const erUnwrapped = [];
     let prev = null, offset = 0;
     for (let i = 0; i < rows.length; i++) {
       const raw = rows[i][erCol];
       if (raw == null || isNaN(raw)) { erUnwrapped.push(null); continue; }
+      const inDeg = raw * unitScale;
       if (prev != null) {
-        const diff = (raw + offset) - prev;
+        const diff = (inDeg + offset) - prev;
         if (diff > 180) offset -= 360;
         else if (diff < -180) offset += 360;
       }
-      const adj = raw + offset;
+      const adj = inDeg + offset;
       erUnwrapped.push(adj);
       prev = adj;
     }
+    // Strategy:
+    //  1. Try to use Uplift's max_external_rotation_frame (if provided), as
+    //     this is computed by Uplift directly from the joint angle and
+    //     handles wraparound internally.
+    //  2. Otherwise, search our unwrapped time series in a wide window.
+    //  3. If the resulting value is implausibly low (< 100°), fall back to
+    //     the wide-window search anyway in case Uplift's pointer was off.
     let merVal = -Infinity, merIdx = -1;
-    const merWinStart = Math.max(0, fcRow);
-    const merWinEnd   = Math.min(rows.length, brRow + 1);
-    for (let i = merWinStart; i < merWinEnd; i++) {
-      const v = erUnwrapped[i];
-      if (v != null && v > merVal) { merVal = v; merIdx = i; }
+    const merFrameRaw = r0.max_external_rotation_frame;
+    if (Number.isFinite(merFrameRaw)) {
+      // max_external_rotation_frame is in the same negative-offset convention
+      // as foot_contact_frame and ball_release_frame.
+      const merFrameIdx = -merFrameRaw;
+      if (Number.isInteger(merFrameIdx) && merFrameIdx >= 0 && merFrameIdx < rows.length) {
+        const v = erUnwrapped[merFrameIdx];
+        if (v != null && v > 100) {
+          merVal = v;
+          merIdx = merFrameIdx;
+        }
+      }
+    }
+    if (merVal === -Infinity) {
+      // Fallback to wide-window search.
+      // Real layback peak typically occurs ~30-60ms before BR, sometimes
+      // before FC in fast-armed pitchers. Window: FC-100ms to BR+30ms.
+      const winPad = Math.round(0.100 * fps);
+      const trailPad = Math.round(0.030 * fps);
+      const merWinStart = Math.max(0, fcRow - winPad);
+      const merWinEnd   = Math.min(rows.length, brRow + trailPad + 1);
+      for (let i = merWinStart; i < merWinEnd; i++) {
+        const v = erUnwrapped[i];
+        if (v != null && v > merVal) { merVal = v; merIdx = i; }
+      }
     }
     const maxER = merVal > -Infinity ? merVal : null;
 

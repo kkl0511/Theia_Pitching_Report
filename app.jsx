@@ -141,25 +141,54 @@ function extractPreviewMetrics(trial) {
   const armSide = handedness === 'L' ? 'left' : 'right';
   const frontSide = handedness === 'L' ? 'right' : 'left';
 
-  // Max ER with wraparound unwrapping
+  // Max ER with wraparound unwrapping + radians-vs-degrees auto-detect
   const erCol = `${armSide}_shoulder_external_rotation`;
+  // Detect units (radians if max abs < 4)
+  let scanMax = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const v = rows[i][erCol];
+    if (v != null && !isNaN(v)) {
+      const a = Math.abs(v);
+      if (a > scanMax) scanMax = a;
+    }
+  }
+  const isRadians = scanMax > 0 && scanMax < 4;
+  const unitScale = isRadians ? (180 / Math.PI) : 1;
+
   const unwrapped = [];
   let prev = null, offset = 0;
   for (let i = 0; i < rows.length; i++) {
     const raw = rows[i][erCol];
     if (raw == null || isNaN(raw)) { unwrapped.push(null); continue; }
+    const inDeg = raw * unitScale;
     if (prev != null) {
-      const diff = (raw + offset) - prev;
+      const diff = (inDeg + offset) - prev;
       if (diff > 180) offset -= 360;
       else if (diff < -180) offset += 360;
     }
-    const adj = raw + offset;
+    const adj = inDeg + offset;
     unwrapped.push(adj);
     prev = adj;
   }
+  // Try Uplift's max_external_rotation_frame first (authoritative)
   let maxER = -Infinity;
-  for (let i = Math.max(0, fcRow); i <= Math.min(rows.length - 1, brRow); i++) {
-    if (unwrapped[i] != null && unwrapped[i] > maxER) maxER = unwrapped[i];
+  const merFrameRaw = r0.max_external_rotation_frame;
+  if (Number.isFinite(merFrameRaw)) {
+    const merFrameIdx = -merFrameRaw;
+    if (Number.isInteger(merFrameIdx) && merFrameIdx >= 0 && merFrameIdx < rows.length) {
+      const v = unwrapped[merFrameIdx];
+      if (v != null && v > 100) maxER = v;
+    }
+  }
+  // Fallback: search FC-100ms to BR+30ms (wider than just FC..BR)
+  if (maxER === -Infinity) {
+    const winPad = Math.round(0.100 * fps);
+    const trailPad = Math.round(0.030 * fps);
+    const winStart = Math.max(0, fcRow - winPad);
+    const winEnd = Math.min(rows.length - 1, brRow + trailPad);
+    for (let i = winStart; i <= winEnd; i++) {
+      if (unwrapped[i] != null && unwrapped[i] > maxER) maxER = unwrapped[i];
+    }
   }
   if (maxER === -Infinity) maxER = null;
 
@@ -261,12 +290,14 @@ function detectTrialOutliers(trials) {
     peakPelvisVel: '°/s', peakTrunkVel: '°/s', peakArmVel: '°/s',
     etiPT: '', etiTA: ''
   };
-  // Reasonable absolute floor by metric (so MAD≈0 cases don't over-flag)
+  // Reasonable absolute floor by metric (so MAD≈0 cases don't over-flag).
+  // Floors are set to roughly the trial-to-trial CV expected even for elite
+  // pitchers (e.g. ±25°/s pelvis, ±15° MaxER, ±0.25m stride).
   const absFloor = {
-    maxER: 15, maxXFactor: 8, strideLength: 0.15,
-    trunkForwardTilt: 8, frontKneeFlex: 8,
-    peakPelvisVel: 100, peakTrunkVel: 150, peakArmVel: 250,
-    etiPT: 0.3, etiTA: 0.3
+    maxER: 25, maxXFactor: 12, strideLength: 0.25,
+    trunkForwardTilt: 12, frontKneeFlex: 12,
+    peakPelvisVel: 150, peakTrunkVel: 200, peakArmVel: 350,
+    etiPT: 0.5, etiTA: 0.5
   };
   const decimals = {
     maxER: 1, maxXFactor: 1, strideLength: 2,
@@ -287,7 +318,10 @@ function detectTrialOutliers(trials) {
     const sortedDev = [...dev].sort((a, b) => a - b);
     const mad = sortedDev[Math.floor(sortedDev.length / 2)];
     const robustSD = mad * 1.4826;
-    const threshold = Math.max(3 * robustSD, absFloor[m] || 5);
+    // Use 4× robustSD (vs the standard 3.5× Tukey threshold). Pitching
+    // mechanics naturally vary trial-to-trial, and 3× was producing
+    // false-positive flags on too many normal trials.
+    const threshold = Math.max(4 * robustSD, absFloor[m] || 5);
     summary[m] = { median: med, threshold, label: labels[m], unit: units[m], decimals: decimals[m] };
     for (const t of valid) {
       const v = t.preview[m];
@@ -627,7 +661,11 @@ function PitcherInputForm({ onOpenReport } = {}) {
     return detectTrialOutliers(trials);
   }, [trials]);
 
-  // Auto-mark outlier trials as excluded by default (when first detected)
+  // Auto-mark outlier trials as excluded by default (when first detected).
+  // Only exclude trials that have 2+ flagged metrics — single-metric
+  // deviations are common in normal pitching variability and should not
+  // automatically remove a trial from analysis. The user can still manually
+  // exclude single-flag trials by clicking the checkbox.
   const autoExcludedRef = useRef(new Set());
   useEffect(() => {
     if (!outlierAnalysis.reasons) return;
@@ -635,6 +673,9 @@ function PitcherInputForm({ onOpenReport } = {}) {
     for (const tid of Object.keys(outlierAnalysis.reasons)) {
       const trial = trials.find(t => t.id === tid);
       if (!trial) continue;
+      const flagCount = outlierAnalysis.reasons[tid].length;
+      // Threshold: 2 or more metrics must be flagged for auto-exclusion.
+      if (flagCount < 2) continue;
       // Only auto-exclude on FIRST detection (don't re-flip user's manual choice)
       if (!autoExcludedRef.current.has(tid) && !trial.excludeFromAnalysis) {
         newExclusions.push(tid);
