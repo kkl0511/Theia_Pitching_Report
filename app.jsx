@@ -2063,13 +2063,366 @@ function VideoPreview({ url, filename, size, duration, onReplace, onRemove }) {
   );
 }
 
-// ---------- Router + App ----------
+// ============================================================
+// Quick Analysis — drop CSVs, instant analysis (skip the input form)
+//
+// Flow:
+//  1. Coach drags one or more Uplift CSV files onto the page
+//  2. Optionally fills in name / height / weight in a single row
+//  3. Click "분석" — runs BBLAnalysis.analyze(), saves payload to
+//     IndexedDB so the existing /report route can display it
+//  4. Auto-navigates to /report
+//
+// Data stored to IDB matches what PitcherInputForm saves, so the
+// existing ReportView code works without any modification. Once the
+// analysis runs, the report page even has the GitHub share button.
+// ============================================================
+function QuickAnalysisPage({ onOpenReport }) {
+  const [files, setFiles] = useState([]); // [{id, name, size, data, columnNames, error}]
+  const [pitcherName, setPitcherName] = useState('');
+  const [heightCm, setHeightCm] = useState('');
+  const [weightKg, setWeightKg] = useState('');
+  const [throwingHand, setThrowingHand] = useState('R');
+  const [velocity, setVelocity] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [error, setError] = useState('');
+  const dragCounterRef = useRef(0);
+  const fileInputRef = useRef(null);
+
+  // Restore last-used pitcher info on mount (so coach doesn't retype)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('bbl:quickLastPitcher');
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (p.name) setPitcherName(p.name);
+        if (p.heightCm) setHeightCm(String(p.heightCm));
+        if (p.weightKg) setWeightKg(String(p.weightKg));
+        if (p.throwingHand) setThrowingHand(p.throwingHand);
+      }
+    } catch (e) {}
+  }, []);
+
+  const parseFile = (file) => new Promise((resolve) => {
+    Papa.parse(file, {
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: (result) => {
+        if (result.errors?.length) {
+          resolve({
+            id: `quick_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+            name: file.name,
+            size: file.size,
+            error: 'CSV 파싱 오류: ' + result.errors[0].message
+          });
+          return;
+        }
+        resolve({
+          id: `quick_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+          name: file.name,
+          size: file.size,
+          columnNames: result.meta.fields || [],
+          rowCount: result.data.length,
+          data: result.data
+        });
+      },
+      error: (err) => {
+        resolve({
+          id: `quick_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+          name: file.name,
+          size: file.size,
+          error: '파일 읽기 실패: ' + err.message
+        });
+      }
+    });
+  });
+
+  const handleFiles = async (fileList) => {
+    const csvFiles = Array.from(fileList || []).filter(f => f.name.toLowerCase().endsWith('.csv'));
+    if (!csvFiles.length) return;
+    setError('');
+    const parsed = await Promise.all(csvFiles.map(parseFile));
+    setFiles((prev) => [...prev, ...parsed]);
+  };
+
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); };
+  const handleDragEnter = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dragCounterRef.current++;
+    setDragActive(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setDragActive(false);
+    }
+  };
+  const handleDrop = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    dragCounterRef.current = 0;
+    setDragActive(false);
+    if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+  };
+
+  const removeFile = (id) => setFiles(fs => fs.filter(f => f.id !== id));
+  const clearAll = () => { setFiles([]); setError(''); };
+
+  const validFiles = files.filter(f => !f.error && f.data && f.data.length);
+
+  const runAnalysis = async () => {
+    if (validFiles.length === 0) {
+      setError('CSV 파일을 1개 이상 추가하세요');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      // Build pitcher object — fall back to sensible defaults if blank
+      const today = new Date();
+      const measurementDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+      const pitcher = {
+        name: (pitcherName || '').trim() || `선수_${measurementDate}`,
+        throwingHand,
+        heightCm: heightCm ? parseFloat(heightCm) : '',
+        weightKg: weightKg ? parseFloat(weightKg) : '',
+        velocityMax: velocity ? parseFloat(velocity) : '',
+        velocityAvg: velocity ? parseFloat(velocity) : '',
+        level: '',
+        grade: '',
+        measurementDate
+      };
+      // Save last-used so the form pre-fills next time
+      try {
+        localStorage.setItem('bbl:quickLastPitcher', JSON.stringify({
+          name: pitcher.name,
+          heightCm: pitcher.heightCm,
+          weightKg: pitcher.weightKg,
+          throwingHand
+        }));
+      } catch (e) {}
+
+      // Convert files into the trial format the analyzer expects
+      const trials = validFiles.map((f, i) => ({
+        id: f.id,
+        label: `T${i+1}`,
+        filename: f.name,
+        velocity: '', // unknown per-trial
+        columnNames: f.columnNames,
+        rowCount: f.rowCount,
+        data: f.data,
+        excludeFromAnalysis: false
+      }));
+
+      // Save to IndexedDB in the same shape PitcherInputForm uses, so
+      // ReportView can load it via its existing IDB-loading code path.
+      const STORAGE_KEY = 'pitcher:current';
+      const trialMetas = trials.map(t => ({
+        id: t.id,
+        label: t.label,
+        filename: t.filename,
+        velocity: t.velocity,
+        columnNames: t.columnNames,
+        rowCount: t.rowCount,
+        excludeFromAnalysis: false
+      }));
+      await idbKeyval.set(STORAGE_KEY, { pitcher, trialMetas, savedAt: new Date().toISOString() });
+      await Promise.all(trials.map(t =>
+        idbKeyval.set(`${STORAGE_KEY}:data:${t.id}`, t.data)
+      ));
+      // Clear any stale benchmarks/video from a previous session
+      try { await idbKeyval.del('pitcher:benchmarks'); } catch (e) {}
+      try { await idbKeyval.del('pitcher:current:video'); } catch (e) {}
+
+      onOpenReport();
+    } catch (e) {
+      setError('분석 준비 실패: ' + (e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="min-h-screen relative"
+      style={{ background:'#020617', color:'#e2e8f0' }}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {dragActive && (
+        <div className="fixed inset-0 z-40 pointer-events-none flex items-center justify-center"
+             style={{ background:'rgba(16,185,129,0.15)', border:'4px dashed #10b981' }}>
+          <div className="text-center">
+            <div className="text-6xl mb-2">📥</div>
+            <div className="text-lg font-bold" style={{ color:'#10b981' }}>여기에 CSV를 놓으세요</div>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex items-baseline justify-between mb-1">
+          <h1 className="text-2xl font-bold" style={{ color:'#f1f5f9' }}>⚡ 빠른 분석</h1>
+          <a href="#/input" className="text-[12px]" style={{ color:'#60a5fa' }}>상세 입력 페이지 →</a>
+        </div>
+        <p className="text-[12.5px] mb-6" style={{ color:'#94a3b8' }}>
+          Uplift CSV 파일들을 아래에 드래그하면 즉시 분석됩니다. 정보는 비워두면 기본값이 사용됩니다.
+        </p>
+
+        {/* Pitcher info — single row */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+          <div className="col-span-2">
+            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>이름</label>
+            <input
+              type="text"
+              value={pitcherName}
+              onChange={e => setPitcherName(e.target.value)}
+              placeholder="(자동: 선수_날짜)"
+              className="w-full px-2.5 py-1.5 rounded text-[13px]"
+              style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+            />
+          </div>
+          <div>
+            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>신장(cm)</label>
+            <input
+              type="number"
+              value={heightCm}
+              onChange={e => setHeightCm(e.target.value)}
+              placeholder="예: 178"
+              className="w-full px-2.5 py-1.5 rounded text-[13px] tabular-nums"
+              style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+            />
+          </div>
+          <div>
+            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>체중(kg)</label>
+            <input
+              type="number"
+              value={weightKg}
+              onChange={e => setWeightKg(e.target.value)}
+              placeholder="예: 78"
+              className="w-full px-2.5 py-1.5 rounded text-[13px] tabular-nums"
+              style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+            />
+          </div>
+          <div>
+            <label className="text-[10.5px] font-bold block mb-0.5" style={{ color:'#94a3b8' }}>손/구속</label>
+            <div className="flex gap-1">
+              <select
+                value={throwingHand}
+                onChange={e => setThrowingHand(e.target.value)}
+                className="px-1.5 py-1.5 rounded text-[13px]"
+                style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+              >
+                <option value="R">우</option>
+                <option value="L">좌</option>
+              </select>
+              <input
+                type="number"
+                value={velocity}
+                onChange={e => setVelocity(e.target.value)}
+                placeholder="km/h"
+                className="w-full px-2 py-1.5 rounded text-[13px] tabular-nums"
+                style={{ background:'#0f1729', color:'#f1f5f9', border:'1px solid #1e2a47' }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Drop zone */}
+        <div
+          className="rounded-lg p-8 text-center cursor-pointer transition"
+          style={{
+            background: dragActive ? '#0f2418' : '#0a0e1a',
+            border: dragActive ? '2px dashed #10b981' : '2px dashed #334155'
+          }}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value=''; }}
+          />
+          <div className="text-3xl mb-1">📂</div>
+          <div className="text-[14px] font-bold" style={{ color:'#f1f5f9' }}>
+            CSV 파일 드래그 또는 클릭해서 선택
+          </div>
+          <div className="text-[11.5px] mt-1" style={{ color:'#94a3b8' }}>
+            여러 개 한 번에 가능 · Uplift Labs export
+          </div>
+        </div>
+
+        {/* File list */}
+        {files.length > 0 && (
+          <div className="mt-4">
+            <div className="flex items-baseline justify-between mb-1.5">
+              <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color:'#94a3b8' }}>
+                추가된 트라이얼 ({validFiles.length}/{files.length})
+              </div>
+              <button onClick={clearAll} className="text-[11px]" style={{ color:'#64748b' }}>모두 지우기</button>
+            </div>
+            <div className="space-y-1">
+              {files.map((f, i) => (
+                <div key={f.id} className="flex items-center justify-between px-3 py-2 rounded text-[12px]"
+                     style={{ background: f.error ? '#2d1010' : '#0f1729', border: '1px solid ' + (f.error ? '#dc2626' : '#1e2a47') }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-bold tabular-nums" style={{ color:'#94a3b8', minWidth:'24px' }}>T{i+1}</span>
+                    <span className="truncate" style={{ color:'#f1f5f9' }}>{f.name}</span>
+                    {f.error ? (
+                      <span className="text-[10.5px]" style={{ color:'#fca5a5' }}>· {f.error}</span>
+                    ) : (
+                      <span className="text-[10.5px] tabular-nums" style={{ color:'#64748b' }}>{f.rowCount}행</span>
+                    )}
+                  </div>
+                  <button onClick={() => removeFile(f.id)} className="text-[12px] px-1.5" style={{ color:'#64748b' }}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-3 p-2.5 rounded text-[12px]" style={{ background:'#2d1010', color:'#fca5a5', border:'1px solid #dc2626' }}>
+            {error}
+          </div>
+        )}
+
+        {/* Run button */}
+        <div className="mt-5 flex items-center gap-2">
+          <button
+            onClick={runAnalysis}
+            disabled={busy || validFiles.length === 0}
+            className="flex-1 py-3 rounded-lg text-[14px] font-bold disabled:opacity-40 disabled:cursor-not-allowed transition"
+            style={{ background: busy || validFiles.length === 0 ? '#334155' : '#10b981', color:'#fff' }}
+          >
+            {busy ? '분석 중...' : `${validFiles.length}개 trial 분석 → 리포트 보기`}
+          </button>
+        </div>
+
+        <div className="mt-4 text-[11px] text-center" style={{ color:'#475569' }}>
+          신장·체중 미입력 시: 분절 운동에너지(KE), 팔꿈치 합성 모멘트, 에너지 플로우 정밀 지표는 계산되지 않음
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Router ----------
 function getRoute() {
-  const hash = window.location.hash.slice(1) || '/input';
+  const hash = window.location.hash.slice(1) || '/quick';
   if (hash.startsWith('/r/')) return 'shortReport';
   if (hash.startsWith('/share/') || hash.startsWith('/share?') || hash === '/share') return 'share';
   if (hash.startsWith('/report')) return 'report';
-  return 'input';
+  if (hash.startsWith('/input')) return 'input';
+  return 'quick';
 }
 
 function getShortReportId() {
@@ -2197,7 +2550,7 @@ function App() {
     return <window.ReportView sharedPayload={payload} />;
   }
 
-  // Wrap InputView with a tab bar at the top of the body
+  // Report — same for quick analysis output and detailed-input output
   if (route === 'report') {
     if (typeof window.ReportView !== 'function') {
       return (
@@ -2206,9 +2559,14 @@ function App() {
         </div>
       );
     }
-    return <window.ReportView onBack={() => navigate('/input')} />;
+    return <window.ReportView onBack={() => navigate('/quick')} />;
   }
-  return <PitcherInputForm onOpenReport={() => navigate('/report')} />;
+  // Detailed input form (legacy, still accessible via #/input)
+  if (route === 'input') {
+    return <PitcherInputForm onOpenReport={() => navigate('/report')} />;
+  }
+  // Default: quick analysis
+  return <QuickAnalysisPage onOpenReport={() => navigate('/report')} />;
 }
 
 // ---------- Mount ----------
