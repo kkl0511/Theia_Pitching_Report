@@ -1266,13 +1266,23 @@
   }
 
   function makeReportId(pitcher) {
-    // Format: YYYYMMDD-name-XXXX (4-char random)
-    const d = new Date();
-    const date = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-    // Sanitize pitcher name: keep Korean/alphanumeric, replace others with '-'
-    const safeName = (pitcher?.name || 'pitcher').replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 12);
-    const rand = Math.random().toString(36).slice(2, 6);
-    return `${date}-${safeName}-${rand}`;
+    // Stable ID = pitcher name + measurement date.
+    // This way, re-running analysis for the same pitcher on the same date
+    // overwrites the existing report file, and the athlete's saved short
+    // URL keeps showing the latest results forever (no manual cleanup,
+    // no need to send a new link).
+    //
+    // Sanitize pitcher name: keep Korean/alphanumeric only.
+    const safeName = (pitcher?.name || 'pitcher').replace(/[^\p{L}\p{N}]+/gu, '').slice(0, 16);
+    // Date: prefer pitcher.measurementDate (input form), fall back to today.
+    let date;
+    if (pitcher?.measurementDate && /^\d{4}-?\d{2}-?\d{2}/.test(pitcher.measurementDate)) {
+      date = pitcher.measurementDate.replace(/-/g, '').slice(0, 8);
+    } else {
+      const d = new Date();
+      date = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+    }
+    return `${safeName}-${date}`;
   }
 
   // base64 encode UTF-8 string (for GitHub Contents API)
@@ -1288,19 +1298,38 @@
     const path = `reports/${id}.json`;
     const json = JSON.stringify(payload);
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json'
+    };
+
+    // Step 1: Check if the file already exists. If yes, fetch its SHA so we
+    // can overwrite. The Contents API requires `sha` field for updates.
+    let existingSha = null;
+    try {
+      const checkRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}`, { headers });
+      if (checkRes.ok) {
+        const existing = await checkRes.json();
+        if (existing && existing.sha) existingSha = existing.sha;
+      }
+      // 404 just means file doesn't exist yet (that's fine, will create new)
+    } catch (e) {
+      // Network errors here aren't fatal — fall through to PUT and let it fail there
+    }
+
+    // Step 2: PUT (create or update)
     const body = {
-      message: `Add report ${id}`,
+      message: existingSha ? `Update report ${id}` : `Add report ${id}`,
       content: utf8ToBase64(json),
       branch
     };
+    if (existingSha) body.sha = existingSha;
+
     const res = await fetch(apiUrl, {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify(body)
     });
     if (!res.ok) {
@@ -1311,7 +1340,7 @@
       } catch (e) {}
       throw new Error(`GitHub 업로드 실패 (${res.status}): ${detail}`);
     }
-    return id;
+    return { id, isUpdate: !!existingSha };
   }
 
   function GitHubTokenSetupModal({ initialConfig, onSave, onClose }) {
@@ -1418,10 +1447,14 @@
       setBusy(true);
       try {
         const payload = buildPayload();
-        const id = await uploadReportToGithub(payload, cfg, token);
+        const { id, isUpdate } = await uploadReportToGithub(payload, cfg, token);
         const url = `${window.location.origin}${window.location.pathname}#/r/${id}`;
         try { await navigator.clipboard.writeText(url); } catch (e) {}
-        const msg = `짧은 리포트 URL이 생성되었습니다 (클립보드 복사됨)\n\n${url}\n\n⚠️ GitHub Pages가 새 리포트를 배포하는 데 30-90초 정도 걸립니다.\n그 전에 클릭하면 "리포트를 찾을 수 없음"이 뜰 수 있으니, 1-2분 뒤 선수에게 보내주세요.`;
+        const action = isUpdate ? '갱신' : '생성';
+        const note = isUpdate
+          ? `기존 링크가 자동으로 새 분석 결과로 갱신되었습니다.\n선수가 이미 받은 URL을 다시 클릭하면 새 결과를 봅니다 (URL 재전송 불필요).\n\n⚠️ GitHub Pages 갱신에는 30-90초가 걸립니다.`
+          : `⚠️ GitHub Pages가 새 리포트를 배포하는 데 30-90초 정도 걸립니다.\n그 전에 클릭하면 "리포트를 찾을 수 없음"이 뜰 수 있으니, 1-2분 뒤 선수에게 보내주세요.`;
+        const msg = `짧은 리포트 URL이 ${action}되었습니다 (클립보드 복사됨)\n\n${url}\n\n${note}`;
         if (navigator.share) {
           try {
             await navigator.share({ title:`${pitcher?.name || '선수'} 리포트`, text:'BBL 투수 분석 리포트', url });
