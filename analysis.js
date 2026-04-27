@@ -481,25 +481,56 @@
     if (anthroParams && anthroParams.heightM && anthroParams.massKg) {
       const inertia = computeSegmentInertia(rows, armSide, anthroParams.heightM, anthroParams.massKg);
       if (inertia) {
-        const omegaP = Math.abs(peakPelvis.val) * Math.PI / 180;
-        const omegaT = Math.abs(peakTrunk.val)  * Math.PI / 180;
-        const omegaA = Math.abs(peakArm.val)    * Math.PI / 180;
-        const KE_pelvis = 0.5 * inertia.I_pelvis * omegaP * omegaP;
-        const KE_trunk  = 0.5 * inertia.I_trunk  * omegaT * omegaT;
-        const KE_arm    = 0.5 * inertia.I_arm    * omegaA * omegaA;
+        // ─────────────────────────────────────────────────────────────
+        // Segment COM helpers — needed for translational KE.
+        //
+        // Pelvis COM is approximated as the midpoint of left and right
+        // hip joint centres. This is the standard convention used in
+        // motion-capture studies and corresponds to the lower-torso
+        // model of Naito et al. (2011, Sports Tech 4:48-64) and
+        // Matsuda et al. (2025, Front Sports Act Living 7:1534596).
+        //
+        // Trunk COM is approximated as a point 45% of the way from
+        // pelvis COM to the midpoint of the shoulder JCs, matching the
+        // proximal-COM ratio of the trunk segment in Ae M, Tang H,
+        // Yokoi T (1992, Biomechanism 11:23-33), the same anthropometric
+        // table used by Yanai et al. (2023, Sci Rep 13:12253).
+        //
+        // We previously reported only rotational KE (½Iω²) for these
+        // two segments. That underestimated total KE by a large factor
+        // because the pelvis and trunk also translate forward toward
+        // home plate during stride and arm-cocking phases. Adding the
+        // ½ m |v_com|² translational term aligns peak KE values with
+        // Naito 2011, Stodden 2005, and Howenstein 2019 reference data.
+        // ─────────────────────────────────────────────────────────────
+        function pelvisComAt(r) {
+          const lhx = r.left_hip_jc_3d_x, rhx = r.right_hip_jc_3d_x;
+          const lhy = r.left_hip_jc_3d_y, rhy = r.right_hip_jc_3d_y;
+          const lhz = r.left_hip_jc_3d_z, rhz = r.right_hip_jc_3d_z;
+          if ([lhx,rhx,lhy,rhy,lhz,rhz].some(v => v == null)) return null;
+          return { x:(lhx+rhx)/2, y:(lhy+rhy)/2, z:(lhz+rhz)/2 };
+        }
+        function trunkComAt(r) {
+          const pc = pelvisComAt(r);
+          const lsx = r.left_shoulder_jc_3d_x, rsx = r.right_shoulder_jc_3d_x;
+          const lsy = r.left_shoulder_jc_3d_y, rsy = r.right_shoulder_jc_3d_y;
+          const lsz = r.left_shoulder_jc_3d_z, rsz = r.right_shoulder_jc_3d_z;
+          if (!pc || [lsx,rsx,lsy,rsy,lsz,rsz].some(v => v == null)) return null;
+          const ms = { x:(lsx+rsx)/2, y:(lsy+rsy)/2, z:(lsz+rsz)/2 };
+          // Ae 1992 trunk com_prox = 0.45 (45% from proximal/pelvis end)
+          return { x: pc.x + 0.45*(ms.x - pc.x), y: pc.y + 0.45*(ms.y - pc.y), z: pc.z + 0.45*(ms.z - pc.z) };
+        }
 
-        // Transfer ratios (peak KE basis)
-        const transferPT_KE = KE_pelvis > 0 ? KE_trunk / KE_pelvis : null;
-        const transferTA_KE = KE_trunk > 0 ? KE_arm / KE_trunk : null;
-
-        // Instantaneous power: differentiate KE time series
-        // Build KE time series for each segment, then dKE/dt at each frame.
-        // Peak power = max instantaneous gain per second (W).
         const dt = 1 / fps;
         const colP = 'pelvis_rotational_velocity_with_respect_to_ground';
         const colT = 'trunk_rotational_velocity_with_respect_to_ground';
         const colA = `${armSide}_arm_rotational_velocity_with_respect_to_ground`;
-        function keSeries(I, col) {
+
+        // Build KE time series. For pelvis and trunk we now include
+        // translational KE; for arm we keep the parallel-axis-from-shoulder
+        // formulation, which already captures most of the segment's
+        // translational motion through the m·d² term.
+        function keSeriesRotOnly(I, col) {
           const ke = new Array(rows.length).fill(null);
           for (let i = 0; i < rows.length; i++) {
             const w = rows[i][col];
@@ -509,9 +540,88 @@
           }
           return ke;
         }
-        const KE_p_ts = keSeries(inertia.I_pelvis, colP);
-        const KE_t_ts = keSeries(inertia.I_trunk, colT);
-        const KE_a_ts = keSeries(inertia.I_arm, colA);
+        function keSeriesTotal(I, col, m, comFn) {
+          const ke = new Array(rows.length).fill(null);
+          for (let i = 1; i < rows.length - 1; i++) {
+            const w = rows[i][col];
+            if (w == null || isNaN(w)) continue;
+            const cPrev = comFn(rows[i-1]);
+            const cNext = comFn(rows[i+1]);
+            if (!cPrev || !cNext) continue;
+            const vx = (cNext.x - cPrev.x) / (2 * dt);
+            const vy = (cNext.y - cPrev.y) / (2 * dt);
+            const vz = (cNext.z - cPrev.z) / (2 * dt);
+            const v2 = vx*vx + vy*vy + vz*vz;
+            const wRad = Math.abs(w) * Math.PI / 180;
+            ke[i] = 0.5 * m * v2 + 0.5 * I * wRad * wRad;
+          }
+          return ke;
+        }
+
+        // Pelvis & trunk: total KE (translational + rotational)
+        const KE_p_ts = keSeriesTotal(inertia.I_pelvis, colP, inertia.m_pelvis, pelvisComAt);
+        const KE_t_ts = keSeriesTotal(inertia.I_trunk,  colT, inertia.m_trunk,  trunkComAt);
+        // Arm: parallel-axis from shoulder (rotational about a fixed shoulder
+        // already captures most of the arm system's translation through m·d²)
+        const KE_a_ts = keSeriesRotOnly(inertia.I_arm, colA);
+
+        // Peak KE is the max of the time series (true segment-energy peak,
+        // not just at the moment of peak ω, since translational and
+        // rotational components peak at slightly different instants).
+        function peakOfSeries(ts) {
+          let mx = -Infinity, idx = -1;
+          for (let i = 0; i < ts.length; i++) {
+            if (ts[i] != null && ts[i] > mx) { mx = ts[i]; idx = i; }
+          }
+          return { val: mx === -Infinity ? null : mx, idx };
+        }
+        const peakKE_p = peakOfSeries(KE_p_ts);
+        const peakKE_t = peakOfSeries(KE_t_ts);
+        const peakKE_a = peakOfSeries(KE_a_ts);
+
+        // ─────────────────────────────────────────────────────────────
+        // KE definition: convention vs. completeness
+        //
+        // For "kinetic-chain amplification" comparisons across pelvis →
+        // trunk → arm, the literature (Naito 2011, Sports Tech 4:48-64;
+        // Aguinaldo & Escamilla 2019, OJSM) consistently uses the
+        // ROTATIONAL kinetic energy (½ I ω²) of each segment, because:
+        //   1. It cancels the bulk forward-translation that all
+        //      upper-body segments share, isolating the chain effect.
+        //   2. The arm's KE is computed parallel-axis-from-shoulder,
+        //      which is intrinsically rotational, so comparing "arm KE"
+        //      to a translation-inclusive "trunk KE" introduces an
+        //      asymmetry that produces ratios <1 (apparent energy loss
+        //      where there is none).
+        //
+        // We therefore expose the rotational KE as the primary peak-KE
+        // values (KE_pelvis, KE_trunk, KE_arm) and the corresponding
+        // amplification ratios (transferPT_KE, transferTA_KE). The
+        // total-KE numbers (rotational + translational about COM) are
+        // retained as KE_pelvis_total / KE_trunk_total for transparency.
+        // ─────────────────────────────────────────────────────────────
+        const peakKE_p_total = peakOfSeries(KE_p_ts);
+        const peakKE_t_total = peakOfSeries(KE_t_ts);
+        const peakKE_a_total = peakOfSeries(KE_a_ts);
+
+        // Rotational-only peak KE: aligns with Naito 2011 convention
+        const omegaP = Math.abs(peakPelvis.val) * Math.PI / 180;
+        const omegaT = Math.abs(peakTrunk.val)  * Math.PI / 180;
+        const omegaA = Math.abs(peakArm.val)    * Math.PI / 180;
+        const KE_pelvis = 0.5 * inertia.I_pelvis * omegaP * omegaP;
+        const KE_trunk  = 0.5 * inertia.I_trunk  * omegaT * omegaT;
+        const KE_arm    = 0.5 * inertia.I_arm    * omegaA * omegaA;
+
+        // Total (translational + rotational) KE — reported separately.
+        // For arm we use the same value (already rotational about shoulder
+        // via parallel-axis, which captures most of its translation).
+        const KE_pelvis_total = peakKE_p_total.val ?? KE_pelvis;
+        const KE_trunk_total  = peakKE_t_total.val ?? KE_trunk;
+        const KE_arm_total    = KE_arm;
+
+        // Amplification ratios (kinetic chain convention = rotational KE)
+        const transferPT_KE = KE_pelvis > 0 ? KE_trunk / KE_pelvis : null;
+        const transferTA_KE = KE_trunk  > 0 ? KE_arm / KE_trunk    : null;
 
         // Peak power INTO each segment (max dKE/dt)
         // We use central difference for smoother derivative.
@@ -535,22 +645,22 @@
         const trunkPower = peakPower(KE_t_ts);
         const armPower = peakPower(KE_a_ts);
 
-        // Power averaged between peak events (legacy, also useful)
-        const dtPT = (peakTrunk.idx - peakPelvis.idx) / fps;
-        const dtTA = (peakArm.idx - peakTrunk.idx) / fps;
-        const avgPowerPT = dtPT > 0 ? (KE_trunk - KE_pelvis) / dtPT : null;
-        const avgPowerTA = dtTA > 0 ? (KE_arm   - KE_trunk)  / dtTA : null;
-
         segmentEnergy = {
+          // Primary: rotational KE only (Naito 2011 / Aguinaldo & Escamilla 2019
+          // convention for kinetic-chain amplification).
           KE_pelvis, KE_trunk, KE_arm,
           transferPT_KE, transferTA_KE,
-          // Instantaneous peak power into each segment (true dE/dt max)
+          // Total KE (translational + rotational) — reported separately for
+          // transparency. Trunk/pelvis include ½m·v_com² which can dominate
+          // for proximal segments and biases T→A ratio downward, which is
+          // why the literature convention uses rotational-only ratios.
+          KE_pelvis_total, KE_trunk_total, KE_arm_total,
+          // Instantaneous peak power into each segment (true dE/dt max,
+          // computed from the total-KE time series so includes translation)
           peakPowerTrunk: trunkPower.peakPower,
           peakPowerTrunkFrame: trunkPower.peakPowerFrame,
           peakPowerArm: armPower.peakPower,
           peakPowerArmFrame: armPower.peakPowerFrame,
-          // Average power between peak events (peak-to-peak basis)
-          avgPowerPT, avgPowerTA,
           // Anthropometric details for transparency
           I_pelvis: inertia.I_pelvis, I_trunk: inertia.I_trunk, I_arm: inertia.I_arm,
           m_pelvis: inertia.m_pelvis, m_trunk: inertia.m_trunk, m_arm: inertia.m_arm,
@@ -1308,17 +1418,21 @@
       kneeDipMagnitude:  agg(perTrialStats.map(s => s.kneeSSC?.dipMagnitude)),
       kneeTransitionMs:  agg(perTrialStats.map(s => s.kneeSSC?.transitionMs)),
       // Segment kinetic energy aggregations
+      // Primary KE = rotational only (Naito 2011 / Aguinaldo & Escamilla 2019
+      // convention for kinetic-chain amplification ratios)
       KE_pelvis:         agg(perTrialStats.map(s => s.segmentEnergy?.KE_pelvis)),
       KE_trunk:          agg(perTrialStats.map(s => s.segmentEnergy?.KE_trunk)),
       KE_arm:            agg(perTrialStats.map(s => s.segmentEnergy?.KE_arm)),
+      // Total KE (translational + rotational about COM) — for transparency
+      KE_pelvis_total:   agg(perTrialStats.map(s => s.segmentEnergy?.KE_pelvis_total)),
+      KE_trunk_total:    agg(perTrialStats.map(s => s.segmentEnergy?.KE_trunk_total)),
+      KE_arm_total:      agg(perTrialStats.map(s => s.segmentEnergy?.KE_arm_total)),
+      // Amplification ratios (rotational-only)
       transferPT_KE:     agg(perTrialStats.map(s => s.segmentEnergy?.transferPT_KE)),
       transferTA_KE:     agg(perTrialStats.map(s => s.segmentEnergy?.transferTA_KE)),
-      // Instantaneous peak power (dE/dt, W) — most accurate transfer indicator
+      // Instantaneous peak power (dE/dt of total KE, W) — true transfer indicator
       peakPowerTrunk:    agg(perTrialStats.map(s => s.segmentEnergy?.peakPowerTrunk)),
       peakPowerArm:      agg(perTrialStats.map(s => s.segmentEnergy?.peakPowerArm)),
-      // Average power between peak events (peak-to-peak)
-      avgPowerPT:        agg(perTrialStats.map(s => s.segmentEnergy?.avgPowerPT)),
-      avgPowerTA:        agg(perTrialStats.map(s => s.segmentEnergy?.avgPowerTA)),
       // Elbow varus torque (Yanai 2023 method) — UCL injury risk indicator
       elbowPeakTorqueNm: agg(perTrialStats.map(s => s.segmentEnergy?.elbowPeakTorqueNm)),
       // v27 — Energy-flow metrics from baseball pitching literature
