@@ -35,9 +35,35 @@
     maxER:           { lo: 155, hi: 200, unit: '°' },
     maxXFactor:      { lo: 35,  hi: 60,  unit: '°' },
     strideRatio:     { lo: 0.80, hi: 1.05, unit: 'ratio'},
-    trunkForwardTilt:{ lo: 30,  hi: 45,  unit: '°' },
-    trunkLateralTilt:{ lo: 15,  hi: 35,  unit: '°' },
+    // v54 — Trunk forward tilt at BR: research-backed range
+    //   Fleisig et al. 1999 elite: 36±7° at BR (range ~28-44°)
+    //   Driveline elite median: 35° at BR
+    //   Too low (<28°) → arm dominance; too high (>43°) → shoulder distraction force↑
+    trunkForwardTilt:{ lo: 28,  hi: 44,  unit: '°' },
+    // v54 — Lateral trunk tilt (contralateral) at BR
+    //   Fleisig et al. 1999 elite: 23±10°
+    //   Driveline elite median: 25° at MER
+    //   Aguinaldo & Escamilla 2022: 30-40° → shoulder anterior force↑ (injury risk)
+    trunkLateralTilt:{ lo: 13,  hi: 33,  unit: '°' },
     frontKneeFlex:   { lo: 30,  hi: 50,  unit: '°' },
+    // v54 — NEW: Lead Knee Extension at BR (Driveline high-importance)
+    //   Driveline elite median: 11° (positive = extending direction)
+    //   <0° = collapsing; >5° = good block; >15° = elite-level lead-leg block
+    leadKneeExtAtBR: { good: 5, elite: 15, unit: '°' },
+    // v54 — NEW: Trunk rotation at FP (early rotation = injury risk)
+    //   Driveline elite median: 2° (very small rotation at FP)
+    //   Aguinaldo 2007: rotation >4° at FP → "early trunk rotation" → shoulder torque↑
+    trunkRotAtFP:    { lo: -5, hi: 8, unit: '°' },
+    // v54 — NEW: Trunk rotation at BR
+    //   Driveline elite median: 111°
+    trunkRotAtBR:    { lo: 95, hi: 130, unit: '°' },
+    // v54 — NEW: Peak CoG Velocity (Max CoG Velo)
+    //   Driveline elite median: 2.84 m/s · acceptable >2.4 m/s
+    peakCogVel:      { good: 2.4, elite: 2.84, unit: 'm/s' },
+    // v54 — NEW: CoG Decel (slow-down at front-foot block)
+    //   Driveline elite median: 1.61 m/s decrease from peak to BR
+    //   Higher = stronger block (better energy transfer to upper body)
+    cogDecel:        { good: 1.2, elite: 1.6, unit: 'm/s' },
     // ── New energy-leak indicators ───────────────────────────────────────
     // Flying open: % of total trunk rotation already completed by FC.
     // 0% = perfectly closed (ideal); 100% = already at release rotation.
@@ -1126,6 +1152,75 @@
 
     const sequenceOK = (peakPelvis.idx <= peakTrunk.idx) && (peakTrunk.idx <= peakArm.idx);
 
+    // ════════════════════════════════════════════════════════════════════
+    // v54 — NEW VARIABLES (Driveline-aligned)
+    // ════════════════════════════════════════════════════════════════════
+
+    // (1) Lead Knee Extension at BR (앞다리 신전 각도, BR 시점)
+    //   Driveline elite median: 11° · Per 1mph: 5°
+    //   Higher = better lead-leg block (energy transferred to ground)
+    let leadKneeExtAtBR = null;
+    {
+      const kneeCol = `${frontSide}_knee_extension`;
+      const kAtBR = rows[brRow]?.[kneeCol];
+      if (kAtBR != null) {
+        // knee_extension is positive when extended, negative when flexed
+        leadKneeExtAtBR = kAtBR;
+      }
+    }
+
+    // (2) Trunk Rotation at FP / BR (몸통 회전각, FP/BR 시점)
+    //   Driveline: FP elite ~2°, BR elite ~111°
+    //   Early rotation (>4° at FP) → injury risk (Aguinaldo 2007)
+    let trunkRotAtFP = null, trunkRotAtBR = null;
+    {
+      const rotAtFC = rows[fcRow]?.trunk_global_rotation;
+      const rotAtBR = rows[brRow]?.trunk_global_rotation;
+      if (rotAtFC != null) trunkRotAtFP = rotAtFC;
+      if (rotAtBR != null) trunkRotAtBR = rotAtBR;
+    }
+
+    // (3) Peak CoG Velocity & Decel (무게중심 최고속도/감속)
+    //   Driveline: Max CoG Velo elite 2.84 m/s · CoG Decel elite 1.61 m/s
+    //   Computed from pelvis joint center as proxy for CoG (sufficient for
+    //   tracking forward momentum; full CoG would weight-average all segments)
+    let peakCogVel = null, cogDecel = null;
+    {
+      const cogVels = [];
+      for (let i = 1; i < rows.length; i++) {
+        const p0 = jc(rows[i-1], 'pelvis');
+        const p1 = jc(rows[i], 'pelvis');
+        if (p0 && p1) {
+          // Forward velocity = -dz/dt (toward home plate is -Z direction)
+          const dz = p1.z - p0.z;
+          const v = -dz * fps;  // m/s (assuming z in meters)
+          cogVels.push({ idx: i, v });
+        }
+      }
+      if (cogVels.length > 0) {
+        // Peak before BR
+        let peakIdx = 0, peakV = -Infinity;
+        for (let i = 0; i < cogVels.length; i++) {
+          if (cogVels[i].idx <= brRow && cogVels[i].v > peakV) {
+            peakV = cogVels[i].v;
+            peakIdx = i;
+          }
+        }
+        if (peakV > 0.1) {
+          peakCogVel = peakV;
+          // Decel = peak - velocity at BR (how much CoG slows by release)
+          const brEntry = cogVels.find(c => c.idx === brRow);
+          if (brEntry) cogDecel = peakV - brEntry.v;
+        }
+      }
+    }
+
+    // (4) Trunk Lateral Tilt at BR (몸통 측면 기울기, BR 시점)
+    //   Driveline elite median: 25° · injury risk if >30°
+    //   Already computed earlier as trunkLateralTilt - just expose at BR specifically
+    //   Most studies measure at BR, so let's rename for clarity
+    const trunkLateralTiltAtBR = trunkLateralTilt;
+
     const faults = {
       sway:           r0.sway,
       hangingBack:    r0.hanging_back,
@@ -1161,6 +1256,9 @@
       maxER_invalid: maxERInvalid,
       bodyHeight, strideLength, strideRatio,
       trunkForwardTilt, trunkLateralTilt,
+      // v54 — NEW Driveline-aligned variables
+      leadKneeExtAtBR, trunkRotAtFP, trunkRotAtBR,
+      peakCogVel, cogDecel, trunkLateralTiltAtBR,
       wristHeight, armSlotAngle, armSlotType,
       frontKneeFlex,
       // Segment kinetic energy (estimation-based, requires height + mass)
@@ -1513,6 +1611,13 @@
       armSlotAngle:      agg(perTrialStats.map(s => s.armSlotAngle)),
       trunkForwardTilt:  agg(perTrialStats.map(s => s.trunkForwardTilt)),
       trunkLateralTilt:  agg(perTrialStats.map(s => s.trunkLateralTilt)),
+      // v54 — NEW Driveline-aligned aggregations
+      leadKneeExtAtBR:    agg(perTrialStats.map(s => s.leadKneeExtAtBR)),
+      trunkRotAtFP:       agg(perTrialStats.map(s => s.trunkRotAtFP)),
+      trunkRotAtBR:       agg(perTrialStats.map(s => s.trunkRotAtBR)),
+      peakCogVel:         agg(perTrialStats.map(s => s.peakCogVel)),
+      cogDecel:           agg(perTrialStats.map(s => s.cogDecel)),
+      trunkLateralTiltAtBR: agg(perTrialStats.map(s => s.trunkLateralTiltAtBR)),
       wristHeight:       agg(perTrialStats.map(s => s.wristHeight)),
       frontKneeFlex:     agg(perTrialStats.map(s => s.frontKneeFlex)),
       flyingOpenPct:     agg(perTrialStats.map(s => s.flyingOpenPct)),
