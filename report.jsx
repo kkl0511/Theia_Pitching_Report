@@ -474,7 +474,7 @@
   function toCommandRadarData(command) {
     return command.axes.map(ax => ({
       label: ax.name,
-      sub: ax.unit,
+      sub: ax.icon ? `${ax.icon} ${ax.grade || '—'}` : ax.unit,
       value: consistencyScore(ax.value, ax.thr),
       lo: 50,
       hi: 80,
@@ -525,21 +525,34 @@
     return valid.reduce((a, b) => a + b, 0) / valid.length;
   }
   function toVelocityRadarData(summary, energy) {
-    // 1. Arm Action (Layback, peak arm vel, arm slot)
-    const armAction = avgScores([
+    // ============================================================
+    // v64 — 우리 시스템 중심 6영역 구속 종합 평가
+    // 드라이브라인 5모델은 "Section 4 — 변인별 분석"에 그대로 존재.
+    // 이 종합 레이더는 우리가 분석한 변인들을 코칭 친화적으로 재그룹화한 것.
+    // 드라이브라인엔 없는 우리 고유 변인(ETI, 누수율, 시퀀싱)을 별도 축으로 분리.
+    // ============================================================
+
+    // 1. 팔 동작 (Arm Mechanics) — 드라이브라인 Arm Action 모델 매핑
+    //    핵심: MER(Layback), 팔 회전 속도, Arm slot
+    const armMechanics = avgScores([
       varToScore(summary.maxER?.mean, 178, false, 165, 195),
       varToScore(summary.peakArmVel?.mean, 1900, true),
       varToScore(summary.armSlotAngle?.mean, 84, false, 50, 110)
     ]);
-    // 2. Block (lead knee ext, stride length)
-    const block = avgScores([
+
+    // 2. 하체 블록 (Lower Body Block) — Block 모델 매핑
+    //    핵심: 앞다리 신전, 스트라이드 비율 + 스트라이드 이동·감속(드라이브라인 CoG 통합)
+    const lowerBlock = avgScores([
       varToScore(summary.leadKneeExtAtBR?.mean, 11, true),
-      varToScore(summary.strideRatio?.mean, 1.0, false, 0.85, 1.15)
+      varToScore(summary.strideRatio?.mean, 1.0, false, 0.85, 1.15),
+      varToScore(summary.peakCogVel?.mean, 2.84, true),
+      varToScore(summary.cogDecel?.mean, 1.61, true)
     ]);
-    // 3. Posture (Hip-Shoulder Sep, counter rot, trunk forward tilt, lateral tilt, trunk rot at FP/BR)
+
+    // 3. 자세 안정성 (Postural Control) — Posture 모델 매핑
+    //    핵심: X-factor, Counter Rot, 몸통 전방·측면 기울기, FP/BR 시점 회전
     const posture = avgScores([
       varToScore(summary.maxXFactor?.mean, 31, false, 35, 60),
-      // Counter rotation: more negative is better → invert via lowerBetter
       summary.peakTorsoCounterRot?.mean != null
         ? varToScore(Math.abs(summary.peakTorsoCounterRot.mean), 37, true)
         : null,
@@ -548,84 +561,98 @@
       varToScore(summary.trunkLateralTiltAtBR?.mean != null ? Math.abs(summary.trunkLateralTiltAtBR.mean) : null,
                  25, false, 13, 33)
     ]);
-    // 4. Rotation (peak trunk vel, peak pelvis vel)
+
+    // 4. 회전 동력 (Rotational Power) — Rotation 모델 매핑
+    //    핵심: 몸통/골반 각속도
     const rotation = avgScores([
       varToScore(summary.peakTrunkVel?.mean, 969, true),
       varToScore(summary.peakPelvisVel?.mean, 596, true)
     ]);
-    // 5. CoG (peak CoG vel, CoG decel)
-    const cog = avgScores([
-      varToScore(summary.peakCogVel?.mean, 2.84, true),
-      varToScore(summary.cogDecel?.mean, 1.61, true)
-    ]);
-    // 6. v62 — Energy Flow (우리 시스템 고유): ETI + 누수율 + 시퀀싱 lag
-    //   드라이브라인에는 없지만 키네틱 체인 효율을 직접 측정하는 변인들
-    const energyFlow = avgScores([
-      // ETI(P→T): elite ≥ 1.0, 0.7 = 50점, 1.2 = 100점
+
+    // 5. ⭐ 에너지 전달 (Energy Transfer) — 우리 시스템 고유
+    //    드라이브라인엔 없음. ETI = 분절 간 에너지 증폭률 직접 측정.
+    //    Howenstein 2019, Naito 2014 — 키네틱 체인 효율의 핵심 지표.
+    const energyTransfer = avgScores([
+      // ETI(P→T): elite ≥ 1.0 (몸통이 골반보다 빠르게 가속)
       summary.etiPT?.mean != null
         ? Math.max(0, Math.min(100, (summary.etiPT.mean - 0.7) * 100))
         : null,
-      // ETI(T→A): elite ≥ 1.05, 0.8 = 50점
+      // ETI(T→A): elite ≥ 1.05 (팔이 몸통보다 빠르게 가속)
       summary.etiTA?.mean != null
         ? Math.max(0, Math.min(100, (summary.etiTA.mean - 0.8) * 100))
         : null,
-      // 누수율: 0% = 100점, 50% = 0점 (역방향)
+      // 누수율: 0% = 100점, 50% = 0점 (역방향, 낮을수록 좋음)
       energy?.leakRate != null
         ? Math.max(0, Math.min(100, 100 - energy.leakRate * 2))
-        : null,
-      // P→T lag: elite 30~60ms 범위 — 정상 범위 안이면 점수 높음
+        : null
+    ]);
+
+    // 6. ⭐ 분절 시퀀싱 (Kinetic Sequencing) — 우리 시스템 고유
+    //    드라이브라인 5모델에 없음. P→T→A 순서대로 가속이 일어나는지의 타이밍.
+    //    Hirashima 2008 — proximal-to-distal sequencing의 정량적 측정.
+    const sequencing = avgScores([
+      // P→T lag: elite 30~60ms (적절한 골반-몸통 가속 간격)
       summary.ptLagMs?.mean != null
         ? varToScore(summary.ptLagMs.mean, 45, false, 25, 65)
         : null,
-      // T→A lag: elite 20~40ms
+      // T→A lag: elite 20~40ms (적절한 몸통-팔 가속 간격)
       summary.taLagMs?.mean != null
         ? varToScore(summary.taLagMs.mean, 30, false, 15, 45)
+        : null,
+      // FC→릴리스 시간: elite ~140-160ms (너무 빠르면 에너지 부족, 너무 느리면 효율 저하)
+      summary.fcBrMs?.mean != null
+        ? varToScore(summary.fcBrMs.mean, 150, false, 130, 180)
         : null
     ]);
-    // Display strings (most representative single value per axis)
-    const dispNum = (v, d=0) => v == null || isNaN(v) ? '—' : v.toFixed(d);
+
     return [
       {
-        label: 'Arm Action',
-        sub: 'MER, 팔속도',
-        value: armAction,
+        label: '팔 동작',
+        sub: 'MER · 팔속도 · Arm slot',
+        dlMapping: 'Driveline: Arm Action',
+        value: armMechanics,
         lo: 50, hi: 80,
-        display: armAction == null ? '—' : Math.round(armAction).toString()
+        display: armMechanics == null ? '—' : Math.round(armMechanics).toString()
       },
       {
-        label: 'Block',
-        sub: '앞다리, 보폭',
-        value: block,
+        label: '하체 블록',
+        sub: '앞다리 · 스트라이드 · 전진속도',
+        dlMapping: 'Driveline: Block + CoG',
+        value: lowerBlock,
         lo: 50, hi: 80,
-        display: block == null ? '—' : Math.round(block).toString()
+        display: lowerBlock == null ? '—' : Math.round(lowerBlock).toString()
       },
       {
-        label: 'Posture',
-        sub: 'X-factor, 기울기',
+        label: '자세 안정성',
+        sub: 'X-factor · Counter Rot · 기울기',
+        dlMapping: 'Driveline: Posture',
         value: posture,
         lo: 50, hi: 80,
         display: posture == null ? '—' : Math.round(posture).toString()
       },
       {
-        label: 'Rotation',
-        sub: '몸통, 골반 속도',
+        label: '회전 동력',
+        sub: '몸통 · 골반 각속도',
+        dlMapping: 'Driveline: Rotation',
         value: rotation,
         lo: 50, hi: 80,
         display: rotation == null ? '—' : Math.round(rotation).toString()
       },
       {
-        label: '스트라이드',
-        sub: '몸 전진 속도·감속',
-        value: cog,
+        label: '에너지 전달',
+        sub: 'ETI · 누수율',
+        dlMapping: '⭐ 우리 시스템 고유',
+        value: energyTransfer,
         lo: 50, hi: 80,
-        display: cog == null ? '—' : Math.round(cog).toString()
+        display: energyTransfer == null ? '—' : Math.round(energyTransfer).toString()
       },
       {
-        label: 'Energy Flow',
-        sub: '에너지 전달·시퀀싱',
-        value: energyFlow,
+        label: '분절 시퀀싱',
+        sub: 'P→T · T→A · FC→릴리스 lag',
+        dlMapping: '⭐ 우리 시스템 고유',
+        value: sequencing,
         lo: 50, hi: 80,
-        display: energyFlow == null ? '—' : Math.round(energyFlow).toString()
+        display: sequencing == null ? '—' : Math.round(sequencing).toString()
       }
     ];
   }
@@ -1684,48 +1711,80 @@
   // ============================================================
   function CommandPanel({ command }) {
     const radarData = toCommandRadarData(command);
+    const domains = command.domains || [];
     return (
       <div className="space-y-3">
         {/* Overall grade banner */}
         <div className="stat-card flex items-center justify-between" style={{ padding: '14px 16px' }}>
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-wider" style={{ color: '#94a3b8' }}>종합 등급</div>
-            <div className="text-[12.5px] mt-1" style={{ color: '#cbd5e1' }}>릴리스 일관성 — 제구 안정성 지표</div>
+            <div className="text-[12.5px] mt-1" style={{ color: '#cbd5e1' }}>동작 일관성 — 4영역 종합 평가</div>
           </div>
           <span className={`pill pill-${command.overall}`} style={{ fontSize: '24px', padding: '6px 18px', fontWeight: 800 }}>
             {command.overall}
           </span>
         </div>
 
-        {/* Radar + axes */}
+        {/* Radar (4-axis) + Domain cards with sub-axes */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
-          <div className="lg:col-span-3 stat-card flex items-center justify-center" style={{ padding: '12px' }}>
-            <window.BBLCharts.RadarChart data={radarData} size={420}/>
+          <div className="lg:col-span-2 stat-card flex items-center justify-center" style={{ padding: '12px' }}>
+            <window.BBLCharts.RadarChart data={radarData} size={360}/>
           </div>
-          <div className="lg:col-span-2 grid grid-cols-2 lg:grid-cols-1 gap-2 content-start">
-            {command.axes.map(ax => (
-              <div key={ax.key} className="stat-card" style={{ padding: '10px 12px' }}>
-                <div className="flex items-center justify-between">
-                  <div className="text-[10.5px] font-bold tracking-wide uppercase" style={{ color: '#94a3b8' }}>{ax.name}</div>
-                  <span className={`pill pill-${ax.grade}`}>{ax.grade}</span>
+          <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2 content-start">
+            {domains.map(d => {
+              const gradeColor = {
+                'A': '#10b981', 'B': '#84cc16', 'C': '#f59e0b', 'D': '#ef4444', 'N/A': '#94a3b8'
+              }[d.grade] || '#94a3b8';
+              return (
+                <div key={d.key} className="stat-card" style={{ padding: '10px 12px' }}>
+                  {/* Domain header */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-baseline gap-1.5">
+                      <span style={{ fontSize: 14 }}>{d.icon}</span>
+                      <span className="text-[12px] font-bold" style={{ color: '#e2e8f0' }}>{d.name}</span>
+                    </div>
+                    <span className="pill" style={{
+                      background: `${gradeColor}22`, color: gradeColor,
+                      fontSize: 12, fontWeight: 800, padding: '2px 9px', borderRadius: 4
+                    }}>{d.grade}</span>
+                  </div>
+                  <div className="text-[10px] mb-1.5" style={{ color: '#94a3b8' }}>{d.desc}</div>
+                  {/* Sub-axes list */}
+                  <div className="space-y-1">
+                    {d.subs.map(s => {
+                      const sColor = {
+                        'A': '#10b981', 'B': '#84cc16', 'C': '#f59e0b', 'D': '#ef4444', 'N/A': '#64748b'
+                      }[s.grade] || '#64748b';
+                      return (
+                        <div key={s.name} className="flex items-center justify-between text-[10.5px]" style={{
+                          padding: '3px 0', borderTop: '1px dashed rgba(148,163,184,0.1)'
+                        }}>
+                          <span style={{ color: '#cbd5e1' }}>{s.name}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="tabular-nums" style={{ color: '#94a3b8', fontSize: 10 }}>{s.valueDisplay}</span>
+                            <span style={{
+                              fontSize: 9, fontWeight: 800, color: sColor,
+                              background: `${sColor}1a`, padding: '1px 5px', borderRadius: 3, minWidth: 18, textAlign: 'center'
+                            }}>{s.grade}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="mt-1 text-[14px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>{ax.valueDisplay}</div>
-                <div className="mt-0.5 text-[10.5px] tabular-nums" style={{ color: '#94a3b8' }}>
-                  엘리트 ≤ {ax.thr.elite} {ax.unit}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
         <div className="flex items-start gap-2 px-3 py-2.5 rounded text-[11.5px] leading-relaxed" style={{ background: '#0a0e1a', border: '1px solid #1e2a47', color: '#cbd5e1' }}>
           <IconAlert size={12} />
           <span>
-            이 평가는 <b style={{ color: '#f1f5f9' }}>{command.nUsedForCommand || '전체'}개 투구의 릴리스 일관성</b>(매 투구 자세가 얼마나 같은지)을 측정한 것이며, 실제 스트라이크 비율과는 다른 지표입니다.
+            이 평가는 <b style={{ color: '#f1f5f9' }}>{command.nUsedForCommand || '전체'}개 투구의 동작 일관성</b>(매 투구 자세·타이밍·시퀀싱·파워가 얼마나 같은지)을 측정한 것이며, 실제 스트라이크 비율과는 다른 지표입니다.
             {command.includedAllTrials && command.nUsedForBiomechanics != null && (
               <span style={{ color: '#94a3b8' }}> (생체역학 분석은 품질검수 통과 {command.nUsedForBiomechanics}개 사용, 제구는 검수 제외 분 포함 전체 {command.nUsedForCommand}개 사용)</span>
             )}
-            {' '}8각 다이어그램이 외곽(녹색)에 가까울수록 일관성이 높습니다.
+            {' '}<b>4영역 다이어그램</b>이 외곽(녹색)에 가까울수록 일관성이 높습니다. 각 영역은 하위 변인들의 등급 평균.
           </span>
         </div>
       </div>
@@ -1988,7 +2047,7 @@
         </CompareSection>
 
         {/* 제구 */}
-        <CompareSection title="제구 능력" subtitle="릴리스 일관성 (CV / SD)">
+        <CompareSection title="제구 능력" subtitle="동작 일관성 (CV / SD)">
           <div className="grid items-center gap-3 py-2 border-b" style={{
             gridTemplateColumns: '1.6fr 1fr 0.6fr 1fr', borderColor: '#1e2a47'
           }}>
@@ -3807,9 +3866,9 @@
 
           {/* v55 — PART B Summary: Velocity Radar (Driveline 5-model style) */}
           <Section n={6} title="구속 요인 종합" className="section-velocity"
-            subtitle="5모델 레이더 — 드라이브라인 평가 형식">
+            subtitle="우리 시스템 6영역 종합 평가 — 드라이브라인 모델 + 키네틱 체인 정밀 지표">
             <PerspectiveIntro kind="velocity">
-              <b>구속 요인 한눈에:</b> 앞에서 본 모든 구속 요인을 5개 영역(팔 동작, 디딤발, 자세, 회전, 스트라이드)으로 묶어 시각화했습니다. 빨간 선은 엘리트 평균(50점 기준), 초록 선은 엘리트 상위(80점). 다각형이 클수록 균형 잡힌 메커닉.
+              <b>구속 요인 한눈에:</b> 앞에서 분석한 모든 구속 요인을 코칭 친화적인 6개 영역으로 묶어 시각화했습니다. 앞 4개 영역(팔 동작·하체 블록·자세 안정성·회전 동력)은 드라이브라인 5모델과 매핑되며, <b style={{ color: '#5eead4' }}>뒤 2개 영역(에너지 전달·분절 시퀀싱)은 우리 시스템 고유 축</b>으로 키네틱 체인 효율을 직접 측정합니다. 빨간 선 = 엘리트 평균(50점), 초록 선 = 엘리트 상위(80점). 다각형이 클수록 균형 잡힌 메커닉.
             </PerspectiveIntro>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
@@ -3831,12 +3890,30 @@
                                     : score >= 50 ? '#84cc16'
                                     : score >= 35 ? '#f59e0b'
                                     : '#ef4444';
+                  // v64 — Highlight our-system-only axes with cyan tint
+                  const isOurOwn = ax.dlMapping && ax.dlMapping.includes('우리 시스템 고유');
                   return (
-                    <div key={ax.label} className={`stat-card ${tone}`} style={{ padding: '10px 12px' }}>
-                      <div className="flex items-baseline justify-between">
-                        <div>
-                          <div className="text-[12px] font-bold" style={{ color: '#e2e8f0' }}>{ax.label}</div>
+                    <div key={ax.label} className={`stat-card ${tone}`} style={{
+                      padding: '10px 12px',
+                      borderColor: isOurOwn ? 'rgba(20,184,166,0.4)' : undefined
+                    }}>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="flex items-center gap-1.5">
+                            <div className="text-[12px] font-bold" style={{ color: '#e2e8f0' }}>{ax.label}</div>
+                            {isOurOwn && (
+                              <span style={{
+                                fontSize: 8.5, fontWeight: 700, color: '#5eead4',
+                                background: 'rgba(20,184,166,0.15)', padding: '1px 5px', borderRadius: 3
+                              }}>우리 시스템</span>
+                            )}
+                          </div>
                           <div className="text-[10px]" style={{ color: '#94a3b8' }}>{ax.sub}</div>
+                          {ax.dlMapping && (
+                            <div className="text-[9.5px] mt-0.5" style={{
+                              color: isOurOwn ? '#5eead4' : '#64748b', fontStyle: 'italic'
+                            }}>{ax.dlMapping}</div>
+                          )}
                         </div>
                         <div className="text-right">
                           <div className="text-[18px] font-bold tabular-nums" style={{ color: '#f1f5f9' }}>
@@ -3851,10 +3928,16 @@
               </div>
             </div>
 
-            <div className="text-[10.5px] mt-3 px-3 py-2 rounded" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', color: '#cbd5e1', lineHeight: 1.5 }}>
-              <b style={{ color: '#fbbf24' }}>점수 산정:</b> 각 축은 해당 영역의 핵심 변인(엘리트 중간값 기준 정규화)을 평균한 0~100 점수입니다.
-              50점 = 엘리트 중간값, 80점 = 엘리트 상위. 각 축의 변인 — <b>Arm Action</b>(MER, 팔 회전 속도, Arm slot), <b>Block</b>(앞다리 신전, 스트라이드 비율), <b>Posture</b>(X-factor, Counter Rot, 몸통 기울기), <b>Rotation</b>(몸통/골반 회전 속도), <b>스트라이드</b>(이동 속도, 감속), <b>Energy Flow</b>(ETI P→T·T→A, 누수율, 시퀀싱 lag).
-              앞 5개는 드라이브라인 평가 리포트(2024) 5모델 기반, <b>Energy Flow는 우리 시스템 고유 축</b>으로 키네틱 체인 효율을 직접 측정합니다.
+            <div className="text-[10.5px] mt-3 px-3 py-2.5 rounded" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', color: '#cbd5e1', lineHeight: 1.6 }}>
+              <div style={{ marginBottom: 6 }}>
+                <b style={{ color: '#fbbf24' }}>점수 산정:</b> 각 축은 해당 영역의 핵심 변인을 엘리트 중간값 기준으로 정규화한 후 평균낸 0~100 점수입니다. 50점 = 엘리트 중간값, 80점 = 엘리트 상위.
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                <b style={{ color: '#fbbf24' }}>드라이브라인 매핑 영역</b> (4개) — <b>팔 동작</b>(MER, 팔 회전 속도, Arm slot) · <b>하체 블록</b>(앞다리 신전, 스트라이드 비율, 전진 속도, 감속) · <b>자세 안정성</b>(X-factor, Counter Rot, 몸통 전방·측면 기울기) · <b>회전 동력</b>(몸통/골반 각속도). 드라이브라인 5모델(2024) 변인 풀에서 도출하되, 단위·정규화·임계값은 우리 시스템 데이터에 맞춤 조정.
+              </div>
+              <div>
+                <b style={{ color: '#5eead4' }}>⭐ 우리 시스템 고유 영역</b> (2개) — <b>에너지 전달</b>(ETI P→T, ETI T→A, 누수율) · <b>분절 시퀀싱</b>(P→T lag, T→A lag, FC→릴리스 시간). 드라이브라인 5모델에는 없는 키네틱 체인 효율 직접 측정 변인. <b>Howenstein 2019 (J Biomech), Naito 2014 (Hum Mov Sci), Hirashima 2008 (J Biomech)</b>의 proximal-to-distal sequencing 분석에서 도출. 드라이브라인이 보지 못하는 "에너지가 얼마나 잘 흐르는가"를 평가.
+              </div>
             </div>
           </Section>
 
@@ -3868,7 +3951,7 @@
             {/* Command radar (preserved from former Section 7) */}
             <div className="mb-3">
               <CommandPanel command={command}/>
-              {(() => { const s = summarizeCommand(command); return <SummaryBox tone={s.tone} title="6축 일관성 한눈에 보기" text={s.text}/>; })()}
+              {(() => { const s = summarizeCommand(command); return <SummaryBox tone={s.tone} title="4영역 일관성 한눈에 보기" text={s.text}/>; })()}
             </div>
 
             {/* Group 1: Release Position */}
@@ -3877,6 +3960,12 @@
                 <span style={{ fontSize: 14 }}>🎯</span>
                 <span className="text-[12px] font-bold" style={{ color: '#f472b6' }}>Release Position</span>
                 <span className="text-[10px]" style={{ color: '#94a3b8' }}>— 릴리스 포지션 일관성 (SD)</span>
+                {(() => {
+                  const d = command.domains?.find(x => x.key === 'releasePos');
+                  if (!d || d.grade === 'N/A') return null;
+                  const c = { A: '#10b981', B: '#84cc16', C: '#f59e0b', D: '#ef4444' }[d.grade] || '#94a3b8';
+                  return <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: c, background: `${c}1a`, padding: '1px 8px', borderRadius: 4 }}>{d.grade}</span>;
+                })()}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" style={{ paddingLeft: 11 }}>
                 <ConsistencyCard
@@ -3912,6 +4001,12 @@
                 <span style={{ fontSize: 14 }}>⏱️</span>
                 <span className="text-[12px] font-bold" style={{ color: '#f472b6' }}>Release Timing</span>
                 <span className="text-[10px]" style={{ color: '#94a3b8' }}>— 릴리스 타이밍 일관성 (CV)</span>
+                {(() => {
+                  const d = command.domains?.find(x => x.key === 'releaseTiming');
+                  if (!d || d.grade === 'N/A') return null;
+                  const c = { A: '#10b981', B: '#84cc16', C: '#f59e0b', D: '#ef4444' }[d.grade] || '#94a3b8';
+                  return <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: c, background: `${c}1a`, padding: '1px 8px', borderRadius: 4 }}>{d.grade}</span>;
+                })()}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" style={{ paddingLeft: 11 }}>
                 <ConsistencyCard
@@ -3936,6 +4031,12 @@
                 <span style={{ fontSize: 14 }}>🌀</span>
                 <span className="text-[12px] font-bold" style={{ color: '#f472b6' }}>Sequencing</span>
                 <span className="text-[10px]" style={{ color: '#94a3b8' }}>— 분절 시퀀싱 타이밍 일관성 (CV)</span>
+                {(() => {
+                  const d = command.domains?.find(x => x.key === 'sequencing');
+                  if (!d || d.grade === 'N/A') return null;
+                  const c = { A: '#10b981', B: '#84cc16', C: '#f59e0b', D: '#ef4444' }[d.grade] || '#94a3b8';
+                  return <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: c, background: `${c}1a`, padding: '1px 8px', borderRadius: 4 }}>{d.grade}</span>;
+                })()}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" style={{ paddingLeft: 11 }}>
                 <ConsistencyCard
@@ -3959,6 +4060,12 @@
                 <span style={{ fontSize: 14 }}>💨</span>
                 <span className="text-[12px] font-bold" style={{ color: '#f472b6' }}>Power Output</span>
                 <span className="text-[10px]" style={{ color: '#94a3b8' }}>— 파워 변인 일관성 (CV)</span>
+                {(() => {
+                  const d = command.domains?.find(x => x.key === 'powerOutput');
+                  if (!d || d.grade === 'N/A') return null;
+                  const c = { A: '#10b981', B: '#84cc16', C: '#f59e0b', D: '#ef4444' }[d.grade] || '#94a3b8';
+                  return <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: c, background: `${c}1a`, padding: '1px 8px', borderRadius: 4 }}>{d.grade}</span>;
+                })()}
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" style={{ paddingLeft: 11 }}>
                 {summary.peakPelvisVel?.cv != null && (

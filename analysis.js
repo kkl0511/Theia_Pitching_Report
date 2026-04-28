@@ -1310,37 +1310,126 @@
     return { grade: 'D', score: 1 };
   }
   function computeCommand(summary) {
+    // v63 — 4-domain consistency model: Release Position / Release Timing / Sequencing / Power Output
+    // Each domain aggregates multiple raw consistency variables (SD or CV) into one grade.
+    //
+    // Domain grade is computed by averaging individual sub-axis grades (A=4, B=3, C=2, D=1, N/A=0)
+    // then mapping back: ≥3.5→A, ≥2.5→B, ≥1.5→C, >0→D
     const wristHeightSdCm = summary.wristHeight?.sd != null ? summary.wristHeight.sd * 100 : null;
-    // v62 — Aggregate sequencing CV: average of P→T and T→A lag CVs
-    const sequencingCv = (() => {
-      const vals = [summary.ptLagMs?.cv, summary.taLagMs?.cv].filter(v => v != null && Number.isFinite(v));
-      return vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : null;
-    })();
-    // v62 — Aggregate angular velocity CV: average of arm/trunk/pelvis peak velocity CVs
-    const angVelCv = (() => {
-      const vals = [summary.peakArmVel?.cv, summary.peakTrunkVel?.cv, summary.peakPelvisVel?.cv]
-        .filter(v => v != null && Number.isFinite(v));
-      return vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : null;
-    })();
-    const axes = [
-      { key: 'wrist',     name: '손목 높이',    valueDisplay: wristHeightSdCm != null ? `±${wristHeightSdCm.toFixed(2)} cm` : '—', value: wristHeightSdCm, thr: ELITE.cmd_wristHeightSdCm, unit: 'cm SD' },
-      { key: 'armSlot',   name: 'Arm slot',    valueDisplay: summary.armSlotAngle?.sd != null ? `±${summary.armSlotAngle.sd.toFixed(2)}°` : '—', value: summary.armSlotAngle?.sd, thr: ELITE.cmd_armSlotSdDeg, unit: '° SD' },
-      { key: 'trunkTilt', name: '몸통 기울기',  valueDisplay: summary.trunkForwardTilt?.sd != null ? `±${summary.trunkForwardTilt.sd.toFixed(2)}°` : '—', value: summary.trunkForwardTilt?.sd, thr: ELITE.cmd_trunkForwardSdDeg, unit: '° SD' },
-      { key: 'maxER',     name: 'Max ER',      valueDisplay: summary.maxER?.cv != null ? `${summary.maxER.cv.toFixed(2)}%` : '—', value: summary.maxER?.cv, thr: ELITE.cmd_erCvPct, unit: 'CV%' },
-      { key: 'stride',    name: 'Stride',      valueDisplay: summary.strideLength?.cv != null ? `${summary.strideLength.cv.toFixed(2)}%` : '—', value: summary.strideLength?.cv, thr: ELITE.cmd_strideCvPct, unit: 'CV%' },
-      { key: 'fcBr',      name: 'FC→릴리스',   valueDisplay: summary.fcBrMs?.cv != null ? `${summary.fcBrMs.cv.toFixed(2)}%` : '—', value: summary.fcBrMs?.cv, thr: ELITE.cmd_fcBrCvPct, unit: 'CV%' },
-      { key: 'sequencing', name: '시퀀싱',     valueDisplay: sequencingCv != null ? `${sequencingCv.toFixed(2)}%` : '—', value: sequencingCv, thr: ELITE.cmd_ptLagCvPct, unit: 'CV%' },
-      { key: 'angVel',    name: '각속도',      valueDisplay: angVelCv != null ? `${angVelCv.toFixed(2)}%` : '—', value: angVelCv, thr: ELITE.cmd_armVelCvPct, unit: 'CV%' }
+
+    // --- Sub-axis raw values (used for both display and domain aggregation) ---
+    const subAxes = {
+      // Release Position (자세 일관성 — 매 투구의 자세가 같은가)
+      wrist:      { name: '손목 높이',     value: wristHeightSdCm,             thr: ELITE.cmd_wristHeightSdCm,    unit: 'cm SD',
+                    valueDisplay: wristHeightSdCm != null ? `±${wristHeightSdCm.toFixed(2)} cm` : '—',
+                    domain: 'releasePos' },
+      armSlot:    { name: 'Arm slot',     value: summary.armSlotAngle?.sd,    thr: ELITE.cmd_armSlotSdDeg,       unit: '° SD',
+                    valueDisplay: summary.armSlotAngle?.sd != null ? `±${summary.armSlotAngle.sd.toFixed(2)}°` : '—',
+                    domain: 'releasePos' },
+      trunkTilt:  { name: '몸통 기울기',   value: summary.trunkForwardTilt?.sd, thr: ELITE.cmd_trunkForwardSdDeg, unit: '° SD',
+                    valueDisplay: summary.trunkForwardTilt?.sd != null ? `±${summary.trunkForwardTilt.sd.toFixed(2)}°` : '—',
+                    domain: 'releasePos' },
+      // Release Timing (릴리스 시점 일관성 — 같은 시점에 공을 놓는가)
+      fcBr:       { name: 'FC→릴리스',     value: summary.fcBrMs?.cv,           thr: ELITE.cmd_fcBrCvPct,          unit: 'CV%',
+                    valueDisplay: summary.fcBrMs?.cv != null ? `${summary.fcBrMs.cv.toFixed(2)}%` : '—',
+                    domain: 'releaseTiming' },
+      // Sequencing (분절 가속 타이밍 일관성)
+      ptLag:      { name: 'P→T 시퀀싱',    value: summary.ptLagMs?.cv,          thr: ELITE.cmd_ptLagCvPct,         unit: 'CV%',
+                    valueDisplay: summary.ptLagMs?.cv != null ? `${summary.ptLagMs.cv.toFixed(2)}%` : '—',
+                    domain: 'sequencing' },
+      taLag:      { name: 'T→A 시퀀싱',    value: summary.taLagMs?.cv,          thr: ELITE.cmd_taLagCvPct,         unit: 'CV%',
+                    valueDisplay: summary.taLagMs?.cv != null ? `${summary.taLagMs.cv.toFixed(2)}%` : '—',
+                    domain: 'sequencing' },
+      // Power Output (출력 강도 일관성)
+      maxER:      { name: 'Max ER',       value: summary.maxER?.cv,            thr: ELITE.cmd_erCvPct,            unit: 'CV%',
+                    valueDisplay: summary.maxER?.cv != null ? `${summary.maxER.cv.toFixed(2)}%` : '—',
+                    domain: 'powerOutput' },
+      stride:     { name: 'Stride',       value: summary.strideLength?.cv,     thr: ELITE.cmd_strideCvPct,        unit: 'CV%',
+                    valueDisplay: summary.strideLength?.cv != null ? `${summary.strideLength.cv.toFixed(2)}%` : '—',
+                    domain: 'powerOutput' },
+      armVel:     { name: '팔 각속도',     value: summary.peakArmVel?.cv,       thr: ELITE.cmd_armVelCvPct,        unit: 'CV%',
+                    valueDisplay: summary.peakArmVel?.cv != null ? `${summary.peakArmVel.cv.toFixed(2)}%` : '—',
+                    domain: 'powerOutput' },
+      trunkVel:   { name: '몸통 각속도',   value: summary.peakTrunkVel?.cv,     thr: ELITE.cmd_trunkVelCvPct,      unit: 'CV%',
+                    valueDisplay: summary.peakTrunkVel?.cv != null ? `${summary.peakTrunkVel.cv.toFixed(2)}%` : '—',
+                    domain: 'powerOutput' },
+      pelvisVel:  { name: '골반 각속도',   value: summary.peakPelvisVel?.cv,    thr: ELITE.cmd_pelvisVelCvPct,     unit: 'CV%',
+                    valueDisplay: summary.peakPelvisVel?.cv != null ? `${summary.peakPelvisVel.cv.toFixed(2)}%` : '—',
+                    domain: 'powerOutput' },
+      xFactor:    { name: 'X-factor',     value: summary.maxXFactor?.cv,       thr: ELITE.cmd_xFactorCvPct,       unit: 'CV%',
+                    valueDisplay: summary.maxXFactor?.cv != null ? `${summary.maxXFactor.cv.toFixed(2)}%` : '—',
+                    domain: 'powerOutput' }
+    };
+
+    // Grade each sub-axis
+    const subAxesGraded = Object.fromEntries(
+      Object.entries(subAxes).map(([k, ax]) => [k, { ...ax, ...gradeAxis(ax.value, ax.thr) }])
+    );
+
+    // Aggregate sub-axes into 4 domain axes
+    const gradeToScore = { A: 4, B: 3, C: 2, D: 1 };
+    const scoreToGrade = (avg) => {
+      if (avg >= 3.5) return 'A';
+      if (avg >= 2.5) return 'B';
+      if (avg >= 1.5) return 'C';
+      if (avg > 0)    return 'D';
+      return 'N/A';
+    };
+    const aggregateDomain = (subs) => {
+      const valid = subs.filter(s => s.grade && s.grade !== 'N/A' && gradeToScore[s.grade] != null);
+      if (!valid.length) return { score: 0, grade: 'N/A', count: 0, totalCount: subs.length };
+      const avg = valid.reduce((a, s) => a + gradeToScore[s.grade], 0) / valid.length;
+      return { score: avg, grade: scoreToGrade(avg), count: valid.length, totalCount: subs.length };
+    };
+
+    const releasePosSubs    = ['wrist', 'armSlot', 'trunkTilt'].map(k => subAxesGraded[k]);
+    const releaseTimingSubs = ['fcBr'].map(k => subAxesGraded[k]);
+    const sequencingSubs    = ['ptLag', 'taLag'].map(k => subAxesGraded[k]);
+    const powerOutputSubs   = ['maxER', 'stride', 'armVel', 'trunkVel', 'pelvisVel', 'xFactor'].map(k => subAxesGraded[k]);
+
+    const domains = [
+      { key: 'releasePos',    name: '릴리즈 포지션', icon: '🎯', desc: '매 투구의 자세 일관성',
+        ...aggregateDomain(releasePosSubs),    subs: releasePosSubs },
+      { key: 'releaseTiming', name: '릴리즈 타이밍', icon: '⏱️', desc: '공을 놓는 시점 일관성',
+        ...aggregateDomain(releaseTimingSubs), subs: releaseTimingSubs },
+      { key: 'sequencing',    name: '시퀀싱',        icon: '🌀', desc: '분절 가속 타이밍 일관성',
+        ...aggregateDomain(sequencingSubs),    subs: sequencingSubs },
+      { key: 'powerOutput',   name: '파워 아웃풋',   icon: '💨', desc: '출력 강도 일관성',
+        ...aggregateDomain(powerOutputSubs),   subs: powerOutputSubs }
     ];
-    const graded = axes.map(ax => ({ ...ax, ...gradeAxis(ax.value, ax.thr) }));
-    const validScores = graded.filter(g => g.score > 0).map(g => g.score);
-    const avgScore = validScores.length ? validScores.reduce((a,b) => a+b, 0)/validScores.length : 0;
-    let overall = 'N/A';
-    if (avgScore >= 3.5)      overall = 'A';
-    else if (avgScore >= 2.5) overall = 'B';
-    else if (avgScore >= 1.5) overall = 'C';
-    else if (avgScore > 0)    overall = 'D';
-    return { overall, avgScore, axes: graded, weakest: graded.filter(g => g.grade === 'C' || g.grade === 'D') };
+
+    // For radar display (4 axes — each domain's score normalized to 0-100 for radar)
+    // Convert score (0-4) to a 0-100-ish range that fits varToScore semantics: A→90, B→70, C→50, D→30
+    const axes = domains.map(d => ({
+      key: d.key,
+      name: d.name,
+      icon: d.icon,
+      grade: d.grade,
+      // For radar: lower CV/SD is better, so use inverted score (4=A=best)
+      // Radar expects "lower than threshold ELITE = good"
+      // We'll map score 4→1, 3→2, 2→3, 1→4, 0→5 (lower value better in radar's perspective)
+      // But it's cleaner to use the score directly with custom thr
+      value: d.score === 0 ? null : (5 - d.score),  // invert: 4(A)→1, 1(D)→4, lower = better
+      thr: { elite: 1, good: 2, ok: 3 },              // ≤1 = elite, ≤2 = good, ≤3 = ok
+      valueDisplay: d.grade === 'N/A' ? '—' : `${d.grade} (${d.subs.filter(s=>s.grade!=='N/A').length}/${d.totalCount})`,
+      unit: '',
+      // Pass through for sidebar
+      desc: d.desc,
+      subs: d.subs
+    }));
+
+    // Overall grade — average all valid domain scores
+    const validDomainScores = domains.map(d => d.score).filter(s => s > 0);
+    const avgScore = validDomainScores.length ? validDomainScores.reduce((a,b) => a+b, 0) / validDomainScores.length : 0;
+    const overall = scoreToGrade(avgScore);
+
+    return {
+      overall,
+      avgScore,
+      axes,        // 4 domain axes (for radar)
+      domains,     // same as axes but without invert mapping (for sidebar UI)
+      weakest: domains.filter(d => d.grade === 'C' || d.grade === 'D')
+    };
   }
 
   // ---------- 7-factor groups ----------
@@ -1608,9 +1697,21 @@
       improvements.push({ kind: 'velocity', title: 'FP 시점 몸통 조기 회전', detail: `${summary.trunkRotAtFP.mean.toFixed(1)}° (엘리트 2°)` });
     if (summary.trunkForwardTilt?.mean != null && (Math.abs(summary.trunkForwardTilt.mean) < 28 || Math.abs(summary.trunkForwardTilt.mean) > 44))
       improvements.push({ kind: 'velocity', title: '몸통 전방 기울기 범위 이탈', detail: `${summary.trunkForwardTilt.mean.toFixed(1)}° (엘리트 28~44°)` });
-    // Command-related — v59: relaxed thresholds (good→ok range catches more)
+    // Command-related — v63: domain-level + sub-axis weaknesses
     if (['C','D'].includes(command.overall))
-      improvements.push({ kind: 'command', title: '릴리스 일관성 낮음', detail: `종합 등급 ${command.overall}` });
+      improvements.push({ kind: 'command', title: '동작 일관성 낮음 (종합)', detail: `종합 등급 ${command.overall} — 4영역 평균` });
+    // v63 — Domain-level weaknesses (helps user see WHICH area is weak)
+    if (command.domains) {
+      command.domains.forEach(d => {
+        if (['C','D'].includes(d.grade)) {
+          improvements.push({
+            kind: 'command',
+            title: `${d.icon} ${d.name} 약점 (${d.grade}등급)`,
+            detail: `${d.desc} — 하위 변인 ${d.subs.filter(s => s.grade && s.grade !== 'N/A').length}개 평균`
+          });
+        }
+      });
+    }
     if (summary.fcBrMs?.cv != null && summary.fcBrMs.cv > ELITE.cmd_fcBrCvPct.good)
       improvements.push({ kind: 'command', title: 'FC→릴리스 타이밍 변동 큼', detail: `CV ${summary.fcBrMs.cv.toFixed(1)}% (엘리트 <${ELITE.cmd_fcBrCvPct.elite}%, 양호 <${ELITE.cmd_fcBrCvPct.good}%)` });
     if (summary.strideLength?.cv != null && summary.strideLength.cv > ELITE.cmd_strideCvPct.good)
