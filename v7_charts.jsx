@@ -1390,24 +1390,26 @@
           {/* v79 — REMOVED: ④ 두 다리 균형 (legAsymmetry) box was here.
               The asymmetry is still rendered as the colored rings around feet via de Swart visualization below. */}
 
-          {/* v79 — STRIDE FOOT BLOCK — 회전 에너지 시작점 (positioned near stride foot, lower-left)
-              Stride foot (lAnkle=[310,487]) lands forward and blocks; ground reaction force from this
-              block decelerates the pelvis, driving rotational energy up the kinetic chain. */}
+          {/* v80 — STRIDE FOOT BLOCK — 회전 에너지 시작점 (with braking-GRF subtitle)
+              Stride foot uses BRAKING ground reaction force to amplify rotational energy:
+              the front foot decelerates the pelvis at FC, transferring momentum to trunk rotation. */}
           <g>
             <line x1={K.lAnkle[0] - 8} y1={K.lAnkle[1] + 4} x2="240" y2="500" stroke="#a78bfa" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
-            <rect x="40" y="486" width="218" height="48" rx="6" fill="#0b1220" stroke="#a78bfa" strokeOpacity="0.7"/>
-            <text x="149" y="503" fill="#a78bfa" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">디딤발 블록</text>
-            <text x="149" y="521" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">회전 에너지 시작점</text>
+            <rect x="40" y="480" width="218" height="68" rx="6" fill="#0b1220" stroke="#a78bfa" strokeOpacity="0.7"/>
+            <text x="149" y="498" fill="#a78bfa" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">디딤발 블록</text>
+            <text x="149" y="516" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">회전 에너지 시작점</text>
+            <text x="149" y="535" fill="#94a3b8" fontSize="9.5" textAnchor="middle">제동 지면반력 이용 회전 에너지 증폭</text>
           </g>
 
-          {/* v79 — PIVOT FOOT BLOCK — 전진 에너지 시작점 (positioned near pivot foot, lower-right)
-              Pivot foot (rAnkle=[620,427]) pushes off the rubber, generating linear forward
-              momentum that drives the body toward the plate. */}
+          {/* v80 — PIVOT FOOT BLOCK — 전진 에너지 시작점 (with propulsive-GRF subtitle)
+              Pivot foot uses PROPULSIVE ground reaction force to generate linear stride energy:
+              push-off from rubber drives forward translation toward the plate. */}
           <g>
-            <line x1={K.rAnkle[0] + 14} y1={K.rAnkle[1] + 6} x2="660" y2="478" stroke="#3b82f6" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
-            <rect x="540" y="478" width="232" height="48" rx="6" fill="#0b1220" stroke="#3b82f6" strokeOpacity="0.7"/>
-            <text x="656" y="495" fill="#3b82f6" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">축발 추진</text>
-            <text x="656" y="513" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">전진 에너지 시작점</text>
+            <line x1={K.rAnkle[0] + 14} y1={K.rAnkle[1] + 6} x2="660" y2="472" stroke="#3b82f6" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="540" y="472" width="232" height="68" rx="6" fill="#0b1220" stroke="#3b82f6" strokeOpacity="0.7"/>
+            <text x="656" y="490" fill="#3b82f6" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">축발 추진</text>
+            <text x="656" y="508" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">전진 에너지 시작점</text>
+            <text x="656" y="527" fill="#94a3b8" fontSize="9.5" textAnchor="middle">추진 지면반력으로 스트라이드 에너지 생성</text>
           </g>
 
           {/* === Joint markers (key kinematic points) === */}
