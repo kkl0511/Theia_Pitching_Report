@@ -2264,15 +2264,19 @@
     // If base64 is over ~6MB (raw bytes ~4.5MB), Contents API often returns 422
     // Use Git Data API directly for safety.
     const sizeBytes = Math.floor(base64Content.length * 0.75);
+    const sizeMB = (sizeBytes / 1024 / 1024).toFixed(1);
+    console.log(`[Upload] ${path} — ${sizeMB}MB`);
     if (sizeBytes > 5 * 1024 * 1024) {
+      console.log(`[Upload] Using Git Data API (file > 5MB)`);
       return uploadLargeFileViaGitDataApi(path, base64Content, commitMessage, cfg, token);
     }
     try {
+      console.log(`[Upload] Using Contents API`);
       return await uploadFileToGithub(path, base64Content, commitMessage, cfg, token);
     } catch (e) {
       // If Contents API fails with 422 (often size-related), retry via Git Data API
       if (/422/.test(e.message) || /too large/i.test(e.message)) {
-        console.warn('Contents API failed, falling back to Git Data API:', e.message);
+        console.warn(`[Upload] Contents API failed (${e.message}), falling back to Git Data API`);
         return uploadLargeFileViaGitDataApi(path, base64Content, commitMessage, cfg, token);
       }
       throw e;
@@ -2529,7 +2533,23 @@
           alert(msg);
         }
       } catch (e) {
-        alert(`업로드 실패: ${e.message}\n\n토큰이 만료되었거나 권한이 부족할 수 있습니다. ⚙ 버튼으로 토큰을 재설정하세요.`);
+        // v73 — Detailed error diagnosis
+        const msg = e.message || String(e);
+        let hint = '';
+        if (/422/.test(msg) && /too large/i.test(msg)) {
+          hint = '\n\n[원인] 파일이 너무 큽니다.\n\n[v73 진단]\n• 코드 자체에는 Git Data API 자동 폴백이 있어 100MB까지 가능합니다.\n• 만약 이 에러가 보인다면 GitHub Pages에 v71 이상 코드가 배포되지 않았을 가능성이 높습니다.\n• 강제 새로고침(Cmd/Ctrl + Shift + R) 후 다시 시도하세요.\n• 또는 GitHub > Actions에서 빌드 성공(✓) 확인하세요.';
+        } else if (/422/.test(msg)) {
+          hint = '\n\n[원인] GitHub가 요청을 거부했습니다 (422).\n• 파일명에 특수문자가 있나요?\n• 토큰 권한 부족 가능성 — ⚙ 버튼으로 토큰 재설정\n• 영상 형식이 mp4/mov/webm인지 확인';
+        } else if (/401/.test(msg) || /403/.test(msg)) {
+          hint = '\n\n[원인] 인증 실패. 토큰이 만료되었거나 권한 부족.\n⚙ 버튼으로 새 토큰 발급해서 재설정하세요.\n토큰 권한은 "Contents: Read and write" 필요.';
+        } else if (/404/.test(msg)) {
+          hint = '\n\n[원인] 저장소를 찾을 수 없음.\n⚙ 버튼으로 owner/repo/branch 설정 확인.';
+        } else if (/Network|fetch/.test(msg)) {
+          hint = '\n\n[원인] 네트워크 오류. 인터넷 연결 확인 후 재시도.';
+        } else {
+          hint = '\n\n[일반] 토큰 만료 또는 권한 부족 가능. ⚙ 버튼으로 토큰 재설정.';
+        }
+        alert(`업로드 실패: ${msg}${hint}`);
       } finally {
         setBusy(false);
       }
@@ -3029,7 +3049,10 @@
         <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white print:hidden border-b border-slate-800">
           <div className="max-w-5xl mx-auto px-6 py-5 flex items-end justify-between">
             <div>
-              <div className="text-blue-300 text-[10.5px] tracking-[0.25em] font-bold mb-1">BBL · PITCHER REPORT</div>
+              <div className="text-blue-300 text-[10.5px] tracking-[0.25em] font-bold mb-1">
+                BBL · PITCHER REPORT
+                <span className="text-blue-300/40 ml-2 tracking-normal" style={{ fontSize: 9 }}>v73</span>
+              </div>
               <h1 className="text-2xl font-bold tracking-tight">{pitcher.name || '—'}</h1>
               <div className="text-blue-200/80 text-[12px] mt-1.5 flex items-center gap-3">
                 <span>{pitcher.level} {pitcher.grade && `${pitcher.grade}${pitcher.level === '프로' ? '년차' : '학년'}`}</span>
