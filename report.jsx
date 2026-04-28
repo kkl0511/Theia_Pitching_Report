@@ -569,28 +569,13 @@
       varToScore(summary.peakPelvisVel?.mean, 596, true)
     ]);
 
-    // 5. ⭐ 에너지 전달 (Energy Transfer) — 우리 시스템 고유
-    //    드라이브라인엔 없음. ETI = 분절 간 에너지 증폭률 직접 측정.
-    //    Howenstein 2019, Naito 2014 — 키네틱 체인 효율의 핵심 지표.
-    const energyTransfer = avgScores([
-      // ETI(P→T): elite ≥ 1.0 (몸통이 골반보다 빠르게 가속)
-      summary.etiPT?.mean != null
-        ? Math.max(0, Math.min(100, (summary.etiPT.mean - 0.7) * 100))
-        : null,
-      // ETI(T→A): elite ≥ 1.05 (팔이 몸통보다 빠르게 가속)
-      summary.etiTA?.mean != null
-        ? Math.max(0, Math.min(100, (summary.etiTA.mean - 0.8) * 100))
-        : null,
-      // 누수율: 0% = 100점, 50% = 0점 (역방향, 낮을수록 좋음)
-      energy?.leakRate != null
-        ? Math.max(0, Math.min(100, 100 - energy.leakRate * 2))
-        : null
-    ]);
-
-    // 6. ⭐ 분절 시퀀싱 (Kinetic Sequencing) — 우리 시스템 고유
-    //    드라이브라인 5모델에 없음. P→T→A 순서대로 가속이 일어나는지의 타이밍.
-    //    Hirashima 2008 — proximal-to-distal sequencing의 정량적 측정.
-    const sequencing = avgScores([
+    // 5. ⭐ 키네틱 체인 효율 (Kinetic Chain Efficiency) — 우리 시스템 고유
+    //    드라이브라인 5모델에 없음. 분절 시퀀싱(timing) + 에너지 증폭(magnitude) + 손실의 통합 평가.
+    //    Howenstein 2019, Naito 2014, Hirashima 2008 — proximal-to-distal sequence의 timing과 magnitude는
+    //    인과적으로 연결됨 (좋은 시퀀싱 → 좋은 ETI → 낮은 누수율).
+    //    따라서 따로 평가하면 모순 발생 가능 → 통합 점수로 평가.
+    const kineticChain = avgScores([
+      // === Timing 측면 (분절 가속이 올바른 순서·간격에 일어나는가) ===
       // P→T lag: elite 30~60ms (적절한 골반-몸통 가속 간격)
       summary.ptLagMs?.mean != null
         ? varToScore(summary.ptLagMs.mean, 45, false, 25, 65)
@@ -599,9 +584,23 @@
       summary.taLagMs?.mean != null
         ? varToScore(summary.taLagMs.mean, 30, false, 15, 45)
         : null,
-      // FC→릴리스 시간: elite ~140-160ms (너무 빠르면 에너지 부족, 너무 느리면 효율 저하)
+      // FC→릴리스 시간: elite ~140-160ms
       summary.fcBrMs?.mean != null
         ? varToScore(summary.fcBrMs.mean, 150, false, 130, 180)
+        : null,
+      // === Magnitude 측면 (다음 분절이 얼마나 더 빠르게 가속되는가) ===
+      // ETI(P→T): elite 1.5+ (몸통이 골반보다 1.5배+ 빠름). 1.0 = 0점, 1.3 = 60점, 1.5 = 100점
+      summary.etiPT?.mean != null
+        ? Math.max(0, Math.min(100, (summary.etiPT.mean - 1.0) * 200))
+        : null,
+      // ETI(T→A): elite 1.7+ (팔이 몸통보다 1.7배+ 빠름). 1.0 = 0점, 1.4 = 57점, 1.7 = 100점
+      summary.etiTA?.mean != null
+        ? Math.max(0, Math.min(100, (summary.etiTA.mean - 1.0) * 143))
+        : null,
+      // === Loss 측면 (전달되지 못한 에너지) ===
+      // 누수율: 0% = 100점, 50% = 0점 (역방향, 낮을수록 좋음)
+      energy?.leakRate != null
+        ? Math.max(0, Math.min(100, 100 - energy.leakRate * 2))
         : null
     ]);
 
@@ -639,20 +638,12 @@
         display: rotation == null ? '—' : Math.round(rotation).toString()
       },
       {
-        label: '에너지 전달',
-        sub: 'ETI · 누수율',
+        label: '키네틱 체인 효율',
+        sub: '시퀀싱(lag) + ETI(증폭) + 누수율',
         dlMapping: '⭐ 우리 시스템 고유',
-        value: energyTransfer,
+        value: kineticChain,
         lo: 50, hi: 80,
-        display: energyTransfer == null ? '—' : Math.round(energyTransfer).toString()
-      },
-      {
-        label: '분절 시퀀싱',
-        sub: 'P→T · T→A · FC→릴리스 lag',
-        dlMapping: '⭐ 우리 시스템 고유',
-        value: sequencing,
-        lo: 50, hi: 80,
-        display: sequencing == null ? '—' : Math.round(sequencing).toString()
+        display: kineticChain == null ? '—' : Math.round(kineticChain).toString()
       }
     ];
   }
@@ -1718,7 +1709,7 @@
         <div className="stat-card flex items-center justify-between" style={{ padding: '14px 16px' }}>
           <div>
             <div className="text-[10.5px] font-bold uppercase tracking-wider" style={{ color: '#94a3b8' }}>종합 등급</div>
-            <div className="text-[12.5px] mt-1" style={{ color: '#cbd5e1' }}>동작 일관성 — 4영역 종합 평가</div>
+            <div className="text-[12.5px] mt-1" style={{ color: '#cbd5e1' }}>동작 일관성 — 5영역 종합 평가</div>
           </div>
           <span className={`pill pill-${command.overall}`} style={{ fontSize: '24px', padding: '6px 18px', fontWeight: 800 }}>
             {command.overall}
@@ -1784,7 +1775,7 @@
             {command.includedAllTrials && command.nUsedForBiomechanics != null && (
               <span style={{ color: '#94a3b8' }}> (생체역학 분석은 품질검수 통과 {command.nUsedForBiomechanics}개 사용, 제구는 검수 제외 분 포함 전체 {command.nUsedForCommand}개 사용)</span>
             )}
-            {' '}<b>4영역 다이어그램</b>이 외곽(녹색)에 가까울수록 일관성이 높습니다. 각 영역은 하위 변인들의 등급 평균.
+            {' '}<b>5영역 다이어그램</b>이 외곽(녹색)에 가까울수록 일관성이 높습니다. 각 영역은 하위 변인들의 등급 평균.
           </span>
         </div>
       </div>
@@ -3908,9 +3899,9 @@
 
           {/* v55 — PART B Summary: Velocity Radar (Driveline 5-model style) */}
           <Section n={6} title="구속 요인 종합" className="section-velocity"
-            subtitle="우리 시스템 6영역 종합 평가 — 드라이브라인 모델 + 키네틱 체인 정밀 지표">
+            subtitle="우리 시스템 5영역 종합 평가 — 드라이브라인 4모델 + 키네틱 체인 효율">
             <PerspectiveIntro kind="velocity">
-              <b>구속 요인 한눈에:</b> 앞에서 분석한 모든 구속 요인을 코칭 친화적인 6개 영역으로 묶어 시각화했습니다. 앞 4개 영역(팔 동작·하체 블록·자세 안정성·회전 동력)은 드라이브라인 5모델과 매핑되며, <b style={{ color: '#5eead4' }}>뒤 2개 영역(에너지 전달·분절 시퀀싱)은 우리 시스템 고유 축</b>으로 키네틱 체인 효율을 직접 측정합니다. 빨간 선 = 엘리트 평균(50점), 초록 선 = 엘리트 상위(80점). 다각형이 클수록 균형 잡힌 메커닉.
+              <b>구속 요인 한눈에:</b> 앞에서 분석한 모든 구속 요인을 코칭 친화적인 5개 영역으로 묶어 시각화했습니다. 앞 4개 영역(팔 동작·하체 블록·자세 안정성·회전 동력)은 드라이브라인 5모델과 매핑되며, <b style={{ color: '#5eead4' }}>5번째 영역(키네틱 체인 효율)은 우리 시스템 고유 축</b>으로 분절 시퀀싱(타이밍) + 에너지 증폭(ETI) + 손실(누수율)을 통합 평가합니다. 시퀀싱·ETI·누수율은 인과적으로 연결된 한 현상이라 통합 평가가 생체역학적으로 정확합니다. 빨간 선 = 엘리트 평균(50점), 초록 선 = 엘리트 상위(80점). 다각형이 클수록 균형 잡힌 메커닉.
             </PerspectiveIntro>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
@@ -3978,22 +3969,22 @@
                 <b style={{ color: '#fbbf24' }}>드라이브라인 매핑 영역</b> (4개) — <b>팔 동작</b>(MER, 팔 회전 속도, Arm slot) · <b>하체 블록</b>(앞다리 신전, 스트라이드 비율, 전진 속도, 감속) · <b>자세 안정성</b>(X-factor, Counter Rot, 몸통 전방·측면 기울기) · <b>회전 동력</b>(몸통/골반 각속도). 드라이브라인 5모델(2024) 변인 풀에서 도출하되, 단위·정규화·임계값은 우리 시스템 데이터에 맞춤 조정.
               </div>
               <div>
-                <b style={{ color: '#5eead4' }}>⭐ 우리 시스템 고유 영역</b> (2개) — <b>에너지 전달</b>(ETI P→T, ETI T→A, 누수율) · <b>분절 시퀀싱</b>(P→T lag, T→A lag, FC→릴리스 시간). 드라이브라인 5모델에는 없는 키네틱 체인 효율 직접 측정 변인. <b>Howenstein 2019 (J Biomech), Naito 2014 (Hum Mov Sci), Hirashima 2008 (J Biomech)</b>의 proximal-to-distal sequencing 분석에서 도출. 드라이브라인이 보지 못하는 "에너지가 얼마나 잘 흐르는가"를 평가.
+                <b style={{ color: '#5eead4' }}>⭐ 우리 시스템 고유 영역</b> (1개) — <b>키네틱 체인 효율</b> = 분절 시퀀싱(P→T lag, T→A lag, FC→릴리스) + 에너지 증폭(ETI P→T, ETI T→A) + 손실(누수율) 6개 변인의 통합 평균. 드라이브라인 5모델에는 없는 키네틱 체인 효율 직접 측정. <b>Howenstein 2019 (J Biomech), Naito 2014 (Hum Mov Sci), Hirashima 2008 (J Biomech)</b>의 proximal-to-distal sequencing 분석에서 도출. 시퀀싱(timing)과 에너지 전달(magnitude)은 인과적으로 연결된 한 현상이라 통합 평가가 생체역학적으로 정확 — 좋은 시퀀싱 → 좋은 ETI → 낮은 누수율로 이어지는 사슬.
               </div>
             </div>
           </Section>
 
           <PartBanner letter="D" title="제구 — 일관성과 안정성" subtitle="매 투구 같은 위치로 던지는 능력 — 시기 간 변동(CV)이 핵심"/>
           <Section n={7} title="제구 변인 통합 분석" className="section-command"
-            subtitle="릴리스 포지션·타이밍·시퀀싱·파워 4영역 일관성">
+            subtitle="풋 컨택트·시퀀싱·파워·릴리즈 5영역 일관성">
             <PerspectiveIntro kind="command">
-              <b>제구 관점:</b> 모든 제구 변인을 4개 영역(Release Position / Release Timing / Sequencing / Power)으로 그룹화. 매 투구의 시기 간 변동(SD 또는 CV)이 작을수록 안정적인 제구.
+              <b>제구 관점:</b> 모든 제구 변인을 5개 영역(Foot Contact / Sequencing / Power Output / Release Position / Release Timing)으로 그룹화. 풋 컨택트는 키네틱 체인의 시작점이라 가장 먼저 평가됨. 매 투구의 시기 간 변동(SD 또는 CV)이 작을수록 안정적인 제구.
             </PerspectiveIntro>
 
             {/* Command radar (preserved from former Section 7) */}
             <div className="mb-3">
               <CommandPanel command={command}/>
-              {(() => { const s = summarizeCommand(command); return <SummaryBox tone={s.tone} title="4영역 일관성 한눈에 보기" text={s.text}/>; })()}
+              {(() => { const s = summarizeCommand(command); return <SummaryBox tone={s.tone} title="5영역 일관성 한눈에 보기" text={s.text}/>; })()}
             </div>
 
             {/* Group 1: Release Position */}
@@ -4067,6 +4058,41 @@
               </div>
             </div>
 
+            {/* v68 — Group 2.5: Foot Contact Consistency (NEW) — 키네틱 체인의 시작점 */}
+            <div className="mb-3">
+              <div className="flex items-baseline gap-2 mb-1.5" style={{ borderLeft: '3px solid #f472b6', paddingLeft: 8 }}>
+                <span style={{ fontSize: 14 }}>🦶</span>
+                <span className="text-[12px] font-bold" style={{ color: '#f472b6' }}>Foot Contact</span>
+                <span className="text-[10px]" style={{ color: '#94a3b8' }}>— FC 시점 자세 일관성 (체인 시작점)</span>
+                {(() => {
+                  const d = command.domains?.find(x => x.key === 'footContact');
+                  if (!d || d.grade === 'N/A') return null;
+                  const c = { A: '#10b981', B: '#84cc16', C: '#f59e0b', D: '#ef4444' }[d.grade] || '#94a3b8';
+                  return <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: c, background: `${c}1a`, padding: '1px 8px', borderRadius: 4 }}>{d.grade}</span>;
+                })()}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" style={{ paddingLeft: 11 }}>
+                <ConsistencyCard
+                  label="Stride 길이"
+                  value={summary.strideLength?.cv}
+                  unit="CV%"
+                  threshold={{ elite: 3, good: 5, ok: 8 }}
+                  description="앞발 착지 위치(보폭)의 변동 — 후속 시퀀싱의 기준점"/>
+                <ConsistencyCard
+                  label="FC 무릎 굴곡"
+                  value={summary.frontKneeFlex?.sd}
+                  unit="° SD"
+                  threshold={{ elite: 3, good: 5, ok: 8 }}
+                  description="앞다리 무릎 굽힘각 변동 — 회전축 안정성"/>
+                <ConsistencyCard
+                  label="FC 몸통 회전"
+                  value={summary.trunkRotAtFP?.sd}
+                  unit="° SD"
+                  threshold={{ elite: 4, good: 7, ok: 11 }}
+                  description="앞발 착지 시 몸통 자세 변동 — 분리각 형성"/>
+              </div>
+            </div>
+
             {/* Group 3: Sequencing Consistency */}
             <div className="mb-3">
               <div className="flex items-baseline gap-2 mb-1.5" style={{ borderLeft: '3px solid #f472b6', paddingLeft: 8 }}>
@@ -4126,10 +4152,6 @@
                   <ConsistencyCard label="MER" value={summary.maxER.cv} unit="CV%"
                     threshold={{ elite: 7, good: 12, ok: 18 }}/>
                 )}
-                {summary.strideLength?.cv != null && (
-                  <ConsistencyCard label="스트라이드 길이" value={summary.strideLength.cv} unit="CV%"
-                    threshold={{ elite: 3, good: 5, ok: 8 }}/>
-                )}
                 {summary.maxXFactor?.cv != null && (
                   <ConsistencyCard label="X-factor" value={summary.maxXFactor.cv} unit="CV%"
                     threshold={{ elite: 8, good: 14, ok: 22 }}/>
@@ -4139,11 +4161,11 @@
 
             <InfoBox items={[
               {
-                term: '제구 4영역 통합 분석 — 변인 그룹화 근거',
-                def: '제구 능력은 단일 변인이 아닌 다차원 motor control consistency. 4개 영역(Release Position, Release Timing, Sequencing, Power Output)으로 그룹화해 어느 영역이 약한지 진단.',
-                meaning: 'Glanzer et al. 2021 (J Strength Cond Res 35:2810-2815)이 elite vs sub-elite 그룹 비교에서 가장 큰 차이를 보인 변인이 trial-to-trial release variability(SD)임을 입증. Whiteside et al. 2016 (Am J Sports Med 44:2202-2209)는 release point variability가 부상 위험 + 성적 저하 양쪽과 모두 상관 있음을 보고. 따라서 단순히 "구속이 좋다/나쁘다"가 아니라 "어떤 영역의 일관성이 낮은가"를 진단하는 것이 코칭 우선순위 결정에 핵심.',
+                term: '제구 5영역 통합 분석 — 변인 그룹화 근거',
+                def: '제구 능력은 단일 변인이 아닌 다차원 motor control consistency. 5개 영역(Foot Contact, Sequencing, Power Output, Release Position, Release Timing)으로 그룹화해 어느 영역이 약한지 진단. 풋 컨택트는 키네틱 체인의 시작점이라 가장 먼저 평가되며, 그 일관성이 후속 시퀀싱·파워·릴리스의 기반이 됨.',
+                meaning: 'Glanzer et al. 2021 (J Strength Cond Res 35:2810-2815)이 elite vs sub-elite 그룹 비교에서 가장 큰 차이를 보인 변인이 trial-to-trial release variability(SD)임을 입증. Whiteside et al. 2016 (Am J Sports Med 44:2202-2209)는 release point variability가 부상 위험 + 성적 저하 양쪽과 모두 상관 있음을 보고. MacWilliams et al. 1998 (Am J Sports Med)은 FC 위치·자세 변동이 ground reaction force 일관성을 결정하고 후속 분절 가속의 기준점이 됨을 입증. 따라서 단순히 "구속이 좋다/나쁘다"가 아니라 "어떤 영역의 일관성이 낮은가"를 진단하는 것이 코칭 우선순위 결정에 핵심.',
                 method: 'SD = 표준편차 (절대 변동성, 단위 보존). CV% = 변동계수 = SD/평균×100% (상대 변동성, 평균 크기로 정규화). 위치 변인은 SD, 시간/속도 변인은 CV 사용. 등급은 Glanzer 2021 + Whiteside 2016 elite 분포에서 도출.',
-                interpret: '🎯 Release Position(릴리스 포지션): 같은 위치에서 공을 놓는가. 손목 높이/팔 슬롯/몸통 기울기 SD. ⏱️ Release Timing(릴리스 타이밍): 같은 시점에 공을 놓는가. FC→BR 시간 CV. 🌀 Sequencing(시퀀싱): 분절 가속이 같은 순서로 같은 간격에 일어나는가. P→T·T→A 타이밍 CV. 💨 Power Output(파워): 매 투구 동일한 강도로 던지는가. 각속도·MER·스트라이드 CV. 한 영역의 모든 변인이 OK 이상이면 그 영역 안정. 한 변인만 OK 이하면 그 변인 집중 개선.'
+                interpret: '🦶 Foot Contact(풋 컨택트): 매 투구 같은 위치·자세로 앞발이 착지하는가. Stride 길이 CV, FC 무릎 굴곡 SD, FC 몸통 회전 SD. 키네틱 체인의 시작점이므로 여기 변동이 크면 후속 시퀀싱이 자동으로 흔들림. 🌀 Sequencing(시퀀싱): 분절 가속이 같은 순서로 같은 간격에 일어나는가. P→T·T→A 타이밍 CV. 💨 Power Output(파워): 매 투구 동일한 강도로 던지는가. 각속도·MER·X-factor CV. 🎯 Release Position(릴리스 포지션): 같은 위치에서 공을 놓는가. 손목 높이/팔 슬롯/몸통 기울기 SD. ⏱️ Release Timing(릴리스 타이밍): 같은 시점에 공을 놓는가. FC→BR 시간 CV. 한 영역의 모든 변인이 OK 이상이면 그 영역 안정. 한 변인만 OK 이하면 그 변인 집중 개선.'
               }
             ]}/>
           </Section>

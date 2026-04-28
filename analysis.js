@@ -89,7 +89,10 @@
     cmd_armVelCvPct:        { elite: 5,  good: 10, ok: 15 },
     cmd_trunkVelCvPct:      { elite: 5,  good: 10, ok: 15 },
     cmd_pelvisVelCvPct:     { elite: 5,  good: 10, ok: 15 },
-    cmd_xFactorCvPct:       { elite: 8,  good: 14, ok: 22 }
+    cmd_xFactorCvPct:       { elite: 8,  good: 14, ok: 22 },
+    // v68 — Foot Contact consistency thresholds
+    cmd_frontKneeSdDeg:     { elite: 3,  good: 5,  ok: 8 },   // FC 시점 앞다리 무릎 굴곡각 SD
+    cmd_trunkRotFpSdDeg:    { elite: 4,  good: 7,  ok: 11 }   // FC 시점 몸통 회전각 SD
   };
 
   // ---------- helpers ----------
@@ -1340,12 +1343,19 @@
       taLag:      { name: 'T→A 시퀀싱',    value: summary.taLagMs?.cv,          thr: ELITE.cmd_taLagCvPct,         unit: 'CV%',
                     valueDisplay: summary.taLagMs?.cv != null ? `${summary.taLagMs.cv.toFixed(2)}%` : '—',
                     domain: 'sequencing' },
+      // v68 — Foot Contact (FC 시점 자세 일관성 — 키네틱 체인의 시작점)
+      stride:     { name: 'Stride 길이',  value: summary.strideLength?.cv,     thr: ELITE.cmd_strideCvPct,        unit: 'CV%',
+                    valueDisplay: summary.strideLength?.cv != null ? `${summary.strideLength.cv.toFixed(2)}%` : '—',
+                    domain: 'footContact' },
+      kneeAtFC:   { name: 'FC 무릎 굴곡', value: summary.frontKneeFlex?.sd,    thr: ELITE.cmd_frontKneeSdDeg,     unit: '° SD',
+                    valueDisplay: summary.frontKneeFlex?.sd != null ? `±${summary.frontKneeFlex.sd.toFixed(2)}°` : '—',
+                    domain: 'footContact' },
+      trunkAtFC:  { name: 'FC 몸통 회전', value: summary.trunkRotAtFP?.sd,     thr: ELITE.cmd_trunkRotFpSdDeg,    unit: '° SD',
+                    valueDisplay: summary.trunkRotAtFP?.sd != null ? `±${summary.trunkRotAtFP.sd.toFixed(2)}°` : '—',
+                    domain: 'footContact' },
       // Power Output (출력 강도 일관성)
       maxER:      { name: 'Max ER',       value: summary.maxER?.cv,            thr: ELITE.cmd_erCvPct,            unit: 'CV%',
                     valueDisplay: summary.maxER?.cv != null ? `${summary.maxER.cv.toFixed(2)}%` : '—',
-                    domain: 'powerOutput' },
-      stride:     { name: 'Stride',       value: summary.strideLength?.cv,     thr: ELITE.cmd_strideCvPct,        unit: 'CV%',
-                    valueDisplay: summary.strideLength?.cv != null ? `${summary.strideLength.cv.toFixed(2)}%` : '—',
                     domain: 'powerOutput' },
       armVel:     { name: '팔 각속도',     value: summary.peakArmVel?.cv,       thr: ELITE.cmd_armVelCvPct,        unit: 'CV%',
                     valueDisplay: summary.peakArmVel?.cv != null ? `${summary.peakArmVel.cv.toFixed(2)}%` : '—',
@@ -1384,18 +1394,22 @@
 
     const releasePosSubs    = ['wrist', 'armSlot', 'trunkTilt'].map(k => subAxesGraded[k]);
     const releaseTimingSubs = ['fcBr'].map(k => subAxesGraded[k]);
+    const footContactSubs   = ['stride', 'kneeAtFC', 'trunkAtFC'].map(k => subAxesGraded[k]);
     const sequencingSubs    = ['ptLag', 'taLag'].map(k => subAxesGraded[k]);
-    const powerOutputSubs   = ['maxER', 'stride', 'armVel', 'trunkVel', 'pelvisVel', 'xFactor'].map(k => subAxesGraded[k]);
+    const powerOutputSubs   = ['maxER', 'armVel', 'trunkVel', 'pelvisVel', 'xFactor'].map(k => subAxesGraded[k]);
 
+    // v68 — Logical order: FC (chain start) → Sequencing (timing) → Power (output) → Release Position/Timing (final delivery)
     const domains = [
-      { key: 'releasePos',    name: '릴리즈 포지션', icon: '🎯', desc: '매 투구의 자세 일관성',
-        ...aggregateDomain(releasePosSubs),    subs: releasePosSubs },
-      { key: 'releaseTiming', name: '릴리즈 타이밍', icon: '⏱️', desc: '공을 놓는 시점 일관성',
-        ...aggregateDomain(releaseTimingSubs), subs: releaseTimingSubs },
+      { key: 'footContact',   name: '풋 컨택트',     icon: '🦶', desc: 'FC 시점 자세 일관성 — 체인 시작점',
+        ...aggregateDomain(footContactSubs),   subs: footContactSubs },
       { key: 'sequencing',    name: '시퀀싱',        icon: '🌀', desc: '분절 가속 타이밍 일관성',
         ...aggregateDomain(sequencingSubs),    subs: sequencingSubs },
       { key: 'powerOutput',   name: '파워 아웃풋',   icon: '💨', desc: '출력 강도 일관성',
-        ...aggregateDomain(powerOutputSubs),   subs: powerOutputSubs }
+        ...aggregateDomain(powerOutputSubs),   subs: powerOutputSubs },
+      { key: 'releasePos',    name: '릴리즈 포지션', icon: '🎯', desc: '릴리스 시 자세 일관성',
+        ...aggregateDomain(releasePosSubs),    subs: releasePosSubs },
+      { key: 'releaseTiming', name: '릴리즈 타이밍', icon: '⏱️', desc: '공을 놓는 시점 일관성',
+        ...aggregateDomain(releaseTimingSubs), subs: releaseTimingSubs }
     ];
 
     // For radar display (4 axes — each domain's score normalized to 0-100 for radar)
@@ -1735,6 +1749,11 @@
       improvements.push({ kind: 'command', title: '골반 각속도 변동 큼', detail: `CV ${summary.peakPelvisVel.cv.toFixed(1)}% (양호 <10%)` });
     if (summary.maxXFactor?.cv != null && summary.maxXFactor.cv > 14)
       improvements.push({ kind: 'command', title: 'X-factor 변동 큼', detail: `CV ${summary.maxXFactor.cv.toFixed(1)}% (양호 <14%)` });
+    // v68 — Foot Contact consistency
+    if (summary.frontKneeFlex?.sd != null && summary.frontKneeFlex.sd > ELITE.cmd_frontKneeSdDeg.good)
+      improvements.push({ kind: 'command', title: 'FC 시점 무릎 굴곡 변동 큼', detail: `SD ±${summary.frontKneeFlex.sd.toFixed(2)}° (양호 <${ELITE.cmd_frontKneeSdDeg.good}°) — 회전축 흔들림` });
+    if (summary.trunkRotAtFP?.sd != null && summary.trunkRotAtFP.sd > ELITE.cmd_trunkRotFpSdDeg.good)
+      improvements.push({ kind: 'command', title: 'FC 시점 몸통 회전 변동 큼', detail: `SD ±${summary.trunkRotAtFP.sd.toFixed(2)}° (양호 <${ELITE.cmd_trunkRotFpSdDeg.good}°) — 분리각 형성 변동` });
     // v55 — fault factors removed from display (per user request, no injury PART)
     return { strengths: strengths.slice(0, 6), improvements: improvements.slice(0, 15) };
   }
