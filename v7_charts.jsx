@@ -1387,26 +1387,27 @@
             </g>
           )}
 
-          {/* ④ 두 다리 균형 — bottom left (de Swart) */}
-          {legAsymmetry != null && (
-            <g>
-              <line x1={K.lKnee[0] - 22} y1={K.lKnee[1] + 14} x2="226" y2="408" stroke={TONES[asymTone].color} strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
-              <rect x="40" y="380" width="220" height="78" rx="6" fill="#0b1220" stroke={TONES[asymTone].color} strokeOpacity="0.7"/>
-              <text x="150" y="396" fill={TONES[asymTone].color} fontSize="11" fontWeight="700" textAnchor="middle" letterSpacing="0.4">④ 두 다리 균형</text>
-              <text x="150" y="416" fill="#e2e8f0" fontSize="15" fontWeight="800" textAnchor="middle">축발/디딤발 {legAsymmetry.toFixed(2)} 배</text>
-              <text x="150" y="434" fill="#3b82f6" fontSize="10" textAnchor="middle">● 축발(뒷다리) {(peakPivotHipVel || 0).toFixed(0)}°/s</text>
-              <text x="150" y="448" fill="#a855f7" fontSize="10" textAnchor="middle">● 디딤발(앞다리) {(peakStrideHipVel || 0).toFixed(0)}°/s</text>
-            </g>
-          )}
+          {/* v79 — REMOVED: ④ 두 다리 균형 (legAsymmetry) box was here.
+              The asymmetry is still rendered as the colored rings around feet via de Swart visualization below. */}
 
-          {/* v78 — FRONT-FOOT BLOCK — repositioned next to stride foot (was at right edge, far from foot)
-              The stride foot (lAnkle=[310,487], lToe=[268,489]) sits in lower-left of the figure.
-              Block placed at lower-right of viewBox so it sits NEAR the foot without covering it. */}
+          {/* v79 — STRIDE FOOT BLOCK — 회전 에너지 시작점 (positioned near stride foot, lower-left)
+              Stride foot (lAnkle=[310,487]) lands forward and blocks; ground reaction force from this
+              block decelerates the pelvis, driving rotational energy up the kinetic chain. */}
           <g>
-            <line x1={K.lAnkle[0] + 18} y1={K.lAnkle[1] + 4} x2="500" y2="514" stroke="#22d3ee" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.6"/>
-            <rect x="496" y="500" width="220" height="42" rx="6" fill="#0b1220" stroke="#22d3ee" strokeOpacity="0.6"/>
-            <text x="606" y="516" fill="#22d3ee" fontSize="10" fontWeight="700" textAnchor="middle" letterSpacing="0.4">디딤발 블록 — 에너지 시작점</text>
-            <text x="606" y="532" fill="#22d3ee" fontSize="9.5" textAnchor="middle">지면 반력 → 골반 회전</text>
+            <line x1={K.lAnkle[0] - 8} y1={K.lAnkle[1] + 4} x2="240" y2="500" stroke="#a78bfa" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="40" y="486" width="218" height="48" rx="6" fill="#0b1220" stroke="#a78bfa" strokeOpacity="0.7"/>
+            <text x="149" y="503" fill="#a78bfa" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">디딤발 블록</text>
+            <text x="149" y="521" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">회전 에너지 시작점</text>
+          </g>
+
+          {/* v79 — PIVOT FOOT BLOCK — 전진 에너지 시작점 (positioned near pivot foot, lower-right)
+              Pivot foot (rAnkle=[620,427]) pushes off the rubber, generating linear forward
+              momentum that drives the body toward the plate. */}
+          <g>
+            <line x1={K.rAnkle[0] + 14} y1={K.rAnkle[1] + 6} x2="660" y2="478" stroke="#3b82f6" strokeWidth="1.2" strokeDasharray="2 3" opacity="0.7"/>
+            <rect x="540" y="478" width="232" height="48" rx="6" fill="#0b1220" stroke="#3b82f6" strokeOpacity="0.7"/>
+            <text x="656" y="495" fill="#3b82f6" fontSize="10.5" fontWeight="700" textAnchor="middle" letterSpacing="0.4">축발 추진</text>
+            <text x="656" y="513" fill="#e2e8f0" fontSize="11.5" fontWeight="700" textAnchor="middle">전진 에너지 시작점</text>
           </g>
 
           {/* === Joint markers (key kinematic points) === */}
