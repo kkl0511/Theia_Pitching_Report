@@ -1746,11 +1746,20 @@
                       const sColor = {
                         'A': '#10b981', 'B': '#84cc16', 'C': '#f59e0b', 'D': '#ef4444', 'N/A': '#64748b'
                       }[s.grade] || '#64748b';
+                      const isNA = s.grade === 'N/A';
                       return (
                         <div key={s.name} className="flex items-center justify-between text-[10.5px]" style={{
-                          padding: '3px 0', borderTop: '1px dashed rgba(148,163,184,0.1)'
+                          padding: '3px 0', borderTop: '1px dashed rgba(148,163,184,0.1)',
+                          opacity: isNA ? 0.65 : 1
                         }}>
-                          <span style={{ color: '#cbd5e1' }}>{s.name}</span>
+                          <span style={{ color: '#cbd5e1' }}>
+                            {s.name}
+                            {isNA && (
+                              <span style={{ color: '#64748b', fontSize: 9, marginLeft: 4, fontStyle: 'italic' }}>
+                                (재분석 후 표시)
+                              </span>
+                            )}
+                          </span>
                           <span className="flex items-center gap-1.5">
                             <span className="tabular-nums" style={{ color: '#94a3b8', fontSize: 10 }}>{s.valueDisplay}</span>
                             <span style={{
@@ -2135,6 +2144,7 @@
   }
 
   // v69 — Generic helper: upload one file to GitHub Contents API (handles update + create)
+  // Contents API limits: ~50MB per file, ~100MB JSON payload (entire request)
   async function uploadFileToGithub(path, base64Content, commitMessage, { owner, repo, branch }, token) {
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
     const headers = {
@@ -2174,6 +2184,101 @@
     return { isUpdate: !!existingSha };
   }
 
+  // v71 — Upload large files (>10MB safely, up to ~100MB) using Git Data API
+  // This bypasses the Contents API 50MB practical limit for individual files.
+  // Steps:
+  //   1. Create blob (base64 content)         → POST /git/blobs
+  //   2. Get current branch ref               → GET /git/ref/heads/<branch>
+  //   3. Get current tree                     → GET /git/commits/<sha>
+  //   4. Create new tree adding the blob      → POST /git/trees
+  //   5. Create commit with new tree          → POST /git/commits
+  //   6. Update branch ref to new commit      → PATCH /git/refs/heads/<branch>
+  async function uploadLargeFileViaGitDataApi(path, base64Content, commitMessage, { owner, repo, branch }, token) {
+    const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json'
+    };
+
+    const apiCall = async (suffix, init = {}) => {
+      const res = await fetch(`${repoUrl}${suffix}`, { ...init, headers: { ...headers, ...(init.headers || {}) } });
+      if (!res.ok) {
+        let detail = '';
+        try { const j = await res.json(); detail = j.message || JSON.stringify(j); } catch (e) {}
+        throw new Error(`GitHub Data API 실패 (${res.status} ${suffix}): ${detail}`);
+      }
+      return res.json();
+    };
+
+    // 1. Create blob
+    const blob = await apiCall('/git/blobs', {
+      method: 'POST',
+      body: JSON.stringify({ content: base64Content, encoding: 'base64' })
+    });
+
+    // 2. Get current branch ref
+    const ref = await apiCall(`/git/ref/heads/${encodeURIComponent(branch)}`);
+    const parentSha = ref.object.sha;
+
+    // 3. Get parent commit (for base tree)
+    const parentCommit = await apiCall(`/git/commits/${parentSha}`);
+    const baseTreeSha = parentCommit.tree.sha;
+
+    // 4. Create new tree
+    const tree = await apiCall('/git/trees', {
+      method: 'POST',
+      body: JSON.stringify({
+        base_tree: baseTreeSha,
+        tree: [{
+          path,
+          mode: '100644',
+          type: 'blob',
+          sha: blob.sha
+        }]
+      })
+    });
+
+    // 5. Create commit
+    const commit = await apiCall('/git/commits', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: commitMessage,
+        tree: tree.sha,
+        parents: [parentSha]
+      })
+    });
+
+    // 6. Update branch ref
+    await apiCall(`/git/refs/heads/${encodeURIComponent(branch)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sha: commit.sha })
+    });
+
+    return { isUpdate: true };  // Git Data API doesn't distinguish, always treats as update
+  }
+
+  // v71 — Smart uploader: tries Contents API first (fast), falls back to Git Data API (handles large files)
+  async function uploadFileToGithubSmart(path, base64Content, commitMessage, cfg, token) {
+    // If base64 is over ~6MB (raw bytes ~4.5MB), Contents API often returns 422
+    // Use Git Data API directly for safety.
+    const sizeBytes = Math.floor(base64Content.length * 0.75);
+    if (sizeBytes > 5 * 1024 * 1024) {
+      return uploadLargeFileViaGitDataApi(path, base64Content, commitMessage, cfg, token);
+    }
+    try {
+      return await uploadFileToGithub(path, base64Content, commitMessage, cfg, token);
+    } catch (e) {
+      // If Contents API fails with 422 (often size-related), retry via Git Data API
+      if (/422/.test(e.message) || /too large/i.test(e.message)) {
+        console.warn('Contents API failed, falling back to Git Data API:', e.message);
+        return uploadLargeFileViaGitDataApi(path, base64Content, commitMessage, cfg, token);
+      }
+      throw e;
+    }
+  }
+
   // v69 — Encode Blob to base64 (without data: prefix)
   async function blobToBase64NoPrefix(blob) {
     return new Promise((resolve, reject) => {
@@ -2199,7 +2304,8 @@
       const videoExt = (payload.video.mimeType?.split('/')[1] || 'mp4').replace(/[^a-z0-9]/gi, '');
       const videoPath = `reports/videos/${id}.${videoExt}`;
       try {
-        videoUploadResult = await uploadFileToGithub(
+        // v71 — Use smart uploader: Git Data API for large files, Contents API for small
+        videoUploadResult = await uploadFileToGithubSmart(
           videoPath,
           payload.video.base64,
           `Update video for ${id}`,
@@ -2218,10 +2324,15 @@
           }
         };
       } catch (e) {
-        // If video upload fails (e.g. video itself > 100MB), warn but continue with JSON-only
-        const msg = `영상 업로드 실패 (${e.message}). 영상 없이 분석 결과만 게시합니다.`;
-        console.warn(msg);
-        if (typeof alert !== 'undefined') alert(msg + '\n\n영상을 더 작게 압축한 뒤 다시 시도하세요 (권장: 720p, 30초 이내).');
+        // v70 — More helpful failure message with file size + direct compression link
+        const sizeMB = (payload.video.size / 1024 / 1024).toFixed(1);
+        const baseMsg = `영상 업로드 실패: ${sizeMB}MB 영상이 GitHub 한도(50MB)를 초과합니다.\n(${e.message})`;
+        const guideMsg = `\n\n해결 방법:\n1. 영상 압축 후 재시도 (권장)\n   • freeconvert.com/video-compressor (온라인, 가입 불필요)\n   • Target file size: 30MB 입력\n   • HandBrake 데스크탑 앱: "Web > Vimeo YouTube HQ 720p30" preset\n\n2. 권장 사이즈\n   • 720p, 30초 이내, 30MB 이하\n   • mp4 (H.264) 형식\n\n지금은 영상 없이 분석 결과만 게시할까요?\n(확인) 영상 없이 게시\n(취소) 중단하고 영상 압축 후 다시 시도`;
+        console.warn(baseMsg);
+        const proceed = (typeof confirm !== 'undefined') ? confirm(baseMsg + guideMsg) : true;
+        if (!proceed) {
+          throw new Error('사용자 취소 — 영상 압축 후 다시 시도하세요');
+        }
         payload = { ...payload, video: null };
       }
     }
@@ -2229,7 +2340,8 @@
     // Now upload the JSON (much smaller without embedded video)
     const path = `reports/${id}.json`;
     const json = JSON.stringify(payload);
-    const result = await uploadFileToGithub(
+    // v71 — Use smart uploader to handle JSONs larger than 5MB (e.g. when trials.data is included)
+    const result = await uploadFileToGithubSmart(
       path,
       utf8ToBase64(json),
       videoUploadResult ? `Update report ${id} (with video)` : `Update report ${id}`,
@@ -2745,16 +2857,29 @@
 
     // Run analysis (subject) — exclude trials marked for exclusion in input page.
     // In shared mode, use the pre-baked analysis from the payload (no CSV access needed).
-    // v60: If shared payload has trials with raw CSV data AND the baked analysis
-    //      is missing v54+ variables (peakCogVel, leadKneeExtAtBR, etc.), recompute
+    // v60+v72: If shared payload has trials with raw CSV data AND the baked analysis
+    //      is missing v54+ variables OR command CV variables, recompute
     //      on the fly so old published JSONs benefit from new variables automatically.
     const analysis = useMemo(() => {
       if (isShared) {
-        // Check if shared analysis is missing v54+ variables
-        const missingNewVars = sharedAnalysis &&
-          (!sharedAnalysis.summary?.peakCogVel?.mean &&
-           !sharedAnalysis.summary?.cogDecel?.mean &&
-           !sharedAnalysis.summary?.leadKneeExtAtBR?.mean);
+        // Check if shared analysis is missing v54+ variables (any of these → trigger recompute)
+        const sum = sharedAnalysis?.summary;
+        const missingV54Vars = sharedAnalysis &&
+          (!sum?.peakCogVel?.mean &&
+           !sum?.cogDecel?.mean &&
+           !sum?.leadKneeExtAtBR?.mean);
+        // v72 — Also check missing command CV variables. If sequencing/power CVs are
+        //      absent, the published JSON is from before v62-v68 and needs recompute.
+        const missingCommandCV = sharedAnalysis &&
+          (!sum?.ptLagMs?.cv ||
+           !sum?.taLagMs?.cv ||
+           !sum?.peakArmVel?.cv ||
+           !sum?.peakTrunkVel?.cv ||
+           !sum?.peakPelvisVel?.cv ||
+           !sum?.maxXFactor?.cv ||
+           !sum?.frontKneeFlex?.sd ||
+           !sum?.trunkRotAtFP?.sd);
+        const missingNewVars = missingV54Vars || missingCommandCV;
         // Check if raw trial CSV data is available for re-analysis
         const sharedTrials = sharedPayload?.trials || [];
         const trialsWithData = sharedTrials.filter(t => t && t.data && Array.isArray(t.data) && t.data.length > 0);
@@ -3081,10 +3206,43 @@
             }}>
               <span style={{ fontWeight: 700 }}>✨ 최신 분석 적용됨</span>
               <span style={{ color: '#cbd5e1', marginLeft: 6, lineHeight: 1.5 }}>
-                — 이 리포트는 v54 이전에 게시되었지만, 원본 측정 데이터가 포함되어 있어 클라이언트에서 자동 재분석했습니다. 스트라이드 이동·감속, 앞다리 신전, Counter Rotation 등 신규 변인이 모두 반영됩니다.
+                — 이 리포트는 신규 변인 추가 이전에 게시되었지만, 원본 측정 데이터가 포함되어 있어 클라이언트에서 자동 재분석했습니다. 스트라이드 이동·감속, 앞다리 신전, Counter Rotation, 동작 일관성 변인 등이 모두 반영됩니다.
               </span>
             </div>
           )}
+
+          {/* v72 — Warn when shared analysis has many missing variables AND no trials.data to recompute */}
+          {isShared && !analysis?._recomputed && (() => {
+            const sum = analysis?.summary;
+            if (!sum) return null;
+            // Count missing key v68 variables (sub-axes that drive the 5-domain command panel)
+            const missing = [];
+            if (!sum.ptLagMs?.cv) missing.push('P→T 시퀀싱');
+            if (!sum.taLagMs?.cv) missing.push('T→A 시퀀싱');
+            if (!sum.peakArmVel?.cv) missing.push('팔 각속도');
+            if (!sum.peakTrunkVel?.cv) missing.push('몸통 각속도');
+            if (!sum.peakPelvisVel?.cv) missing.push('골반 각속도');
+            if (!sum.maxXFactor?.cv) missing.push('X-factor');
+            if (!sum.frontKneeFlex?.sd) missing.push('FC 무릎 굴곡');
+            if (!sum.trunkRotAtFP?.sd) missing.push('FC 몸통 회전');
+            if (missing.length < 4) return null;  // not enough missing to bother showing
+            return (
+              <div className="mb-3 px-3 py-2.5 rounded text-[11px]" style={{
+                background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#fbbf24', lineHeight: 1.6
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                  ⚠ 일부 동작 일관성 변인이 N/A로 표시됩니다 ({missing.length}개)
+                </div>
+                <div style={{ color: '#cbd5e1' }}>
+                  이 리포트는 신규 변인 추가 이전에 게시되었고, 원본 측정 데이터(CSV)도 포함되어 있지 않아 자동 재분석이 불가합니다.
+                  <b style={{ color: '#fbbf24' }}> 분석 페이지에서 데이터를 다시 분석하고 "선수용 링크 생성"으로 게시</b>하면 모든 변인이 채워진 완전한 리포트를 볼 수 있습니다.
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }}>
+                  누락 변인: {missing.join(', ')}
+                </div>
+              </div>
+            );
+          })()}
 
           <PartBanner letter="A" title="측정 정보" subtitle="이 분석의 출발점 — 선수 정보와 투구 영상"/>
           <Section n={1} title="신체 & 구속" className="section-baseline">
