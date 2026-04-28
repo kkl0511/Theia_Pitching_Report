@@ -2207,7 +2207,15 @@
       if (!res.ok) {
         let detail = '';
         try { const j = await res.json(); detail = j.message || JSON.stringify(j); } catch (e) {}
-        throw new Error(`GitHub Data API 실패 (${res.status} ${suffix}): ${detail}`);
+        // v74 — Throw with the exact step name so user sees which API call failed
+        const step = suffix.includes('/blobs') ? '1. Blob 생성'
+                   : suffix.includes('/ref/heads') ? '2. Branch 조회'
+                   : suffix.includes('/commits/') ? '3. 부모 commit 조회'
+                   : suffix.includes('/trees') ? '4. Tree 생성'
+                   : suffix.includes('/commits') ? '5. Commit 생성'
+                   : suffix.includes('/refs/heads') ? '6. Branch 업데이트'
+                   : suffix;
+        throw new Error(`Git Data API [${step}] 실패 (${res.status}): ${detail}`);
       }
       return res.json();
     };
@@ -2328,14 +2336,14 @@
           }
         };
       } catch (e) {
-        // v70 — More helpful failure message with file size + direct compression link
+        // v74 — Show the actual exception detail prominently — no more generic "GitHub 한도 초과"
         const sizeMB = (payload.video.size / 1024 / 1024).toFixed(1);
-        const baseMsg = `영상 업로드 실패: ${sizeMB}MB 영상이 GitHub 한도(50MB)를 초과합니다.\n(${e.message})`;
-        const guideMsg = `\n\n해결 방법:\n1. 영상 압축 후 재시도 (권장)\n   • freeconvert.com/video-compressor (온라인, 가입 불필요)\n   • Target file size: 30MB 입력\n   • HandBrake 데스크탑 앱: "Web > Vimeo YouTube HQ 720p30" preset\n\n2. 권장 사이즈\n   • 720p, 30초 이내, 30MB 이하\n   • mp4 (H.264) 형식\n\n지금은 영상 없이 분석 결과만 게시할까요?\n(확인) 영상 없이 게시\n(취소) 중단하고 영상 압축 후 다시 시도`;
+        const baseMsg = `영상 업로드 실패 (${sizeMB}MB)\n\n[정확한 에러]\n${e.message}\n\n[v74 진단]\n• 코드는 5MB 이상 파일에 자동으로 Git Data API를 사용합니다.\n• 위 에러 첫 줄이 "Git Data API [N. ...]"이면 Git Data API에서 실패한 것.\n• 위 에러 첫 줄이 "GitHub 업로드 실패"이면 Contents API에서 실패한 것 (코드가 v71 미만임).`;
+        const guideMsg = `\n\n[해결 방법]\n1. 콘솔(F12 → Console 탭)에서 [Upload] 로그를 확인하세요.\n   "Using Git Data API"가 출력되었나요?\n2. GitHub 토큰 권한 확인 — fine-grained 토큰의 경우 "Contents: Read and write" 필수.\n3. 영상을 더 작게 압축 (HandBrake 또는 freeconvert.com).\n\n지금 영상 없이 게시할까요?\n(확인) 영상 없이 게시 — 분석 결과만 업로드\n(취소) 중단 — 토큰/영상 점검 후 재시도`;
         console.warn(baseMsg);
         const proceed = (typeof confirm !== 'undefined') ? confirm(baseMsg + guideMsg) : true;
         if (!proceed) {
-          throw new Error('사용자 취소 — 영상 압축 후 다시 시도하세요');
+          throw new Error('사용자 취소 — 영상/토큰 점검 후 다시 시도하세요');
         }
         payload = { ...payload, video: null };
       }
@@ -3051,7 +3059,7 @@
             <div>
               <div className="text-blue-300 text-[10.5px] tracking-[0.25em] font-bold mb-1">
                 BBL · PITCHER REPORT
-                <span className="text-blue-300/40 ml-2 tracking-normal" style={{ fontSize: 9 }}>v73</span>
+                <span className="text-blue-300/40 ml-2 tracking-normal" style={{ fontSize: 9 }}>v74</span>
               </div>
               <h1 className="text-2xl font-bold tracking-tight">{pitcher.name || '—'}</h1>
               <div className="text-blue-200/80 text-[12px] mt-1.5 flex items-center gap-3">
