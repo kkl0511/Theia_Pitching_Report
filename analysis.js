@@ -82,7 +82,14 @@
     cmd_trunkForwardSdDeg:  { elite: 2,  good: 4,  ok: 6 },
     cmd_erCvPct:       { elite: 7,  good: 12, ok: 18 },
     cmd_strideCvPct:        { elite: 3,  good: 5,  ok: 8 },
-    cmd_fcBrCvPct:          { elite: 2,  good: 5,  ok: 10 }
+    cmd_fcBrCvPct:          { elite: 2,  good: 5,  ok: 10 },
+    // v62 — Additional command consistency thresholds (sequencing + power)
+    cmd_ptLagCvPct:         { elite: 15, good: 25, ok: 40 },
+    cmd_taLagCvPct:         { elite: 15, good: 25, ok: 40 },
+    cmd_armVelCvPct:        { elite: 5,  good: 10, ok: 15 },
+    cmd_trunkVelCvPct:      { elite: 5,  good: 10, ok: 15 },
+    cmd_pelvisVelCvPct:     { elite: 5,  good: 10, ok: 15 },
+    cmd_xFactorCvPct:       { elite: 8,  good: 14, ok: 22 }
   };
 
   // ---------- helpers ----------
@@ -1304,13 +1311,26 @@
   }
   function computeCommand(summary) {
     const wristHeightSdCm = summary.wristHeight?.sd != null ? summary.wristHeight.sd * 100 : null;
+    // v62 — Aggregate sequencing CV: average of P→T and T→A lag CVs
+    const sequencingCv = (() => {
+      const vals = [summary.ptLagMs?.cv, summary.taLagMs?.cv].filter(v => v != null && Number.isFinite(v));
+      return vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : null;
+    })();
+    // v62 — Aggregate angular velocity CV: average of arm/trunk/pelvis peak velocity CVs
+    const angVelCv = (() => {
+      const vals = [summary.peakArmVel?.cv, summary.peakTrunkVel?.cv, summary.peakPelvisVel?.cv]
+        .filter(v => v != null && Number.isFinite(v));
+      return vals.length ? vals.reduce((a,b)=>a+b,0) / vals.length : null;
+    })();
     const axes = [
       { key: 'wrist',     name: '손목 높이',    valueDisplay: wristHeightSdCm != null ? `±${wristHeightSdCm.toFixed(2)} cm` : '—', value: wristHeightSdCm, thr: ELITE.cmd_wristHeightSdCm, unit: 'cm SD' },
       { key: 'armSlot',   name: 'Arm slot',    valueDisplay: summary.armSlotAngle?.sd != null ? `±${summary.armSlotAngle.sd.toFixed(2)}°` : '—', value: summary.armSlotAngle?.sd, thr: ELITE.cmd_armSlotSdDeg, unit: '° SD' },
       { key: 'trunkTilt', name: '몸통 기울기',  valueDisplay: summary.trunkForwardTilt?.sd != null ? `±${summary.trunkForwardTilt.sd.toFixed(2)}°` : '—', value: summary.trunkForwardTilt?.sd, thr: ELITE.cmd_trunkForwardSdDeg, unit: '° SD' },
-      { key: 'maxER',   name: 'Max ER',     valueDisplay: summary.maxER?.cv != null ? `${summary.maxER.cv.toFixed(2)}%` : '—', value: summary.maxER?.cv, thr: ELITE.cmd_erCvPct, unit: 'CV%' },
+      { key: 'maxER',     name: 'Max ER',      valueDisplay: summary.maxER?.cv != null ? `${summary.maxER.cv.toFixed(2)}%` : '—', value: summary.maxER?.cv, thr: ELITE.cmd_erCvPct, unit: 'CV%' },
       { key: 'stride',    name: 'Stride',      valueDisplay: summary.strideLength?.cv != null ? `${summary.strideLength.cv.toFixed(2)}%` : '—', value: summary.strideLength?.cv, thr: ELITE.cmd_strideCvPct, unit: 'CV%' },
-      { key: 'fcBr',      name: 'FC→릴리스',    valueDisplay: summary.fcBrMs?.cv != null ? `${summary.fcBrMs.cv.toFixed(2)}%` : '—', value: summary.fcBrMs?.cv, thr: ELITE.cmd_fcBrCvPct, unit: 'CV%' }
+      { key: 'fcBr',      name: 'FC→릴리스',   valueDisplay: summary.fcBrMs?.cv != null ? `${summary.fcBrMs.cv.toFixed(2)}%` : '—', value: summary.fcBrMs?.cv, thr: ELITE.cmd_fcBrCvPct, unit: 'CV%' },
+      { key: 'sequencing', name: '시퀀싱',     valueDisplay: sequencingCv != null ? `${sequencingCv.toFixed(2)}%` : '—', value: sequencingCv, thr: ELITE.cmd_ptLagCvPct, unit: 'CV%' },
+      { key: 'angVel',    name: '각속도',      valueDisplay: angVelCv != null ? `${angVelCv.toFixed(2)}%` : '—', value: angVelCv, thr: ELITE.cmd_armVelCvPct, unit: 'CV%' }
     ];
     const graded = axes.map(ax => ({ ...ax, ...gradeAxis(ax.value, ax.thr) }));
     const validScores = graded.filter(g => g.score > 0).map(g => g.score);

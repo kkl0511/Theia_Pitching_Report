@@ -44,7 +44,7 @@
     // High importance (≥0.5) — primary drivers of velocity
     peakTrunkVel:       { weight: 1.00, tier: 'high',  per1mph: 40,    unit: '°/s',  model: 'rotation', label: '몸통 회전 속도' },
     maxER:              { weight: 0.86, tier: 'high',  per1mph: 5,     unit: '°',    model: 'arm',      label: 'MER (Layback)' },
-    cogDecel:           { weight: 0.70, tier: 'high',  per1mph: 0.15,  unit: 'm/s',  model: 'cog',      label: 'CoG 감속' },
+    cogDecel:           { weight: 0.70, tier: 'high',  per1mph: 0.15,  unit: 'm/s',  model: 'cog',      label: '스트라이드 감속' },
     leadKneeExtAtBR:    { weight: 0.58, tier: 'high',  per1mph: 5,     unit: '°',    model: 'block',    label: '앞다리 신전' },
     strideLength:       { weight: 0.58, tier: 'high',  per1mph: 12,    unit: 'cm',   model: 'block',    label: '스트라이드 길이' },
     // Medium importance (0.3 - 0.5)
@@ -56,7 +56,7 @@
     trunkForwardTilt:   { weight: 0.36, tier: 'med',   per1mph: 6,     unit: '°',    model: 'posture',  label: '몸통 전방 기울기' },
     trunkRotAtFP:       { weight: 0.35, tier: 'med',   per1mph: 10,    unit: '°',    model: 'posture',  label: 'FP 시점 몸통 회전' },
     // Low importance (<0.3)
-    peakCogVel:         { weight: 0.29, tier: 'low',   per1mph: 0.35,  unit: 'm/s',  model: 'cog',      label: 'CoG 최고 속도' },
+    peakCogVel:         { weight: 0.29, tier: 'low',   per1mph: 0.35,  unit: 'm/s',  model: 'cog',      label: '스트라이드 이동 속도' },
     peakPelvisVel:      { weight: 0.27, tier: 'low',   per1mph: 128,   unit: '°/s',  model: 'rotation', label: '골반 회전 속도' },
     trunkRotAtBR:       { weight: 0.25, tier: 'low',   per1mph: 6,     unit: '°',    model: 'posture',  label: 'BR 시점 몸통 회전' },
     frontKneeFlex:      { weight: 0.25, tier: 'low',   per1mph: 35,    unit: '°',    model: 'arm',      label: '앞다리 굴곡' }
@@ -166,60 +166,57 @@
   // Higher importance variables contribute more to overall score
   function calcVelocityScore({ summary, energy }) {
     const parts = [];
+    // Helper: only push if value is a finite number (prevents NaN propagation)
+    const pushIfFinite = (w, v) => { if (Number.isFinite(v)) parts.push({ w, v }); };
     // Velocity outcome itself (35% — keep as result indicator)
     // summary.velocity is in km/h. HS pitcher range: 110-145 km/h (68-90 mph)
     // Normalize: 100 km/h → 25, 120 km/h → 50, 140 km/h → 75, 160 km/h → 100
     if (summary.velocity?.mean != null) {
       const v = summary.velocity.mean;
-      const normV = Math.max(0, Math.min(100, (v - 90) * 1.4));
-      parts.push({ w: 0.35, v: normV });
+      pushIfFinite(0.35, Math.max(0, Math.min(100, (v - 90) * 1.4)));
     }
     // === HIGH IMPORTANCE (Driveline weight ≥ 0.5) ===
     // Trunk angular velocity (1.0 weight × 0.20 = strongest mechanic)
     if (summary.peakTrunkVel?.mean != null) {
       const t = summary.peakTrunkVel.mean;
-      const normT = Math.max(0, Math.min(100, (t - 700) / 4));
-      parts.push({ w: 0.20, v: normT });
+      pushIfFinite(0.20, Math.max(0, Math.min(100, (t - 700) / 4)));
     }
     // MER / Layback (0.86 weight)
     if (summary.maxER?.mean != null) {
       const mer = summary.maxER.mean;
-      const normM = Math.max(0, Math.min(100, (mer - 150) * 2));
-      parts.push({ w: 0.13, v: normM });
+      pushIfFinite(0.13, Math.max(0, Math.min(100, (mer - 150) * 2)));
     }
     // CoG Decel (0.70 weight)
     if (summary.cogDecel?.mean != null) {
       const cd = summary.cogDecel.mean;
-      const normCd = Math.max(0, Math.min(100, cd * 50));  // 1.6 m/s = 80
-      parts.push({ w: 0.10, v: normCd });
+      pushIfFinite(0.10, Math.max(0, Math.min(100, cd * 50)));
     }
     // Lead knee extension at BR (0.58 weight)
     if (summary.leadKneeExtAtBR?.mean != null) {
       const k = summary.leadKneeExtAtBR.mean;
-      const normK = Math.max(0, Math.min(100, (k + 10) * 4));  // -10° = 0, 15° = 100
-      parts.push({ w: 0.08, v: normK });
+      pushIfFinite(0.08, Math.max(0, Math.min(100, (k + 10) * 4)));
     }
-    // Stride length (0.58 weight)
-    if (summary.strideRatio?.mean != null) {
+    // Stride length (0.58 weight) — pitcher.heightCm may be null/0 → strideRatio NaN
+    if (summary.strideRatio?.mean != null && Number.isFinite(summary.strideRatio.mean)) {
       const sr = summary.strideRatio.mean;
-      const normSr = Math.max(0, Math.min(100, (sr - 0.6) * 250));  // 1.0 ratio = 100
-      parts.push({ w: 0.05, v: normSr });
+      pushIfFinite(0.05, Math.max(0, Math.min(100, (sr - 0.6) * 250)));
     }
     // === MEDIUM IMPORTANCE (Driveline weight 0.3-0.5) ===
     // Arm angular velocity (0.56 weight)
     if (summary.peakArmVel?.mean != null) {
       const a = summary.peakArmVel.mean;
-      const normA = Math.max(0, Math.min(100, (a - 1000) / 12));
-      parts.push({ w: 0.05, v: normA });
+      pushIfFinite(0.05, Math.max(0, Math.min(100, (a - 1000) / 12)));
     }
     // Energy transfer efficiency (combined ETI)
     if (energy?.etiPT != null && energy?.etiTA != null) {
       const e = (Math.min(100, (energy.etiPT - 0.7) * 80) + Math.min(100, (energy.etiTA - 0.8) * 75)) / 2;
-      parts.push({ w: 0.04, v: Math.max(0, e) });
+      pushIfFinite(0.04, Math.max(0, e));
     }
     if (parts.length === 0) return null;
     const totalW = parts.reduce((s, p) => s + p.w, 0);
-    return parts.reduce((s, p) => s + p.v * p.w, 0) / totalW;
+    if (totalW === 0) return null;
+    const score = parts.reduce((s, p) => s + p.v * p.w, 0) / totalW;
+    return Number.isFinite(score) ? score : null;
   }
   // Mechanical Ceiling — estimate maximum velocity if mechanics reach 100/100
   // Driveline approach: current_velocity × (100 / current_score) but capped
@@ -561,6 +558,30 @@
       varToScore(summary.peakCogVel?.mean, 2.84, true),
       varToScore(summary.cogDecel?.mean, 1.61, true)
     ]);
+    // 6. v62 — Energy Flow (우리 시스템 고유): ETI + 누수율 + 시퀀싱 lag
+    //   드라이브라인에는 없지만 키네틱 체인 효율을 직접 측정하는 변인들
+    const energyFlow = avgScores([
+      // ETI(P→T): elite ≥ 1.0, 0.7 = 50점, 1.2 = 100점
+      summary.etiPT?.mean != null
+        ? Math.max(0, Math.min(100, (summary.etiPT.mean - 0.7) * 100))
+        : null,
+      // ETI(T→A): elite ≥ 1.05, 0.8 = 50점
+      summary.etiTA?.mean != null
+        ? Math.max(0, Math.min(100, (summary.etiTA.mean - 0.8) * 100))
+        : null,
+      // 누수율: 0% = 100점, 50% = 0점 (역방향)
+      energy?.leakRate != null
+        ? Math.max(0, Math.min(100, 100 - energy.leakRate * 2))
+        : null,
+      // P→T lag: elite 30~60ms 범위 — 정상 범위 안이면 점수 높음
+      summary.ptLagMs?.mean != null
+        ? varToScore(summary.ptLagMs.mean, 45, false, 25, 65)
+        : null,
+      // T→A lag: elite 20~40ms
+      summary.taLagMs?.mean != null
+        ? varToScore(summary.taLagMs.mean, 30, false, 15, 45)
+        : null
+    ]);
     // Display strings (most representative single value per axis)
     const dispNum = (v, d=0) => v == null || isNaN(v) ? '—' : v.toFixed(d);
     return [
@@ -593,11 +614,18 @@
         display: rotation == null ? '—' : Math.round(rotation).toString()
       },
       {
-        label: 'CoG',
-        sub: '무게중심',
+        label: '스트라이드',
+        sub: '몸 전진 속도·감속',
         value: cog,
         lo: 50, hi: 80,
         display: cog == null ? '—' : Math.round(cog).toString()
+      },
+      {
+        label: 'Energy Flow',
+        sub: '에너지 전달·시퀀싱',
+        value: energyFlow,
+        lo: 50, hi: 80,
+        display: energyFlow == null ? '—' : Math.round(energyFlow).toString()
       }
     ];
   }
@@ -1144,17 +1172,19 @@
       'C+': '#f59e0b', 'C': '#f59e0b', 'C-': '#f59e0b',
       'D+': '#ef4444', 'D': '#ef4444', 'D-': '#ef4444', 'F': '#dc2626'
     }[grade] || '#94a3b8';
+    // v62 — NaN guard: null AND NaN both render as "—"
+    const isValidValue = typeof value === 'number' && Number.isFinite(value);
     return (
       <div className={`score-card ${kind}`}>
         <div className="score-label">{label}</div>
-        <div className="flex items-baseline">
+        <div className="flex items-baseline gap-2 flex-wrap">
           <span className="score-grade" style={{ color: gradeColor }}>{grade || '—'}</span>
-          {value != null && (
-            <span className="score-value">
-              {typeof value === 'number' ? value.toFixed(1) : value}
-              {valueUnit && <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 4 }}>{valueUnit}</span>}
+          <span className="score-value">
+            <span style={{ fontSize: 22, fontWeight: 700, color: isValidValue ? '#f1f5f9' : '#94a3b8' }}>
+              {isValidValue ? value.toFixed(0) : '—'}
             </span>
-          )}
+            {valueUnit && <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 3 }}>{valueUnit}</span>}
+          </span>
         </div>
         {detail && <div className="score-detail">{detail}</div>}
       </div>
@@ -1695,7 +1725,7 @@
             {command.includedAllTrials && command.nUsedForBiomechanics != null && (
               <span style={{ color: '#94a3b8' }}> (생체역학 분석은 품질검수 통과 {command.nUsedForBiomechanics}개 사용, 제구는 검수 제외 분 포함 전체 {command.nUsedForCommand}개 사용)</span>
             )}
-            {' '}6각 다이어그램이 외곽(녹색)에 가까울수록 일관성이 높습니다.
+            {' '}8각 다이어그램이 외곽(녹색)에 가까울수록 일관성이 높습니다.
           </span>
         </div>
       </div>
@@ -2436,6 +2466,84 @@
       }
     }, [isShared]);
 
+    // v60 — Video upload handler (works in both edit and shared mode)
+    const handleVideoUploadInReport = async (file) => {
+      if (!file) return;
+      if (!file.type.startsWith('video/')) {
+        alert('영상 파일만 업로드 가능합니다 (mp4, mov, webm 등)');
+        return;
+      }
+      // Soft size warning at 500MB
+      if (file.size > 500 * 1024 * 1024) {
+        if (!confirm(`영상 크기가 ${(file.size/1024/1024).toFixed(0)}MB입니다. 큰 파일은 JSON 재다운로드 시 시간이 오래 걸릴 수 있습니다. 계속할까요?`)) {
+          return;
+        }
+      }
+      setVideoBlob(file);
+      // Persist to IDB only in edit mode (not shared)
+      if (!isShared) {
+        try { await idbKeyval.set('pitcher:video', file); } catch (e) { console.warn('IDB save failed:', e); }
+      }
+    };
+
+    const removeVideoFromReport = async () => {
+      if (!confirm('영상을 제거하시겠습니까?')) return;
+      setVideoBlob(null);
+      setVideoUrl(null);
+      if (!isShared) {
+        try { await idbKeyval.del('pitcher:video'); } catch (e) {}
+      }
+    };
+
+    // v60 — Re-download JSON with current video included (shared mode helper)
+    const [downloadingJson, setDownloadingJson] = useState(false);
+    const reDownloadJsonWithVideo = async () => {
+      if (!isShared || !sharedPayload) return;
+      setDownloadingJson(true);
+      try {
+        let videoData = sharedPayload.video || null;
+        if (videoBlob) {
+          // Encode current videoBlob to base64
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result;
+              const idx = result.indexOf(',');
+              resolve(idx >= 0 ? result.slice(idx + 1) : result);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(videoBlob);
+          });
+          videoData = {
+            filename: videoBlob.name || 'video.mp4',
+            size: videoBlob.size,
+            mimeType: videoBlob.type || 'video/mp4',
+            base64
+          };
+        }
+        const newPayload = {
+          ...sharedPayload,
+          video: videoData,
+          updatedAt: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(newPayload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const safeName = (sharedPayload.pitcher?.name || 'pitcher').replace(/[^\w가-힣]/g, '_');
+        const date = sharedPayload.pitcher?.measurementDate || 'unknown';
+        a.href = url;
+        a.download = `${safeName}-${date}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert(`JSON 생성 실패: ${e.message}`);
+      } finally {
+        setDownloadingJson(false);
+      }
+    };
+
     // Build object URLs for benchmark videos: { benchId -> url }
     const [benchVideoUrls, setBenchVideoUrls] = useState({});
     useEffect(() => {
@@ -2788,7 +2896,7 @@
             }}>
               <span style={{ fontWeight: 700 }}>✨ 최신 분석 적용됨</span>
               <span style={{ color: '#cbd5e1', marginLeft: 6, lineHeight: 1.5 }}>
-                — 이 리포트는 v54 이전에 게시되었지만, 원본 측정 데이터가 포함되어 있어 클라이언트에서 자동 재분석했습니다. CoG, 앞다리 신전, Counter Rotation 등 신규 변인이 모두 반영됩니다.
+                — 이 리포트는 v54 이전에 게시되었지만, 원본 측정 데이터가 포함되어 있어 클라이언트에서 자동 재분석했습니다. 스트라이드 이동·감속, 앞다리 신전, Counter Rotation 등 신규 변인이 모두 반영됩니다.
               </span>
             </div>
           )}
@@ -2798,14 +2906,79 @@
             <BioVelocityPanel pitcher={pitcher} summary={summary} perTrial={perTrialStats}/>
           </Section>
 
-          {videoUrl && (
-            <Section n={2} title="측정 영상" className="section-baseline" subtitle={armSlotType ? `arm slot: ${armSlotType}` : ''}>
-              <VideoPlayer src={videoUrl}/>
-            </Section>
-          )}
+          <Section n={2} title="측정 영상" className="section-baseline" subtitle={armSlotType ? `arm slot: ${armSlotType}` : ''}>
+            {videoUrl ? (
+              <div>
+                <VideoPlayer src={videoUrl}/>
+                {/* v60 — Video controls below player */}
+                <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px]">
+                  <label className="cursor-pointer px-2.5 py-1 rounded border" style={{
+                    borderColor: '#1e2a47', color: '#cbd5e1', background: '#0f1729'
+                  }}>
+                    영상 교체
+                    <input type="file" accept="video/*" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoUploadInReport(f); e.target.value = ''; }}/>
+                  </label>
+                  <button onClick={removeVideoFromReport} className="px-2.5 py-1 rounded border" style={{
+                    borderColor: 'rgba(239,68,68,0.4)', color: '#fca5a5', background: 'rgba(239,68,68,0.05)'
+                  }}>영상 제거</button>
+                  {isShared && (
+                    <button onClick={reDownloadJsonWithVideo} disabled={downloadingJson}
+                      className="px-2.5 py-1 rounded border" style={{
+                        borderColor: 'rgba(20,184,166,0.4)', color: '#5eead4', background: 'rgba(20,184,166,0.06)',
+                        opacity: downloadingJson ? 0.5 : 1, cursor: downloadingJson ? 'wait' : 'pointer'
+                      }}>
+                      {downloadingJson ? '생성 중...' : '📥 영상 포함 JSON 다운로드 (GitHub 업로드용)'}
+                    </button>
+                  )}
+                </div>
+                {isShared && (
+                  <div className="mt-2 text-[10.5px] px-2.5 py-1.5 rounded" style={{
+                    background: 'rgba(20,184,166,0.04)', color: '#94a3b8', lineHeight: 1.5
+                  }}>
+                    💡 영상은 현재 브라우저에만 임시 저장됩니다. 다른 사람도 영상을 보게 하려면 위 "영상 포함 JSON 다운로드"로 받아서 GitHub의 reports 폴더에 덮어쓰기 업로드하세요.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label className="cursor-pointer block">
+                  <input type="file" accept="video/*" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoUploadInReport(f); e.target.value = ''; }}/>
+                  <div className="border-2 border-dashed rounded-lg py-10 px-4 text-center transition" style={{
+                    borderColor: '#334155', background: 'rgba(15, 23, 42, 0.4)'
+                  }}>
+                    <div className="flex flex-col items-center" style={{ color: '#94a3b8' }}>
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3" style={{
+                        background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa'
+                      }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polygon points="23 7 16 12 23 17 23 7"/>
+                          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                        </svg>
+                      </div>
+                      <div className="text-sm font-semibold" style={{ color: '#cbd5e1' }}>
+                        영상 파일을 클릭하거나 드래그하여 업로드
+                      </div>
+                      <div className="text-[11px] mt-1.5" style={{ color: '#94a3b8' }}>
+                        mp4 · mov · webm 등 · 1개 영상 (이 리포트의 측정 영상)
+                      </div>
+                    </div>
+                  </div>
+                </label>
+                {isShared && (
+                  <div className="mt-2 text-[10.5px] px-2.5 py-1.5 rounded" style={{
+                    background: 'rgba(20,184,166,0.04)', color: '#94a3b8', lineHeight: 1.5
+                  }}>
+                    💡 업로드한 영상은 일단 이 브라우저에만 표시됩니다. 영상이 다른 사람의 화면에도 보이게 하려면 업로드 후 나타날 "JSON 다운로드" 버튼으로 새 JSON을 받아서 GitHub의 reports 폴더에 덮어쓰기 업로드하세요.
+                  </div>
+                )}
+              </div>
+            )}
+          </Section>
 
           <PartBanner letter="B" title="구속 — 파워와 메커닉스" subtitle="공의 빠르기를 결정하는 핵심 요인 — 타이밍, 회전 속도, 가동범위, 그리고 에너지 흐름"/>
-          <Section n={videoUrl ? 3 : 2} title="분절 시퀀싱" className="section-velocity" subtitle="P→T→A 타이밍 (구속 관점)">
+          <Section n={3} title="분절 시퀀싱" className="section-velocity" subtitle="P→T→A 타이밍 (구속 관점)">
             <PerspectiveIntro kind="velocity">
               <b>구속 관점:</b> 골반 → 몸통 → 팔이 순서대로 가속해야 채찍 효과로 공이 빨라집니다. 시간 차이가 잘 벌어질수록(Lag↑) 다음 분절이 더 큰 운동량을 받습니다.
             </PerspectiveIntro>
@@ -2852,8 +3025,8 @@
           </Section>
 
           {/* v57 — Unified velocity section: Driveline 5-model grouping */}
-          <Section n={videoUrl ? 4 : 3} title="구속 변인 5모델 분석" className="section-velocity"
-            subtitle="드라이브라인 5모델 (Arm Action / Block / Posture / Rotation / CoG)">
+          <Section n={4} title="구속 변인 5모델 분석" className="section-velocity"
+            subtitle="드라이브라인 5모델 (팔 동작 / 디딤발 / 자세 / 회전 / 스트라이드)">
             <PerspectiveIntro kind="velocity">
               <b>구속 관점:</b> 모든 구속 핵심 변인을 드라이브라인 평가 형식으로 5개 모델에 그룹화했습니다. 각 카드의 <b>중요도 칩</b>(HIGH/MED/LOW)은 몸통 회전 속도(=1.0) 대비 상대 가중치, <b>+/mph 배지</b>는 1mph 향상에 평균적으로 필요한 변화량, <b>막대그래프</b>는 엘리트 분포 내 위치를 나타냅니다.
             </PerspectiveIntro>
@@ -2979,19 +3152,19 @@
                 description="골반 분절의 최대 회전 각속도"/>
             </DrivelineModelGroup>
 
-            <DrivelineModelGroup modelKey="cog" title="CoG" subtitle="무게중심 이동">
+            <DrivelineModelGroup modelKey="cog" title="스트라이드" subtitle="몸 전진 속도와 감속">
               <DrivelineVarCard
                 importanceKey="cogDecel"
                 value={summary.cogDecel?.mean}
                 eliteMedian={1.61} eliteSd={0.4}
                 decimals={2}
-                description="피크에서 BR까지 무게중심 감속량. 강한 블록일수록 큼"/>
+                description="앞발 착지 후 몸 전진 속도가 얼마나 빨리 줄어드는가. 강한 블록일수록 큼"/>
               <DrivelineVarCard
                 importanceKey="peakCogVel"
                 value={summary.peakCogVel?.mean}
                 eliteMedian={2.84} eliteSd={0.4}
                 decimals={2}
-                description="마운드에서 몸 전체를 얼마나 빠르게 이동시키는가"/>
+                description="마운드에서 홈플레이트 방향으로 몸이 전진하는 최고 속도"/>
             </DrivelineModelGroup>
 
             {/* v59 — Warn if v54+ variables are missing (old published JSON) */}
@@ -3003,8 +3176,8 @@
                 <div className="font-bold mb-1" style={{ color: '#f87171' }}>⚠ 일부 신규 변인이 비어 있습니다</div>
                 <div style={{ lineHeight: 1.5 }}>
                   이 리포트는 v54 이전 분석 결과로 게시되어 있어 다음 변인이 누락되어 있습니다:
-                  {summary.peakCogVel?.mean == null && ' CoG 최고 속도'}
-                  {summary.cogDecel?.mean == null && ' · CoG 감속'}
+                  {summary.peakCogVel?.mean == null && ' 스트라이드 이동 속도'}
+                  {summary.cogDecel?.mean == null && ' · 스트라이드 감속'}
                   {summary.leadKneeExtAtBR?.mean == null && ' · 앞다리 신전'}
                   {summary.peakTorsoCounterRot?.mean == null && ' · Torso Counter Rotation'}
                   . <b>분석 페이지에서 데이터를 다시 분석하고 "선수용 링크 생성"으로 게시</b>하면 모든 변인이 채워진 완전한 리포트를 볼 수 있습니다.
@@ -3016,14 +3189,14 @@
               {
                 term: '드라이브라인 5모델 평가 시스템 — 구속 변인 그룹화 근거',
                 def: 'Driveline Pitching Assessment (2024)에서 사용하는 5개 머신러닝 모델로, 투구 메커닉을 5개 영역으로 분리해 각각 구속 기여도를 추정. 각 모델은 독립적으로 작동하며, 총점은 각 모델 점수의 가중 평균.',
-                meaning: 'Arm Action(팔 동작) — 구속 예측 영향력 2위, 예상 구속 초과 예측 1위. Block(디딤발 차단) — 구속 5위, 예상 초과 4위. Posture(자세 유지) — 구속 1위, 예상 초과 2위. Rotation(회전) — 구속 4위, 예상 초과 3위. CoG(무게중심) — 구속 4위, 예상 초과 5위. 즉 자세 유지 능력이 구속에 가장 큰 영향, 팔 동작은 잠재력 발현에 가장 큰 영향.',
+                meaning: 'Arm Action(팔 동작) — 구속 예측 영향력 2위, 예상 구속 초과 예측 1위. Block(디딤발 차단) — 구속 5위, 예상 초과 4위. Posture(자세 유지) — 구속 1위, 예상 초과 2위. Rotation(회전) — 구속 4위, 예상 초과 3위. 스트라이드(몸 전진) — 구속 4위, 예상 초과 5위. 즉 자세 유지 능력이 구속에 가장 큰 영향, 팔 동작은 잠재력 발현에 가장 큰 영향.',
                 method: '각 변인은 (1) 중요도 가중치 = 몸통 회전 속도(=1.0) 대비 상대값, (2) Per 1mph = 1mph 향상에 필요한 변화량, (3) 백분위 = 엘리트 90+mph 투수 분포 내 위치 — 세 가지 정보로 동시 표시. 우리 시스템은 드라이브라인 마스터 표(2024)의 가중치를 그대로 사용하되, 엘리트 중간값은 우리 데이터 분포에 맞춰 조정.',
                 interpret: '카드 색상: 호박색 보더 = 엘리트 범위 내, 노란색 보더 = 범위 이탈. 백분위 막대의 검정 점선 = 엘리트 평균(50%), 빨간 점선 = 5%/95% 경계. 한 모델의 모든 변인이 50%ile 이하라면 그 영역 전체가 약점. 한 변인만 낮다면 그 변인을 우선 개선.'
               }
             ]}/>
           </Section>
 
-          <Section n={videoUrl ? 5 : 4} title="키네틱 체인 & 정밀 지표 통합 분석" className="section-velocity"
+          <Section n={5} title="키네틱 체인 & 정밀 지표 통합 분석" className="section-velocity"
             subtitle={`종합 누수율 ${fmt.n1(energy.leakRate)}% · 5편 논문 기반 정밀 지표 포함`}>
             <PerspectiveIntro kind="velocity">
               <b>구속 관점 (PART B 종합):</b> 앞에서 본 가동범위·회전 속도가 실제로 어떻게 에너지로 전달되는지를 보여주는 통합 분석입니다. 누수가 적고 분절 간 증폭이 클수록 구속이 좋습니다.
@@ -3633,10 +3806,10 @@
           </Section>
 
           {/* v55 — PART B Summary: Velocity Radar (Driveline 5-model style) */}
-          <Section n={videoUrl ? 6 : 5} title="구속 요인 종합" className="section-velocity"
+          <Section n={6} title="구속 요인 종합" className="section-velocity"
             subtitle="5모델 레이더 — 드라이브라인 평가 형식">
             <PerspectiveIntro kind="velocity">
-              <b>구속 요인 한눈에:</b> 앞에서 본 모든 구속 요인을 5개 영역(Arm Action, Block, Posture, Rotation, CoG)으로 묶어 시각화했습니다. 빨간 선은 엘리트 평균(50점 기준), 초록 선은 엘리트 상위(80점). 다각형이 클수록 균형 잡힌 메커닉.
+              <b>구속 요인 한눈에:</b> 앞에서 본 모든 구속 요인을 5개 영역(팔 동작, 디딤발, 자세, 회전, 스트라이드)으로 묶어 시각화했습니다. 빨간 선은 엘리트 평균(50점 기준), 초록 선은 엘리트 상위(80점). 다각형이 클수록 균형 잡힌 메커닉.
             </PerspectiveIntro>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
@@ -3680,13 +3853,13 @@
 
             <div className="text-[10.5px] mt-3 px-3 py-2 rounded" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', color: '#cbd5e1', lineHeight: 1.5 }}>
               <b style={{ color: '#fbbf24' }}>점수 산정:</b> 각 축은 해당 영역의 핵심 변인(엘리트 중간값 기준 정규화)을 평균한 0~100 점수입니다.
-              50점 = 엘리트 중간값, 80점 = 엘리트 상위. 각 축의 변인 — <b>Arm Action</b>(MER, 팔 회전 속도), <b>Block</b>(앞다리 신전, 스트라이드 비율), <b>Posture</b>(X-factor, 몸통 전방 기울기), <b>Rotation</b>(몸통/골반 회전 속도), <b>CoG</b>(최고 속도, 감속).
-              드라이브라인 평가 리포트(2024) 5모델 구조를 차용하되 단위·정규화는 우리 시스템 데이터에 맞춤 조정.
+              50점 = 엘리트 중간값, 80점 = 엘리트 상위. 각 축의 변인 — <b>Arm Action</b>(MER, 팔 회전 속도, Arm slot), <b>Block</b>(앞다리 신전, 스트라이드 비율), <b>Posture</b>(X-factor, Counter Rot, 몸통 기울기), <b>Rotation</b>(몸통/골반 회전 속도), <b>스트라이드</b>(이동 속도, 감속), <b>Energy Flow</b>(ETI P→T·T→A, 누수율, 시퀀싱 lag).
+              앞 5개는 드라이브라인 평가 리포트(2024) 5모델 기반, <b>Energy Flow는 우리 시스템 고유 축</b>으로 키네틱 체인 효율을 직접 측정합니다.
             </div>
           </Section>
 
           <PartBanner letter="D" title="제구 — 일관성과 안정성" subtitle="매 투구 같은 위치로 던지는 능력 — 시기 간 변동(CV)이 핵심"/>
-          <Section n={videoUrl ? 7 : 6} title="제구 변인 통합 분석" className="section-command"
+          <Section n={7} title="제구 변인 통합 분석" className="section-command"
             subtitle="릴리스 포지션·타이밍·시퀀싱·파워 4영역 일관성">
             <PerspectiveIntro kind="command">
               <b>제구 관점:</b> 모든 제구 변인을 4개 영역(Release Position / Release Timing / Sequencing / Power)으로 그룹화. 매 투구의 시기 간 변동(SD 또는 CV)이 작을수록 안정적인 제구.
@@ -3827,7 +4000,7 @@
           </Section>
 
           <PartBanner letter="E" title="종합 평가" subtitle="구속과 제구 점수, 그리고 우선순위 개선점"/>
-          <Section n={videoUrl ? 8 : 7} title="종합 점수 & 우선순위" className="section-summary"
+          <Section n={8} title="종합 점수 & 우선순위" className="section-summary"
             subtitle="구속과 제구 한눈에 보기">
             <PerspectiveIntro kind="shared">
               앞에서 본 모든 분석을 바탕으로 <b>구속</b>과 <b>제구</b> 두 차원의 점수를 산출하고, 가장 시급한 개선 우선순위 3개를 제시합니다.
@@ -3944,7 +4117,7 @@
                           <div className="mb-3 px-3 py-2 rounded text-[10.5px]" style={{
                             background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5'
                           }}>
-                            ⚠ 이 리포트는 v54 이전 데이터로 게시되어 약점 검출이 일부 변인(CoG, 앞다리 신전, Counter Rotation 등)을 평가하지 못합니다. 분석 페이지에서 재분석 후 게시하면 더 정확한 약점 진단이 가능합니다.
+                            ⚠ 이 리포트는 v54 이전 데이터로 게시되어 약점 검출이 일부 변인(스트라이드 이동·감속, 앞다리 신전, Counter Rotation 등)을 평가하지 못합니다. 분석 페이지에서 재분석 후 게시하면 더 정확한 약점 진단이 가능합니다.
                           </div>
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
