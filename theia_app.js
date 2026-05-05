@@ -11,9 +11,11 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.1';
+  const ALGORITHM_VERSION = 'v0.3';
   let CURRENT_MODE = 'hs_top10';  // 'hs_top10' or 'pro'
-  let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null };
+  let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
+  let CURRENT_FITNESS = null;  // wide format xlsx에서 로드한 체력 변수 (CMJ·SJ·IMTP·Grip)
+  let CURRENT_FITNESS_META = null;  // school·date·ball_speed_max
   let LAST_RESULT = null;
 
   // ════════════════════════════════════════════════════════════
@@ -613,9 +615,10 @@
         <span>Reference: n=${m.n}</span>
       </div>
       <div class="player-meta">
-        <strong>${result._meta.athlete || 'Unknown'}</strong> ·
-        Trial 수: ${result._n_trials} ·
-        Mass: ${result._meta.mass_kg || '—'}kg, Height: ${result._meta.height_cm || '—'}cm
+        <strong>${result._meta.athlete || 'Unknown'}</strong>
+        ${result._meta.level ? ` <span style="background: var(--accent, #1F3864); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 4px;">${result._meta.level}</span>` : ''}
+        · Trial 수: ${result._n_trials}
+        · Mass: ${result._meta.mass_kg || '—'}kg, Height: ${result._meta.height_cm || '—'}cm
       </div>
       <div class="player-meta" style="margin-top: 6px; font-size: 13px;">
         <strong style="color: var(--output, #C00000);">구속 ${ballSpStr}</strong>
@@ -693,6 +696,7 @@
     const mode = opts.mode || CURRENT_MODE;
     const mass_kg = opts.mass_kg || CURRENT_PLAYER.mass_kg;
     const height_cm = opts.height_cm || CURRENT_PLAYER.height_cm;
+    const level = opts.level || CURRENT_PLAYER.level || null;
     const userBallSpeed = opts.ball_speed != null && !isNaN(opts.ball_speed) ? opts.ball_speed : null;
     const userBallSpeedSD = opts.ball_speed_sd != null && !isNaN(opts.ball_speed_sd) ? opts.ball_speed_sd : null;
     const pitchType = opts.pitch_type || 'FF';
@@ -728,10 +732,14 @@
     }
     if (userBallSpeedSD != null) agg.ball_speed_SD = userBallSpeedSD;
     agg._pitch_type = pitchType;
+    agg._level = level;
 
     const result = calculateScores(agg, mode);
     result._ball_speed_source = trials[0]?._ball_speed_source || (userBallSpeed != null ? 'user_input' : 'none');
-    if (result._meta) result._meta.pitch_type = pitchType;
+    if (result._meta) {
+      result._meta.pitch_type = pitchType;
+      result._meta.level = level;
+    }
     LAST_RESULT = result;
     return result;
   }
@@ -741,6 +749,12 @@
   function getMode() { return CURRENT_MODE; }
   function setPlayer(p) { Object.assign(CURRENT_PLAYER, p); }
   function getLastResult() { return LAST_RESULT; }
+  function setFitnessData(fitness, meta) {
+    CURRENT_FITNESS = fitness || null;
+    CURRENT_FITNESS_META = meta || null;
+  }
+  function getFitnessData() { return CURRENT_FITNESS; }
+  function getFitnessMeta() { return CURRENT_FITNESS_META; }
 
   // Expose
   window.TheiaApp = {
@@ -748,5 +762,6 @@
     parseC3dTxt, extractScalars, aggregateTrials, calculateScores,
     processFiles, renderReport,
     setMode, getMode, setPlayer, getLastResult,
+    setFitnessData, getFitnessData, getFitnessMeta,
   };
 })();

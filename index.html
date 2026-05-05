@@ -1,322 +1,901 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-theme="day">
 <head>
 <meta charset="UTF-8">
-<title>Theia Pitching Report v0.1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Theia Pitching Report — 키네틱 체인 Output·Transfer·Leak 분석</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
+  /* ════════════════════════════════════════════════════════════
+     Day 테마 (기본) — 라이트 배경, 부드러운 컬러
+     Night 테마 — html[data-theme="night"]에서 덮어씀 (BBL Uplift 스타일 다크)
+     ════════════════════════════════════════════════════════════ */
   :root {
-    --bg: #f5f7fa;
-    --panel: #ffffff;
-    --text: #1a1a1a;
-    --text-muted: #666;
+    /* Day 기본 */
+    --bg-primary: #f5f7fa;
+    --bg-card: #ffffff;
+    --bg-elevated: #f0f4f8;
     --border: #d8dde2;
-    --primary: #1F3864;
-    --accent: #2E75B6;
-    --output: #C00000;
-    --transfer: #0070C0;
-    --leak: #7030A0;
-    --control: #2E7D32;
-    --injury: #FF8C00;
+    --text-primary: #1a1a1a;
+    --text-secondary: #4b5563;
+    --text-muted: #6b7280;
+    --accent: #1F3864;       /* 진한 네이비 — Day 강조 */
+    --accent-soft: #2E75B6;  /* 보조 블루 */
+    --output: #C00000;       /* 출력 red */
+    --transfer: #0070C0;     /* 전달 blue */
+    --leak: #7030A0;         /* 누수 purple */
+    --control: #2E7D32;      /* 제구 green */
+    --injury: #D97706;       /* 부상 orange */
+    --good: #16a34a;
+    --warn: #d97706;
+    --bad: #dc2626;
+    --shadow: 0 2px 6px rgba(0,0,0,0.06);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
   }
-  * { box-sizing: border-box; }
+  html[data-theme="night"] {
+    --bg-primary: #0a0b0d;
+    --bg-card: #141518;
+    --bg-elevated: #1c1d21;
+    --border: #2a2c31;
+    --text-primary: #e8e9ec;
+    --text-secondary: #b3b5b9;
+    --text-muted: #5f636b;
+    --accent: #ff6b35;
+    --accent-soft: #fb923c;
+    --output: #f87171;
+    --transfer: #60a5fa;
+    --leak: #c084fc;
+    --control: #4ade80;
+    --injury: #fbbf24;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --shadow: 0 2px 6px rgba(0,0,0,0.4);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.6);
+  }
+
   body {
-    font-family: 'Malgun Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: var(--bg); color: var(--text);
-    margin: 0; padding: 20px;
-    line-height: 1.5;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', 'Malgun Gothic', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    transition: background 0.3s, color 0.3s;
   }
-  .container { max-width: 1200px; margin: 0 auto; }
+  .display { font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
 
-  header.app-header {
-    background: linear-gradient(135deg, var(--primary), var(--accent));
-    color: white; padding: 24px; border-radius: 12px;
-    margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    transition: background 0.3s, border-color 0.3s;
   }
-  header.app-header h1 { margin: 0 0 8px 0; font-size: 28px; }
-  header.app-header .subtitle { opacity: 0.9; font-size: 14px; }
-  header.app-header .version-badge {
-    display: inline-block; background: rgba(255,255,255,0.2);
-    padding: 4px 10px; border-radius: 12px; font-size: 12px;
-    margin-left: 8px; font-family: 'Consolas', monospace;
+  .input-field, select.input-field {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    width: 100%;
+  }
+  .input-field:focus { outline: none; border-color: var(--accent); }
+  .input-field::placeholder { color: var(--text-muted); }
+
+  .btn {
+    padding: 8px 16px; border-radius: 4px; cursor: pointer;
+    font-weight: 500; transition: all 0.15s; font-size: 13px;
+  }
+  .btn-primary {
+    background: var(--accent); color: white; border: none;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-secondary {
+    background: var(--bg-elevated); color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  .level-btn {
+    padding: 8px 16px; border-radius: 6px; cursor: pointer;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-secondary); font-size: 13px; transition: all 0.15s;
+  }
+  .level-btn.active {
+    background: var(--accent); color: white; border-color: var(--accent);
+  }
+  .hand-btn {
+    padding: 8px 16px; border-radius: 6px; cursor: pointer;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-secondary); font-size: 13px; transition: all 0.15s;
+  }
+  .hand-btn.active {
+    background: var(--accent-soft); color: white; border-color: var(--accent-soft);
   }
 
-  .panel {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 20px; margin-bottom: 20px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  .mode-toggle-row {
+    display: flex; gap: 8px; align-items: center;
+    padding: 6px 10px; background: var(--bg-elevated);
+    border: 1px solid var(--border); border-radius: 6px;
   }
-  .panel h2 { margin-top: 0; color: var(--primary); }
+  .mode-pill {
+    padding: 4px 10px; border-radius: 4px; cursor: pointer;
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    background: transparent; color: var(--text-muted); border: none;
+  }
+  .mode-pill.active {
+    background: var(--accent); color: white;
+  }
 
-  .mode-selector { display: flex; gap: 16px; margin-bottom: 20px; }
-  .mode-option {
-    flex: 1; padding: 16px; border: 2px solid var(--border);
-    border-radius: 8px; cursor: pointer; transition: all 0.2s;
-    text-align: center;
+  .step-header {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
   }
-  .mode-option:hover { border-color: var(--accent); }
-  .mode-option.active {
-    border-color: var(--primary); background: #e8f0fa;
-    box-shadow: 0 2px 8px rgba(31,56,100,0.15);
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
   }
-  .mode-option h3 { margin: 0 0 4px 0; font-size: 16px; }
-  .mode-option .mode-desc { font-size: 13px; color: var(--text-muted); }
-  .mode-option .mode-target { font-size: 12px; margin-top: 6px; color: var(--accent); }
+  .step-title { font-size: 18px; font-weight: 700; }
 
-  .form-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: end; }
-  .form-row label { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-  .form-row input {
-    padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
-    font-size: 14px; font-family: inherit;
+  .info-box {
+    background: rgba(46,117,182,0.06);
+    border-left: 3px solid var(--accent-soft);
+    padding: 10px 14px; border-radius: 4px;
+    font-size: 12px; color: var(--text-secondary); line-height: 1.6;
+    margin: 10px 0;
   }
-  .form-row input:focus { outline: 2px solid var(--accent); }
+  html[data-theme="night"] .info-box {
+    background: rgba(96,165,250,0.05);
+  }
 
-  .upload-zone {
-    border: 2px dashed var(--accent); border-radius: 12px;
-    padding: 40px; text-align: center; cursor: pointer;
-    transition: all 0.2s; background: #fafbfc;
+  .file-drop {
+    border: 2px dashed var(--border); border-radius: 8px;
+    padding: 24px; text-align: center; background: var(--bg-elevated);
+    transition: all 0.15s; cursor: pointer;
   }
-  .upload-zone:hover { background: #f0f5fb; border-color: var(--primary); }
-  .upload-zone.drag-over { background: #e8f0fa; transform: scale(1.01); }
-  .upload-zone input[type="file"] { display: none; }
-  .upload-zone .icon { font-size: 48px; margin-bottom: 8px; }
-  .upload-zone .hint { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
-  .upload-zone .files-list { margin-top: 12px; font-size: 13px; color: var(--accent); }
+  .file-drop:hover, .file-drop.dragover {
+    border-color: var(--accent); background: rgba(46,117,182,0.05);
+  }
+  html[data-theme="night"] .file-drop:hover, html[data-theme="night"] .file-drop.dragover {
+    background: rgba(255,107,53,0.05);
+  }
 
-  button.primary {
-    background: var(--primary); color: white; border: none;
-    padding: 12px 24px; border-radius: 6px; font-size: 16px;
-    cursor: pointer; font-family: inherit; font-weight: 500;
-    transition: background 0.2s;
+  /* 테마 토글 버튼 */
+  .theme-toggle {
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    color: var(--text-primary); padding: 6px 12px; border-radius: 4px;
+    cursor: pointer; font-size: 14px; transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
   }
-  button.primary:hover { background: #2a4a7a; }
-  button.primary:disabled { background: #aaa; cursor: not-allowed; }
+  .theme-toggle:hover { border-color: var(--accent); }
 
-  /* Report */
-  .report-header {
-    background: linear-gradient(135deg, #f8fafc, #eef2f7);
-    padding: 16px 20px; border-radius: 8px; margin-bottom: 20px;
-    border-left: 6px solid var(--primary);
-  }
-  .report-header h1 { margin: 0 0 8px 0; font-size: 20px; color: var(--primary); }
-  .report-header .meta { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
-  .report-header .meta .mode {
-    background: var(--accent); color: white; padding: 2px 10px;
-    border-radius: 12px; font-size: 12px;
-  }
-  .report-header .meta .mode.pro { background: #C00000; }
-  .report-header .player-meta { margin-top: 8px; font-size: 14px; }
-
-  .categories {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
-    gap: 16px; margin-bottom: 24px;
-  }
+  /* 카테고리 카드 */
   .cat-card {
-    background: white; border: 1px solid var(--border);
-    border-radius: 8px; padding: 16px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; box-shadow: var(--shadow);
   }
-  .cat-header { display: flex; justify-content: space-between; align-items: baseline; }
-  .cat-header h3 { margin: 0; font-size: 16px; }
-  .cat-score { font-size: 28px; font-weight: bold; }
-  .cat-score span { font-size: 14px; color: var(--text-muted); font-weight: normal; }
-  .cat-desc { color: var(--text-muted); font-size: 13px; margin: 6px 0; }
-  .cat-stats { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
-  .cat-integration {
-    background: #fff8e7; padding: 8px; border-radius: 4px;
-    font-size: 13px; margin-top: 8px;
-  }
+  .cat-card.OUTPUT { border-left: 4px solid var(--output); }
+  .cat-card.TRANSFER { border-left: 4px solid var(--transfer); }
+  .cat-card.LEAK { border-left: 4px solid var(--leak); }
+  .cat-card.CONTROL { border-left: 4px solid var(--control); }
+  .cat-card.INJURY { border-left: 4px solid var(--injury); }
 
-  details summary {
-    cursor: pointer; padding: 8px 0; font-size: 13px;
-    color: var(--accent); border-top: 1px solid var(--border); margin-top: 8px;
+  .cat-header {
+    display: flex; justify-content: space-between;
+    align-items: baseline; margin-bottom: 8px;
   }
+  .cat-title { font-size: 15px; font-weight: 700; }
+  .cat-score {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700; font-size: 28px;
+  }
+  .cat-score .total { font-size: 14px; color: var(--text-muted); font-weight: normal; }
+  .cat-meta { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
 
-  table.var-table { width: 100%; font-size: 12px; margin-top: 8px; border-collapse: collapse; }
+  table.var-table {
+    width: 100%; font-size: 12px; margin-top: 8px;
+    border-collapse: collapse;
+  }
   table.var-table th, table.var-table td {
     padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left;
   }
-  table.var-table th { background: #f0f4f8; font-weight: 600; }
-  table.var-table .score-good { color: #00B050; font-weight: 600; }
-  table.var-table .score-mid { color: #FFA500; font-weight: 600; }
-  table.var-table .score-low { color: #C00000; font-weight: 600; }
-  table.var-table .na { color: #aaa; }
+  table.var-table th {
+    background: var(--bg-elevated); font-weight: 600;
+    color: var(--text-secondary); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  table.var-table .score-good { color: var(--good); font-weight: 600; }
+  table.var-table .score-mid  { color: var(--warn); font-weight: 600; }
+  table.var-table .score-low  { color: var(--bad); font-weight: 600; }
+  table.var-table .na { color: var(--text-muted); font-style: italic; }
 
-  .faults { background: #fff5f5; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
-  .faults h2 { color: var(--output); margin-top: 0; font-size: 18px; }
+  details summary { cursor: pointer; padding: 8px 0; font-size: 12px; color: var(--accent-soft); }
+  details summary:hover { color: var(--accent); }
+
+  .faults {
+    background: rgba(220,38,38,0.05); border-radius: 8px;
+    padding: 16px; margin: 16px 0; border-left: 3px solid var(--bad);
+  }
+  html[data-theme="night"] .faults {
+    background: rgba(248,113,113,0.05);
+  }
   .fault-card {
-    background: white; padding: 12px; margin-bottom: 8px;
-    border-radius: 6px;
+    background: var(--bg-card); padding: 12px; margin-bottom: 8px;
+    border-radius: 6px; border: 1px solid var(--border);
   }
   .fault-card .sev { font-size: 11px; color: var(--text-muted); }
-  .fault-card .fault-cause, .fault-card .fault-coach { font-size: 13px; margin-top: 4px; }
+  .fault-card .fault-cause, .fault-card .fault-coach {
+    font-size: 13px; margin-top: 4px;
+  }
 
   .alert {
     padding: 12px 16px; border-radius: 6px; margin-bottom: 16px;
+    font-size: 13px;
   }
-  .alert.error { background: #fef2f2; color: #991b1b; border-left: 4px solid #dc2626; }
-  .alert.info { background: #eff6ff; color: #1e40af; border-left: 4px solid #2563eb; }
+  .alert.error  { background: rgba(220,38,38,0.08); color: var(--bad); border-left: 3px solid var(--bad); }
+  .alert.info   { background: rgba(46,117,182,0.08); color: var(--accent-soft); border-left: 3px solid var(--accent-soft); }
+  .alert.success { background: rgba(22,163,74,0.08); color: var(--good); border-left: 3px solid var(--good); }
 
   .loading { text-align: center; padding: 40px; color: var(--text-muted); }
+
+  .selected-files {
+    margin-top: 12px; font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .selected-files .file-chip {
+    display: inline-block; padding: 2px 8px; margin: 2px;
+    background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  }
+
+  .hidden { display: none !important; }
 </style>
 </head>
-<body>
-<div class="container">
+<body class="min-h-screen">
 
-<header class="app-header">
-  <h1>Theia Pitching Report <span class="version-badge" id="algo-version">v0.1</span></h1>
-  <div class="subtitle">Theia + Qualisys + 지면반력 마운드 — Output·Transfer·Leak 3분류 분석</div>
+<!-- ═══════════ Header ═══════════ -->
+<header class="border-b sticky top-0 z-40 backdrop-blur-md" style="background: rgba(245,247,250,0.85); border-color: var(--border);">
+<style>html[data-theme="night"] header { background: rgba(10,11,13,0.85) !important; }</style>
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div>
+      <div class="display text-xl">⚾ Theia Pitching Report</div>
+      <div class="text-xs mt-1" style="color: var(--text-muted);">
+        🎯 <strong style="color:var(--output);">Output</strong>
+        <span style="color: var(--text-muted);">·</span>
+        🔗 <strong style="color:var(--transfer);">Transfer</strong>
+        <span style="color: var(--text-muted);">·</span>
+        💧 <strong style="color:var(--leak);">Leak</strong>
+        <span style="color: var(--text-muted);">·</span>
+        🎯 <strong style="color:var(--control);">Control</strong>
+        <span style="color: var(--text-muted);">·</span>
+        ⚠️ <strong style="color:var(--injury);">Injury</strong>
+        <span class="ml-2 mono" style="color: var(--good);">v<span id="algo-version-stamp">0.2</span></span>
+        <span class="mono" style="color: var(--text-muted);">(2026-05-05)</span>
+      </div>
+      <div class="text-[10px] mt-1" style="color: var(--text-muted);">
+        Theia + Qualisys + 지면반력 마운드 · HS Top 10% (n=41) · Wood-Smith·Werner·ASMI·Driveline
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="mode-toggle-row">
+        <span class="text-xs" style="color: var(--text-muted);">코호트</span>
+        <button id="mode-pill-hs" class="mode-pill active" onclick="selectMode('hs_top10')">HS Top 10%</button>
+        <button id="mode-pill-pro" class="mode-pill" onclick="selectMode('pro')">Pro Reference</button>
+      </div>
+      <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-label">Night</span>
+      </button>
+    </div>
+  </div>
 </header>
 
-<!-- 입력 패널 -->
-<div class="panel" id="input-panel">
-  <h2>1. 평가 모드 선택</h2>
-  <div class="mode-selector">
-    <div class="mode-option active" data-mode="hs_top10" onclick="window.selectMode('hs_top10')">
-      <h3>🎓 고교 모드</h3>
-      <div class="mode-desc">고교 1학년 상위 10% (n=41)</div>
-      <div class="mode-target">Theia 실측 percentile</div>
+<main class="max-w-7xl mx-auto px-6 py-6">
+
+  <!-- ═══════════ Step 1: 선수 정보 ═══════════ -->
+  <section class="card p-6 mb-6">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">선수 정보</div>
     </div>
-    <div class="mode-option" data-mode="pro" onclick="window.selectMode('pro')">
-      <h3>⚾ 프로 모드</h3>
-      <div class="mode-desc">문헌 + Driveline elite (Wood-Smith·Werner·ASMI)</div>
-      <div class="mode-target">Gaussian (optimal 기준)</div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div>
+        <label class="text-xs block mb-1" style="color: var(--text-muted);">선수 이름</label>
+        <input type="text" class="input-field" id="player-name" placeholder="예: 박명균">
+      </div>
+      <div>
+        <label class="text-xs block mb-1" style="color: var(--text-muted);">체중 (kg)</label>
+        <input type="number" class="input-field" id="player-mass" placeholder="78" step="0.1">
+      </div>
+      <div>
+        <label class="text-xs block mb-1" style="color: var(--text-muted);">키 (cm)</label>
+        <input type="number" class="input-field" id="player-height" placeholder="179" step="0.1">
+      </div>
     </div>
-  </div>
 
-  <h2>2. 선수 정보</h2>
-  <div class="form-row">
-    <label>이름 <input type="text" id="player-name" placeholder="예: 박명균"></label>
-    <label>체중 (kg) <input type="number" id="player-mass" placeholder="78" step="0.1"></label>
-    <label>키 (cm) <input type="number" id="player-height" placeholder="179" step="0.1"></label>
-    <label>좌·우투
-      <select id="player-hand" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;">
-        <option value="right">우투</option>
-        <option value="left">좌투</option>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="text-xs block mb-2" style="color: var(--text-muted);">수준 — 코호트 모드 자동 매핑</label>
+        <div class="flex gap-2 flex-wrap">
+          <button class="level-btn" data-level="중학" onclick="selectLevel('중학')">중학</button>
+          <button class="level-btn active" data-level="고교" onclick="selectLevel('고교')">고교</button>
+          <button class="level-btn" data-level="대학" onclick="selectLevel('대학')">대학</button>
+          <button class="level-btn" data-level="프로" onclick="selectLevel('프로')">프로</button>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs block mb-2" style="color: var(--text-muted);">투구 손</label>
+        <div class="flex gap-2">
+          <button class="hand-btn active" data-hand="right" onclick="selectHand('right')">우완 (RH)</button>
+          <button class="hand-btn" data-hand="left" onclick="selectHand('left')">좌완 (LH)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="text-xs block mb-1" style="color: var(--text-muted);">평균 구속 (km/h)</label>
+        <input type="number" class="input-field" id="player-ball-speed" placeholder="예: 138" step="0.1">
+      </div>
+      <div>
+        <label class="text-xs block mb-1" style="color: var(--text-muted);">구속 SD (km/h, 선택)</label>
+        <input type="number" class="input-field" id="player-ball-speed-sd" placeholder="예: 1.5" step="0.1">
+      </div>
+      <div>
+        <label class="text-xs block mb-1" style="color: var(--text-muted);">구질</label>
+        <select class="input-field" id="player-pitch-type">
+          <option value="FF">Fastball (직구)</option>
+          <option value="CB">Curveball (커브)</option>
+          <option value="SL">Slider (슬라이더)</option>
+          <option value="CH">Changeup (체인지업)</option>
+          <option value="CT">Cutter (커터)</option>
+          <option value="SI">Sinker (싱커)</option>
+          <option value="OTHER">기타</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="info-box mt-3" id="level-desc">
+      고교 → <strong>HS Top 10%</strong> 모드 (n=41 percentile 기준)
+    </div>
+  </section>
+
+  <!-- ═══════════ Step 2: 선수 metadata 자동 입력 (xlsx/csv) ═══════════ -->
+  <section class="card p-6 mb-6">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">선수 정보 자동 입력 (선택)</div>
+    </div>
+    <div class="info-box">
+      <strong>지원 형식</strong> — <code class="mono text-[11px]">고1 정밀측정.xlsx</code> 형식 (session, player, mass, height, dom/pitch_type, ball_speed) 또는 동일 컬럼명을 가진 CSV.
+      파일 안에 여러 선수가 있으면 dropdown에서 선택하면 Step 1의 <strong>이름·체중·키·좌우투·평균구속·구속SD·구질</strong>이 자동 입력됩니다.
+      Step 1을 직접 입력하셔도 됩니다 (이 단계 건너뛰기 가능).
+    </div>
+
+    <div class="file-drop mb-3" id="meta-drop-zone" onclick="document.getElementById('meta-upload').click()">
+      <div class="text-3xl mb-1">📋</div>
+      <div class="text-sm font-medium">선수 metadata xlsx/CSV 업로드</div>
+      <div class="text-xs mt-1" style="color: var(--text-muted);">
+        고1 정밀측정.xlsx 형식 · 41선수 한 파일도 OK
+      </div>
+      <input type="file" id="meta-upload" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleMetaUpload(event)">
+    </div>
+
+    <!-- 선수 선택 dropdown -->
+    <div id="meta-player-selector" class="hidden mb-3">
+      <label class="text-xs block mb-1" style="color: var(--text-muted);">선수 선택 — Step 1 자동 입력</label>
+      <select class="input-field" id="meta-player-select" onchange="selectMetaPlayer(this.value)">
+        <option value="">— 선택 —</option>
       </select>
-    </label>
-  </div>
-  <div class="form-row" style="margin-top: 12px;">
-    <label>
-      구속 평균 (km/h)
-      <input type="number" id="player-ball-speed" placeholder="예: 145" step="0.1">
-      <small style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">★ Radar gun 평균. c3d.txt에 없을 때 이 값 사용</small>
-    </label>
-    <label>
-      구속 SD (km/h, 선택)
-      <input type="number" id="player-ball-speed-sd" placeholder="예: 1.5" step="0.1">
-      <small style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">Trial 간 변동성 (없으면 비워두기)</small>
-    </label>
-    <label>
-      구질
-      <select id="player-pitch-type" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;">
-        <option value="FF">Fastball (직구)</option>
-        <option value="CB">Curveball (커브)</option>
-        <option value="SL">Slider (슬라이더)</option>
-        <option value="CH">Changeup (체인지업)</option>
-        <option value="CT">Cutter (커터)</option>
-        <option value="SI">Sinker (싱커)</option>
-        <option value="OTHER">기타</option>
-      </select>
-    </label>
-  </div>
+    </div>
 
-  <h2>3. c3d.txt 파일 업로드</h2>
-  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-    <input type="file" id="file-input" multiple accept=".txt,.c3d,.c3d.txt" onchange="window.handleFiles(this.files)">
-    <div class="icon">📁</div>
-    <div><strong>c3d.txt 파일 선택 또는 드래그</strong></div>
-    <div class="hint">한 선수의 여러 trial을 동시에 업로드하면 평균 + 제구 일관성(P 카테고리) 산출 가능</div>
-    <div class="files-list" id="files-list"></div>
-  </div>
+    <div id="meta-status" class="hidden text-xs mt-2" style="color: var(--good);"></div>
 
-  <div style="margin-top: 16px; text-align: center;">
-    <button class="primary" id="analyze-btn" onclick="window.runAnalysis()" disabled>분석 실행</button>
-  </div>
-</div>
+    <!-- 체력 변수 표시 (wide format에 체력 데이터가 있을 때만) -->
+    <div id="fitness-panel" class="hidden mt-4 p-3 rounded" style="background: var(--bg-elevated); border: 1px solid var(--border);">
+      <div class="text-xs font-semibold mb-2" style="color: var(--accent-soft);">💪 체력·구속 변수</div>
+      <div id="fitness-vars" class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs"></div>
+    </div>
+  </section>
 
-<!-- 결과 패널 -->
-<div id="result-area"></div>
+  <!-- ═══════════ Step 3: c3d.txt 메카닉 업로드 ═══════════ -->
+  <section class="card p-6 mb-6">
+    <div class="step-header">
+      <div class="step-num">3</div>
+      <div class="step-title">c3d.txt 메카닉 데이터 업로드</div>
+    </div>
+    <div class="info-box">
+      <strong>Visual3D pipeline</strong>이 적용된 c3d.txt 파일 — 한 선수의 여러 trial을 동시에 업로드하면 평균 + 제구 일관성 (P1 wrist SD, P3 release height SD, P5 arm slot SD) 자동 산출.
+      박명균 옛 형식 (46-col) 및 새 87-col 형식 모두 지원.
+    </div>
 
-</div>
+    <div class="file-drop mb-3" id="c3d-drop-zone" onclick="document.getElementById('c3d-upload').click()">
+      <div class="text-3xl mb-1">⚾</div>
+      <div class="text-sm font-medium">c3d.txt 파일 선택 또는 드래그 (여러 trial 가능)</div>
+      <div class="text-xs mt-1" style="color: var(--text-muted);">
+        Fastball RH Markerless 1.c3d.txt · Sample_Pro_Fastball_RH_v0.1.c3d.txt 등
+      </div>
+      <input type="file" id="c3d-upload" multiple accept=".txt,.c3d,.c3d.txt" style="display:none;" onchange="handleC3dUpload(event)">
+    </div>
 
-<!-- Theia 코호트 + 메타 + 앱 로직 -->
+    <div id="c3d-files-list" class="selected-files hidden"></div>
+  </section>
+
+  <!-- ═══════════ Step 4: 분석 실행 ═══════════ -->
+  <section class="text-center mb-8">
+    <button class="btn btn-primary text-base px-12 py-4" id="analyze-btn" onclick="runAnalysis()" disabled>
+      🎯 리포트 생성
+    </button>
+    <div class="text-xs mt-2" style="color: var(--text-muted);">
+      Step 1 (선수 정보) + Step 3 (c3d.txt)이 입력되면 활성화됩니다
+    </div>
+  </section>
+
+  <!-- ═══════════ 결과 영역 ═══════════ -->
+  <div id="result-area"></div>
+
+</main>
+
+<!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 ═══════════ -->
 <script src="cohort_theia.js"></script>
 <script src="metadata_theia.js"></script>
 <script src="theia_app.js"></script>
 
 <script>
-// ──────────────────────────────────────────────
-// UI 상호작용 로직
-// ──────────────────────────────────────────────
-let selectedFiles = [];
+// ════════════════════════════════════════════════════════════
+// UI 상태
+// ════════════════════════════════════════════════════════════
+let selectedC3dFiles = [];
+let metaPlayerData = null;  // xlsx에서 파싱한 선수 데이터 { player_name: { mass, height, hand, ball_speed_mean, ball_speed_sd, pitch_type } }
 
-window.selectMode = function(mode) {
-  document.querySelectorAll('.mode-option').forEach(el => el.classList.remove('active'));
-  document.querySelector(`.mode-option[data-mode="${mode}"]`).classList.add('active');
-  window.TheiaApp.setMode(mode);
+// ════════════════════════════════════════════════════════════
+// 테마 토글 (Day ↔ Night)
+// ════════════════════════════════════════════════════════════
+function toggleTheme() {
+  const html = document.documentElement;
+  const cur = html.getAttribute('data-theme');
+  const next = cur === 'day' ? 'night' : 'day';
+  html.setAttribute('data-theme', next);
+  document.getElementById('theme-icon').textContent = next === 'day' ? '🌙' : '☀️';
+  document.getElementById('theme-label').textContent = next === 'day' ? 'Night' : 'Day';
+  try { localStorage.setItem('theia_theme', next); } catch (e) {}
+}
+// 초기 테마 복원
+(function () {
+  try {
+    const saved = localStorage.getItem('theia_theme');
+    if (saved === 'night') {
+      document.documentElement.setAttribute('data-theme', 'night');
+      document.getElementById('theme-icon').textContent = '☀️';
+      document.getElementById('theme-label').textContent = 'Day';
+    }
+  } catch (e) {}
+})();
+
+// ════════════════════════════════════════════════════════════
+// 수준 선택 → 코호트 모드 자동 매핑
+// ════════════════════════════════════════════════════════════
+let CURRENT_LEVEL = '고교';
+
+function selectLevel(level) {
+  CURRENT_LEVEL = level;
+  document.querySelectorAll('.level-btn').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.level-btn[data-level="${level}"]`).classList.add('active');
+
+  // 자동 매핑: 중·고 → HS Top 10%, 대·프로 → Pro
+  const mode = (level === '중학' || level === '고교') ? 'hs_top10' : 'pro';
+  selectMode(mode);
+
+  const desc = {
+    '중학': '중학 → <strong>HS Top 10%</strong> 모드 추천 (발달 단계 유사, 고교 1년차 상위 10% reference로 percentile 평가)',
+    '고교': '고교 → <strong>HS Top 10%</strong> 모드 (n=41 percentile 기준 — 가장 정확한 발달 코호트)',
+    '대학': '대학 → <strong>Pro Reference</strong> 모드 추천 (elite 문헌 기반 Gaussian — Wood-Smith·Werner·ASMI)',
+    '프로': '프로 → <strong>Pro Reference</strong> 모드 (MLB·KBO 수준 elite 비교 — Driveline R&D 종합)',
+  };
+  document.getElementById('level-desc').innerHTML = desc[level] || desc['고교'];
+}
+
+function selectMode(mode) {
+  document.getElementById('mode-pill-hs').classList.toggle('active', mode === 'hs_top10');
+  document.getElementById('mode-pill-pro').classList.toggle('active', mode === 'pro');
+  if (window.TheiaApp) window.TheiaApp.setMode(mode);
+}
+
+// ════════════════════════════════════════════════════════════
+// 좌·우투 선택
+// ════════════════════════════════════════════════════════════
+let CURRENT_HAND = 'right';
+
+function selectHand(hand) {
+  CURRENT_HAND = hand;
+  document.querySelectorAll('.hand-btn').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.hand-btn[data-hand="${hand}"]`).classList.add('active');
+}
+
+// ════════════════════════════════════════════════════════════
+// Step 2 — xlsx/CSV 선수 metadata 파싱
+// ════════════════════════════════════════════════════════════
+function handleMetaUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      let rows;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        rows = parseCSVRows(e.target.result);
+      } else {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      }
+      processMetaRows(rows);
+    } catch (err) {
+      console.error(err);
+      showAlert(`metadata 파싱 실패: ${err.message}`, 'error');
+    }
+  };
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    reader.readAsText(file, 'utf-8');
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function parseCSVRows(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = (vals[i] || '').trim());
+    return obj;
+  });
+}
+
+// 컬럼명 정규화 — 'Height[M]', 'CMJ Peak Power / BM [W/kg]' 등 대소문자·공백·기호 무시
+function normKey(k) { return String(k).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function processMetaRows(rows) {
+  if (!rows || rows.length === 0) {
+    showAlert('파일에 행이 없습니다.', 'error');
+    return;
+  }
+  // ── 형식 자동 검출 ──
+  const cols = Object.keys(rows[0]).map(normKey);
+  const hasLong = cols.includes('session') && (cols.includes('player') || cols.includes('name'));
+  const hasWide = cols.includes('name') && (cols.includes('weightkg') || cols.includes('height') || cols.includes('heightm') || cols.includes('heightcm'));
+
+  let summary, format;
+  if (hasLong) {
+    summary = parseLongFormat(rows);
+    format = 'long';
+  } else if (hasWide) {
+    summary = parseWideFormat(rows);
+    format = 'wide';
+  } else {
+    showAlert('지원되지 않는 형식 — long(session/player/mass/height/dom_pitch_type/ball_speed) 또는 wide(Name/Weight/Height/Handedness/Max Velocity/CMJ/SJ/IMTP/Grip)', 'error');
+    return;
+  }
+
+  metaPlayerData = summary;
+  const players = Object.keys(summary).sort();
+  const sel = document.getElementById('meta-player-select');
+  sel.innerHTML = '<option value="">— 선수 선택 —</option>' +
+    players.map(p => `<option value="${p}">${p}${summary[p].n_trials > 1 ? ` (n=${summary[p].n_trials})` : ''}</option>`).join('');
+  document.getElementById('meta-player-selector').classList.remove('hidden');
+
+  const status = document.getElementById('meta-status');
+  status.classList.remove('hidden');
+  status.innerHTML = `✓ ${format === 'wide' ? 'wide' : 'long'} 형식 인식 — ${players.length}명 선수 로드 완료. dropdown에서 선택하세요.`;
+
+  // 단일 선수면 자동 선택
+  if (players.length === 1) {
+    sel.value = players[0];
+    selectMetaPlayer(players[0]);
+  }
+}
+
+// ═════ Long format 파서 (고1 정밀측정 형식) ═════
+function parseLongFormat(rows) {
+  const player_data = {};
+  for (const row of rows) {
+    const norm = {};
+    for (const [k, v] of Object.entries(row)) norm[normKey(k)] = v;
+    const player = norm.player || norm.name || norm.athlete;
+    if (!player) continue;
+    if (!player_data[player]) {
+      player_data[player] = { mass: [], height: [], dom_pitch: [], ball_speed: [] };
+    }
+    if (norm.mass) player_data[player].mass.push(parseFloat(norm.mass));
+    if (norm.height) player_data[player].height.push(parseFloat(norm.height));
+    if (norm.dompitchtype || norm.dompitch) player_data[player].dom_pitch.push(norm.dompitchtype || norm.dompitch);
+    if (norm.ballspeed) player_data[player].ball_speed.push(parseFloat(norm.ballspeed));
+  }
+  const meanF = arr => { const f = arr.filter(x=>isFinite(x)); return f.length ? f.reduce((a,b)=>a+b,0)/f.length : null; };
+  const sdF = arr => { const f = arr.filter(x=>isFinite(x)); if (f.length<2) return null; const m=f.reduce((a,b)=>a+b,0)/f.length; return Math.sqrt(f.reduce((s,x)=>s+(x-m)**2,0)/(f.length-1)); };
+  const summary = {};
+  for (const [name, d] of Object.entries(player_data)) {
+    const dpCnt = {}; d.dom_pitch.forEach(p => dpCnt[p] = (dpCnt[p]||0)+1);
+    const dpMode = Object.entries(dpCnt).sort((a,b)=>b[1]-a[1])[0]?.[0] || 'R_OH';
+    const isLeft = String(dpMode).toUpperCase().startsWith('L');
+    const ptMode = dpMode.split('_')[1] || 'OH';
+    summary[name] = {
+      _format: 'long',
+      mass: meanF(d.mass),
+      height: meanF(d.height),
+      hand: isLeft ? 'left' : 'right',
+      ball_speed_mean: meanF(d.ball_speed),
+      ball_speed_sd: sdF(d.ball_speed),
+      ball_speed_max: null,
+      pitch_type: ptMode === 'UH' ? 'OTHER' : 'FF',
+      n_trials: d.mass.length,
+      dom_pitch_raw: dpMode,
+      fitness: {},
+    };
+  }
+  return summary;
+}
+
+// ═════ Wide format 파서 (박명균 체력 형식) ═════
+//   각 row = 한 선수. 24컬럼 (School, Name, Weight, Height, Handedness, Max Velocity, CMJ/SJ/IMTP/Grip 등)
+function parseWideFormat(rows) {
+  // 체력 변수 매핑 — normKey 기반 (공백·괄호·슬래시 무시)
+  const FITNESS_KEYS = {
+    cmj_jump_height_cm:        ['cmjjumpheightflighttimecm', 'cmjjumpheightcm', 'cmjjumpheight'],
+    cmj_peak_power_w:          ['cmjpeakpowerw', 'cmjpeakpower'],
+    cmj_peak_power_bm:         ['cmjpeakpowerbmwkg', 'cmjpeakpowerbm'],
+    cmj_concentric_impulse_ns: ['cmjconcentricimpulsens', 'cmjconcentricimpulse'],
+    cmj_rsi_modified:          ['cmjrsimodifiedms', 'cmjrsimodified'],
+    sj_jump_height_cm:         ['sjjumpheightflighttimecm', 'sjjumpheightcm', 'sjjumpheight'],
+    sj_peak_power_w:           ['sjpeakpowerw', 'sjpeakpower'],
+    sj_peak_power_bm:          ['sjpeakpowerbmwkg', 'sjpeakpowerbm'],
+    sj_rsi_modified:           ['sjrsimodifiedms', 'sjrsimodified'],
+    eur:                       ['eur'],
+    imtp_peak_force_n:         ['imtppeakverticalforcen', 'imtppeakforce'],
+    imtp_peak_force_bm:        ['imtppeakverticalforcebmnkg', 'imtppeakforcebm'],
+    grip_strength_kg:          ['gripstrength', 'gripstrengthkg'],
+    age:                       ['age'],
+    bmi:                       ['bmi'],
+  };
+  const summary = {};
+  for (const row of rows) {
+    const norm = {};
+    for (const [k, v] of Object.entries(row)) norm[normKey(k)] = v;
+    const name = (norm.name || norm.player || norm.athlete || '').toString().trim();
+    if (!name) continue;
+
+    // mass (kg) — 'Weight[KG]' or 'Weight'
+    let mass = parseFloat(norm.weightkg || norm.weight || norm.mass);
+
+    // height — 'Height[M]' or 'Height[cm]' or 'Height' (단위 자동 검출)
+    let height = parseFloat(norm.heightm || norm.heightcm || norm.height);
+    if (isFinite(height) && height < 3) height *= 100;  // m → cm 자동 변환
+
+    // handedness — 'R' / 'L' / 'right' / 'left' / 'R_OH' 등
+    const handStr = String(norm.handedness || norm.hand || norm.dom || norm.dompitchtype || norm.dompitch || 'R').trim().toUpperCase();
+    const isLeft = handStr.startsWith('L');
+
+    // 구속 — Average Velocity 우선 (메카닉 평가용 평균), Max는 max로 기록
+    const avgVel = parseFloat(norm.averagevelocity || norm.avgvelocity || norm.meanvelocity || norm.ballspeed);
+    const maxVel = parseFloat(norm.maxvelocity);
+    const ball_speed_mean = isFinite(avgVel) ? avgVel : (isFinite(maxVel) ? maxVel : null);
+
+    // 체력 변수 추출
+    const fitness = {};
+    for (const [k, candidates] of Object.entries(FITNESS_KEYS)) {
+      for (const c of candidates) {
+        if (norm[c] != null && norm[c] !== '') {
+          const v = parseFloat(norm[c]);
+          if (isFinite(v)) { fitness[k] = v; break; }
+        }
+      }
+    }
+    // School·Date·ID 부가 정보
+    const school = norm.school || null;
+    const date = norm.date || norm.측정일 || null;
+
+    summary[name] = {
+      _format: 'wide',
+      mass: isFinite(mass) ? mass : null,
+      height: isFinite(height) ? height : null,
+      hand: isLeft ? 'left' : 'right',
+      ball_speed_mean,
+      ball_speed_max: isFinite(maxVel) ? maxVel : null,
+      ball_speed_sd: null,
+      pitch_type: 'FF',
+      n_trials: 1,
+      dom_pitch_raw: handStr,
+      school, date,
+      fitness,
+    };
+  }
+  return summary;
+}
+
+// ═════ 체력 변수 표시 ═════
+const FITNESS_LABELS = {
+  cmj_jump_height_cm:        { label: 'CMJ 점프 높이', unit: 'cm' },
+  cmj_peak_power_w:          { label: 'CMJ Peak Power', unit: 'W' },
+  cmj_peak_power_bm:         { label: 'CMJ Peak Power/체중', unit: 'W/kg' },
+  cmj_concentric_impulse_ns: { label: 'CMJ Concentric Impulse', unit: 'N·s' },
+  cmj_rsi_modified:          { label: 'CMJ RSI-modified', unit: 'm/s' },
+  sj_jump_height_cm:         { label: 'SJ 점프 높이', unit: 'cm' },
+  sj_peak_power_w:           { label: 'SJ Peak Power', unit: 'W' },
+  sj_peak_power_bm:          { label: 'SJ Peak Power/체중', unit: 'W/kg' },
+  sj_rsi_modified:           { label: 'SJ RSI-modified', unit: 'm/s' },
+  eur:                       { label: 'EUR (CMJ/SJ)', unit: '' },
+  imtp_peak_force_n:         { label: 'IMTP Peak Force', unit: 'N' },
+  imtp_peak_force_bm:        { label: 'IMTP Peak Force/체중', unit: 'N/kg' },
+  grip_strength_kg:          { label: 'Grip Strength', unit: 'kg' },
+  age:                       { label: '나이', unit: '세' },
+  bmi:                       { label: 'BMI', unit: '' },
 };
 
-window.handleFiles = function(files) {
-  selectedFiles = Array.from(files);
-  document.getElementById('files-list').innerHTML = selectedFiles.length === 0
-    ? ''
-    : `📄 ${selectedFiles.length}개 파일 선택됨: ${selectedFiles.map(f => f.name).join(', ')}`;
-  document.getElementById('analyze-btn').disabled = selectedFiles.length === 0;
-};
+function renderFitnessPanel(d) {
+  const panel = document.getElementById('fitness-panel');
+  const cont = document.getElementById('fitness-vars');
+  const f = d.fitness || {};
+  const items = [];
+
+  // 구속 max·avg 우선 표시
+  if (d.ball_speed_max != null) items.push({ label: '구속 Max', val: d.ball_speed_max.toFixed(1), unit: 'km/h', emp: true });
+  if (d.ball_speed_mean != null) items.push({ label: '구속 Avg', val: d.ball_speed_mean.toFixed(1), unit: 'km/h', emp: true });
+
+  // 나머지 체력 변수 — 정의된 순서대로
+  for (const [k, meta] of Object.entries(FITNESS_LABELS)) {
+    if (k === 'age' || k === 'bmi') continue;  // 학교·나이는 별도 표시
+    if (f[k] != null) {
+      items.push({ label: meta.label, val: typeof f[k] === 'number' ? f[k].toFixed(2).replace(/\.?0+$/, '') : f[k], unit: meta.unit });
+    }
+  }
+  if (f.age != null || f.bmi != null) {
+    if (f.age != null) items.push({ label: '나이', val: f.age, unit: '세' });
+    if (f.bmi != null) items.push({ label: 'BMI', val: f.bmi.toFixed(1), unit: '' });
+  }
+  if (d.school) items.push({ label: '소속', val: d.school, unit: '' });
+  if (d.date) items.push({ label: '측정일', val: d.date, unit: '' });
+
+  if (items.length === 0) {
+    panel.classList.add('hidden');
+    return;
+  }
+  panel.classList.remove('hidden');
+  cont.innerHTML = items.map(it => `
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px;${it.emp ? ' border-left: 2px solid var(--output);' : ''}">
+      <div style="color: var(--text-muted); font-size: 10px;">${it.label}</div>
+      <div class="mono" style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${it.val}<span style="color: var(--text-muted); font-size: 10px; margin-left: 3px;">${it.unit}</span></div>
+    </div>
+  `).join('');
+}
+
+function selectMetaPlayer(name) {
+  if (!name || !metaPlayerData?.[name]) {
+    document.getElementById('fitness-panel').classList.add('hidden');
+    return;
+  }
+  const d = metaPlayerData[name];
+  document.getElementById('player-name').value = name;
+  if (d.mass != null) document.getElementById('player-mass').value = d.mass.toFixed(1);
+  if (d.height != null) document.getElementById('player-height').value = d.height.toFixed(1);
+  if (d.ball_speed_mean != null) document.getElementById('player-ball-speed').value = d.ball_speed_mean.toFixed(1);
+  if (d.ball_speed_sd != null) document.getElementById('player-ball-speed-sd').value = d.ball_speed_sd.toFixed(2);
+  if (d.pitch_type) document.getElementById('player-pitch-type').value = d.pitch_type;
+  selectHand(d.hand);
+
+  // 상태 메시지
+  const fmtBalls = d.ball_speed_mean != null
+    ? `${d.ball_speed_mean.toFixed(1)}${d.ball_speed_sd != null ? '±' + d.ball_speed_sd.toFixed(1) : ''}km/h${d.ball_speed_max != null ? ` (max ${d.ball_speed_max.toFixed(1)})` : ''}`
+    : '구속 없음';
+  document.getElementById('meta-status').innerHTML =
+    `✓ <strong>${name}</strong> 자동 입력 (${d._format} 형식): ${d.mass?.toFixed(1) || '?'}kg · ${d.height?.toFixed(1) || '?'}cm · ${d.hand === 'left' ? '좌완' : '우완'} · ${fmtBalls}${d.n_trials > 1 ? ` · n=${d.n_trials} trials` : ''}`;
+
+  // 체력 변수 패널
+  renderFitnessPanel(d);
+
+  // 체력 데이터를 TheiaApp에 전달
+  if (window.TheiaApp?.setFitnessData) {
+    window.TheiaApp.setFitnessData(d.fitness, { ball_speed_max: d.ball_speed_max, school: d.school, date: d.date });
+  }
+
+  updateAnalyzeButton();
+}
+
+// ════════════════════════════════════════════════════════════
+// Step 3 — c3d.txt 업로드
+// ════════════════════════════════════════════════════════════
+function handleC3dUpload(event) {
+  selectedC3dFiles = Array.from(event.target.files);
+  renderC3dFiles();
+  updateAnalyzeButton();
+}
+
+function renderC3dFiles() {
+  const div = document.getElementById('c3d-files-list');
+  if (selectedC3dFiles.length === 0) { div.classList.add('hidden'); div.innerHTML = ''; return; }
+  div.classList.remove('hidden');
+  div.innerHTML = `<strong>${selectedC3dFiles.length}개 파일 선택됨:</strong> ` +
+    selectedC3dFiles.map(f => `<span class="file-chip">${f.name}</span>`).join('');
+}
 
 // 드래그 & 드롭
-const dropZone = document.getElementById('upload-zone');
-['dragenter','dragover'].forEach(ev => dropZone.addEventListener(ev, e => {
-  e.preventDefault(); dropZone.classList.add('drag-over');
-}));
-['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => {
-  e.preventDefault(); dropZone.classList.remove('drag-over');
-}));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  window.handleFiles(e.dataTransfer.files);
+function setupDropZone(zoneId, inputId, isMultiple) {
+  const zone = document.getElementById(zoneId);
+  ['dragenter','dragover'].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.add('dragover');
+  }));
+  ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+  }));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    const input = document.getElementById(inputId);
+    if (isMultiple) {
+      input.files = e.dataTransfer.files;
+      input.dispatchEvent(new Event('change'));
+    } else {
+      input.files = e.dataTransfer.files;
+      input.dispatchEvent(new Event('change'));
+    }
+  });
+}
+setupDropZone('meta-drop-zone', 'meta-upload', false);
+setupDropZone('c3d-drop-zone', 'c3d-upload', true);
+
+// ════════════════════════════════════════════════════════════
+// 분석 실행
+// ════════════════════════════════════════════════════════════
+function updateAnalyzeButton() {
+  const mass = parseFloat(document.getElementById('player-mass').value);
+  const height = parseFloat(document.getElementById('player-height').value);
+  const ok = mass > 0 && height > 0 && selectedC3dFiles.length > 0;
+  document.getElementById('analyze-btn').disabled = !ok;
+}
+['player-mass', 'player-height'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateAnalyzeButton);
 });
 
-window.runAnalysis = async function() {
+async function runAnalysis() {
   const mode = window.TheiaApp.getMode();
   const mass = parseFloat(document.getElementById('player-mass').value);
   const height = parseFloat(document.getElementById('player-height').value);
-  const name = document.getElementById('player-name').value;
-  const hand = document.getElementById('player-hand').value;
+  const name = document.getElementById('player-name').value || '신규 선수';
   const ballSpeed = parseFloat(document.getElementById('player-ball-speed').value);
   const ballSpeedSD = parseFloat(document.getElementById('player-ball-speed-sd').value);
   const pitchType = document.getElementById('player-pitch-type').value;
 
-  if (!mass || !height) {
-    showAlert('체중과 키를 입력해주세요.', 'error');
-    return;
-  }
-  if (selectedFiles.length === 0) {
-    showAlert('c3d.txt 파일을 업로드해주세요.', 'error');
-    return;
-  }
+  if (!mass || !height) { showAlert('체중과 키를 입력해주세요.', 'error'); return; }
+  if (selectedC3dFiles.length === 0) { showAlert('c3d.txt 파일을 업로드해주세요.', 'error'); return; }
 
   document.getElementById('result-area').innerHTML = '<div class="loading">⏳ 분석 중...</div>';
   document.getElementById('analyze-btn').disabled = true;
 
   try {
-    window.TheiaApp.setPlayer({ mass_kg: mass, height_cm: height, name, handedness: hand });
-    const result = await window.TheiaApp.processFiles(selectedFiles, {
-      mode, mass_kg: mass, height_cm: height,
-      ball_speed: ballSpeed,
-      ball_speed_sd: ballSpeedSD,
-      pitch_type: pitchType,
+    window.TheiaApp.setPlayer({
+      mass_kg: mass, height_cm: height, name, handedness: CURRENT_HAND, level: CURRENT_LEVEL,
+    });
+    const result = await window.TheiaApp.processFiles(selectedC3dFiles, {
+      mode, mass_kg: mass, height_cm: height, level: CURRENT_LEVEL,
+      ball_speed: ballSpeed, ball_speed_sd: ballSpeedSD, pitch_type: pitchType,
     });
     const html = window.TheiaApp.renderReport(result);
-    document.getElementById('result-area').innerHTML = `<div class="panel">${html}</div>`;
+    document.getElementById('result-area').innerHTML = `<div class="card p-6">${html}</div>`;
   } catch (e) {
     console.error(e);
     document.getElementById('result-area').innerHTML = '';
     showAlert(`분석 실패: ${e.message}`, 'error');
   } finally {
-    document.getElementById('analyze-btn').disabled = false;
+    updateAnalyzeButton();
   }
-};
+}
 
 function showAlert(msg, type='info') {
   const div = document.createElement('div');
@@ -326,13 +905,19 @@ function showAlert(msg, type='info') {
   setTimeout(() => div.remove(), 6000);
 }
 
-// 코호트 데이터 로드
+// ════════════════════════════════════════════════════════════
+// 초기 로드
+// ════════════════════════════════════════════════════════════
 (async function init() {
   await window.TheiaCohort.load();
   if (!window.TheiaCohort.isLoaded()) {
     showAlert('코호트 데이터(cohort_theia_*.json) 로드 실패. 같은 폴더에 두 JSON 파일이 있는지 확인하세요.', 'error');
   }
-  document.getElementById('algo-version').textContent = window.TheiaApp.ALGORITHM_VERSION;
+  if (window.TheiaApp?.ALGORITHM_VERSION) {
+    document.getElementById('algo-version-stamp').textContent = window.TheiaApp.ALGORITHM_VERSION.replace(/^v/, '');
+  }
+  // 기본 수준 = 고교
+  selectLevel('고교');
 })();
 </script>
 
