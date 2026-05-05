@@ -367,28 +367,33 @@
 
     // 각 chain 카드 생성
     const chainCards = chains.map(ch => {
-      // 원인 (B) 변수 score 평균
+      // ★ v0.38 — 결측도 표시 (filter 제거, 미측정 행으로)
       const causesData = ch.causes.map(c => ({
         ...c,
+        hint: window.TheiaMeta?.getVarMeta(c.key)?.hint || '',
         value: v(c.key),
         score: sc(c.key),
-      })).filter(c => c.value != null);
+        measured: v(c.key) != null,
+      }));
 
-      // 결과 (A) 변수 score 평균
       const effectsData = ch.effects.map(k => ({
         key: k,
         name: window.TheiaMeta?.getVarMeta(k)?.name || k,
         unit: window.TheiaMeta?.getVarMeta(k)?.unit || '',
+        hint: window.TheiaMeta?.getVarMeta(k)?.hint || '',
         value: v(k),
         score: sc(k),
-      })).filter(e => e.value != null);
+        measured: v(k) != null,
+      }));
 
-      if (causesData.length === 0 && effectsData.length === 0) return ''; // 데이터 없음
+      const measuredCauses = causesData.filter(c => c.measured);
+      const measuredEffects = effectsData.filter(e => e.measured);
+      if (measuredCauses.length === 0 && measuredEffects.length === 0) return ''; // 진짜 모두 결측
 
-      const causeScore = causesData.length > 0 ?
-        causesData.reduce((s, c) => s + (c.score ?? 50), 0) / causesData.length : null;
-      const effectScore = effectsData.length > 0 ?
-        effectsData.reduce((s, e) => s + (e.score ?? 50), 0) / effectsData.length : null;
+      const causeScore = measuredCauses.length > 0 ?
+        measuredCauses.reduce((s, c) => s + (c.score ?? 50), 0) / measuredCauses.length : null;
+      const effectScore = measuredEffects.length > 0 ?
+        measuredEffects.reduce((s, e) => s + (e.score ?? 50), 0) / measuredEffects.length : null;
 
       // chain 종합 등급
       const chainScore = causeScore != null && effectScore != null ?
@@ -400,19 +405,31 @@
       // 인과 화살표 시각
       const causeRows = causesData.map(c => {
         const cc = c.score == null ? '#94a3b8' : c.score >= 75 ? '#16a34a' : c.score >= 50 ? '#22d3ee' : c.score >= 30 ? '#fb923c' : '#dc2626';
-        return `<div class="flex items-center justify-between text-xs py-1" style="border-bottom: 1px dashed var(--border);">
-          <span style="color: var(--text-secondary);">${c.name}</span>
-          <span class="mono" style="color: var(--text-muted);">${c.value.toFixed(2)} ${c.unit}</span>
-          <span class="mono" style="color: ${cc}; font-weight: 600; min-width: 36px; text-align: right;">${c.score ?? '—'}점</span>
+        const valStr = c.measured ? `${c.value.toFixed(2)} ${c.unit}` : '미측정';
+        const scoreStr = c.measured && c.score != null ? `${c.score}점` : '—';
+        const opacity = c.measured ? '' : 'opacity: 0.5;';
+        return `<div class="py-1" style="border-bottom: 1px dashed var(--border); ${opacity}">
+          <div class="flex items-center justify-between text-xs">
+            <span style="color: var(--text-secondary);">${c.name}</span>
+            <span class="mono" style="color: var(--text-muted);">${valStr}</span>
+            <span class="mono" style="color: ${cc}; font-weight: 600; min-width: 36px; text-align: right;">${scoreStr}</span>
+          </div>
+          ${c.hint ? `<div class="text-[10px] mt-0.5" style="color: var(--text-muted); font-style: italic;">→ ${c.hint}</div>` : ''}
         </div>`;
       }).join('');
 
       const effectRows = effectsData.map(e => {
         const ec = e.score == null ? '#94a3b8' : e.score >= 75 ? '#16a34a' : e.score >= 50 ? '#22d3ee' : e.score >= 30 ? '#fb923c' : '#dc2626';
-        return `<div class="flex items-center justify-between text-xs py-1" style="border-bottom: 1px dashed var(--border);">
-          <span style="color: var(--text-secondary);">${e.name}</span>
-          <span class="mono" style="color: var(--text-muted);">${typeof e.value === 'number' ? e.value.toFixed(2) : e.value} ${e.unit}</span>
-          <span class="mono" style="color: ${ec}; font-weight: 600; min-width: 36px; text-align: right;">${e.score ?? '—'}점</span>
+        const valStr = e.measured ? `${typeof e.value === 'number' ? e.value.toFixed(2) : e.value} ${e.unit}` : '미측정';
+        const scoreStr = e.measured && e.score != null ? `${e.score}점` : '—';
+        const opacity = e.measured ? '' : 'opacity: 0.5;';
+        return `<div class="py-1" style="border-bottom: 1px dashed var(--border); ${opacity}">
+          <div class="flex items-center justify-between text-xs">
+            <span style="color: var(--text-secondary);">${e.name}</span>
+            <span class="mono" style="color: var(--text-muted);">${valStr}</span>
+            <span class="mono" style="color: ${ec}; font-weight: 600; min-width: 36px; text-align: right;">${scoreStr}</span>
+          </div>
+          ${e.hint ? `<div class="text-[10px] mt-0.5" style="color: var(--text-muted); font-style: italic;">→ ${e.hint}</div>` : ''}
         </div>`;
       }).join('');
 
@@ -423,14 +440,14 @@
         </div>
         <div class="text-xs mb-3" style="color: ${chainColor}; font-style: italic;">${narrative}</div>
         <div class="grid" style="grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch;">
-          <div class="p-3" style="background: rgba(96,165,250,0.05); border-radius: 6px; border: 1px solid rgba(96,165,250,0.15);">
-            <div class="text-[10px] mb-2" style="color: #60a5fa; font-weight: 700; letter-spacing: 0.05em;">🎯 원인 — 자세·동작</div>
-            ${causeRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
-          </div>
-          <div class="flex items-center justify-center" style="font-size: 28px; color: ${chainColor};">→</div>
           <div class="p-3" style="background: rgba(251,146,60,0.05); border-radius: 6px; border: 1px solid rgba(251,146,60,0.15);">
             <div class="text-[10px] mb-2" style="color: #fb923c; font-weight: 700; letter-spacing: 0.05em;">⚡ 결과 — 힘 전달 손실</div>
             ${effectRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
+          </div>
+          <div class="flex items-center justify-center" style="font-size: 28px; color: ${chainColor};">←</div>
+          <div class="p-3" style="background: rgba(96,165,250,0.05); border-radius: 6px; border: 1px solid rgba(96,165,250,0.15);">
+            <div class="text-[10px] mb-2" style="color: #60a5fa; font-weight: 700; letter-spacing: 0.05em;">🎯 원인 — 자세·동작</div>
+            ${causeRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
           </div>
         </div>
       </div>`;
