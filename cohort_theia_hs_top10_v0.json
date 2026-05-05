@@ -1,0 +1,331 @@
+{
+  "meta": {
+    "version": "v0.1",
+    "source": "pitching_processing_data_kbo.xlsx Sheet1",
+    "n_players": 41,
+    "n_trials": 355,
+    "trials_per_player_mean": 8.66,
+    "handedness_trial_counts": {
+      "L": 17,
+      "R": 338
+    },
+    "cohort_description": "고교 1학년 코호트 중 상위 10% 선별 (Theia + Qualisys + 지면반력 정밀 측정, 2025-12)",
+    "notes": [
+      "★ 고교 1학년 134명 중 상위 10% 선별 — 같은 발달 단계 일반 고교생 평가에 적절한 reference",
+      "★ 프로 선수 평가 시 cohort_theia_pro_v0.json 사용 (별도 reference)",
+      "선수별 평균 trial → 41명 분포 (mean·SD·median·q25·q75·min·max·n)",
+      "Sheet2 (22명 부분집합) 사용 안 함 (Sheet1에 모두 포함)",
+      "Pelvis_peak·Trunk_peak·Arm_peak 단위: deg/s (Z축 components)",
+      "Arm_peak = Pitching_Shoulder_Ang_Vel(Z) windowed max = humerus IR/ER velocity (Theia 코드 검증됨)",
+      "lag 단위: 초 (BBL은 ms 사용, 변환 시 ×1000)",
+      "stride_length 단위: cm (추정)",
+      "GRF: BW 배수 (체중 정규화)"
+    ],
+    "cohort_id": "hs_top10",
+    "cohort_label_kr": "고교 1학년 상위 10%",
+    "cohort_label_en": "HS Grade 1 Top 10%",
+    "evaluation_target": "고교 1~3학년 투수 (평가 대상자가 reference 코호트보다 발달 단계 동일·하위)"
+  },
+  "var_distributions": {
+    "ball_speed": {
+      "mean": 133.5457,
+      "stdev": 5.2012,
+      "median": 133.1333,
+      "q25": 130.75,
+      "q75": 137.58,
+      "min": 116.9643,
+      "max": 145.45,
+      "n": 41
+    },
+    "Pelvis_peak": {
+      "mean": 618.8495,
+      "stdev": 65.1974,
+      "median": 634.2857,
+      "q25": 574.0714,
+      "q75": 662.6667,
+      "min": 464.0,
+      "max": 730.75,
+      "n": 41
+    },
+    "Trunk_peak": {
+      "mean": 873.0319,
+      "stdev": 67.5818,
+      "median": 871.5714,
+      "q25": 831.7857,
+      "q75": 906.75,
+      "min": 751.3333,
+      "max": 1022.5714,
+      "n": 41
+    },
+    "Arm_peak": {
+      "mean": 4206.893,
+      "stdev": 389.1659,
+      "median": 4220.4286,
+      "q25": 3953.1,
+      "q75": 4542.6,
+      "min": 3101.375,
+      "max": 5063.0,
+      "n": 41
+    },
+    "pelvis_to_trunk": {
+      "mean": 0.0526,
+      "stdev": 0.0385,
+      "median": 0.045,
+      "q25": 0.0179,
+      "q75": 0.0825,
+      "min": -0.0057,
+      "max": 0.1229,
+      "n": 41
+    },
+    "trunk_to_arm": {
+      "mean": 0.0922,
+      "stdev": 0.0296,
+      "median": 0.079,
+      "q25": 0.0716,
+      "q75": 0.1112,
+      "min": 0.0532,
+      "max": 0.1566,
+      "n": 41
+    },
+    "peak_xfactor": {
+      "mean": 27.8864,
+      "stdev": 6.27,
+      "median": 28.1286,
+      "q25": 24.2857,
+      "q75": 32.53,
+      "min": 16.7286,
+      "max": 40.9125,
+      "n": 41
+    },
+    "fc_xfactor": {
+      "mean": 25.029,
+      "stdev": 6.7745,
+      "median": 25.06,
+      "q25": 21.4857,
+      "q75": 29.9,
+      "min": 5.5929,
+      "max": 37.8333,
+      "n": 41
+    },
+    "peak_xfactor_velo": {
+      "mean": 241.1991,
+      "stdev": 75.2958,
+      "median": 220.0,
+      "q25": 185.1111,
+      "q75": 276.0,
+      "min": 141.2857,
+      "max": 467.2857,
+      "n": 41
+    },
+    "Max_CoG_Velo": {
+      "mean": 2.625,
+      "stdev": 0.1946,
+      "median": 2.6387,
+      "q25": 2.4425,
+      "q75": 2.7513,
+      "min": 2.278,
+      "max": 3.081,
+      "n": 41
+    },
+    "CoG_Decel": {
+      "mean": 1.4246,
+      "stdev": 0.1848,
+      "median": 1.4567,
+      "q25": 1.3,
+      "q75": 1.5229,
+      "min": 0.9043,
+      "max": 1.6947,
+      "n": 41
+    },
+    "fc_trunk_forward_tilt": {
+      "mean": -3.9987,
+      "stdev": 5.9844,
+      "median": -5.29,
+      "q25": -7.5857,
+      "q75": -0.8,
+      "min": -14.6286,
+      "max": 14.1857,
+      "n": 41
+    },
+    "peak_trunk_CounterRotation": {
+      "mean": 39.6125,
+      "stdev": 12.1224,
+      "median": 36.42,
+      "q25": 30.6333,
+      "q75": 42.3571,
+      "min": 26.3375,
+      "max": 89.0286,
+      "n": 41
+    },
+    "stride_length": {
+      "mean": 145.178,
+      "stdev": 7.4344,
+      "median": 144.5,
+      "q25": 139.75,
+      "q75": 151.4444,
+      "min": 129.1429,
+      "max": 159.1429,
+      "n": 41
+    },
+    "fc_lead_leg_knee_flexion": {
+      "mean": 48.1674,
+      "stdev": 7.088,
+      "median": 49.4167,
+      "q25": 44.4667,
+      "q75": 53.3125,
+      "min": 23.9929,
+      "max": 60.1643,
+      "n": 41
+    },
+    "br_lead_leg_knee_flexion": {
+      "mean": 40.6248,
+      "stdev": 14.3053,
+      "median": 39.5,
+      "q25": 32.3,
+      "q75": 48.9222,
+      "min": 5.0714,
+      "max": 68.74,
+      "n": 41
+    },
+    "max_shoulder_ER": {
+      "mean": 181.2752,
+      "stdev": 9.5137,
+      "median": 182.2857,
+      "q25": 175.3333,
+      "q75": 187.25,
+      "min": 157.4444,
+      "max": 201.8571,
+      "n": 41
+    },
+    "max_shoulder_hor_abd": {
+      "mean": 66.5641,
+      "stdev": 11.5304,
+      "median": 67.75,
+      "q25": 58.0,
+      "q75": 73.2857,
+      "min": 43.1429,
+      "max": 95.3,
+      "n": 41
+    },
+    "fc_shoulder_abd": {
+      "mean": 83.8093,
+      "stdev": 9.7708,
+      "median": 83.2,
+      "q25": 75.05,
+      "q75": 92.68,
+      "min": 69.3857,
+      "max": 99.95,
+      "n": 41
+    },
+    "mer_shoulder_abd": {
+      "mean": 93.0336,
+      "stdev": 7.9412,
+      "median": 92.8286,
+      "q25": 88.7,
+      "q75": 98.3231,
+      "min": 64.8214,
+      "max": 112.3167,
+      "n": 41
+    },
+    "br_shoulder_abd": {
+      "mean": 94.3431,
+      "stdev": 8.2947,
+      "median": 95.4667,
+      "q25": 87.7125,
+      "q75": 98.64,
+      "min": 70.5071,
+      "max": 112.5833,
+      "n": 41
+    },
+    "trail_impulse_stride": {
+      "mean": 0.9499,
+      "stdev": 0.0883,
+      "median": 0.9283,
+      "q25": 0.9025,
+      "q75": 1.0112,
+      "min": 0.767,
+      "max": 1.2071,
+      "n": 41
+    },
+    "Trail_leg_peak_vertical_GRF": {
+      "mean": 1.6041,
+      "stdev": 0.1607,
+      "median": 1.6013,
+      "q25": 1.4757,
+      "q75": 1.6837,
+      "min": 1.3307,
+      "max": 1.95,
+      "n": 41
+    },
+    "Trail_leg_peak_AP_GRF": {
+      "mean": 0.7614,
+      "stdev": 0.114,
+      "median": 0.7543,
+      "q25": 0.69,
+      "q75": 0.8075,
+      "min": 0.57,
+      "max": 1.1007,
+      "n": 41
+    },
+    "Lead_leg_peak_vertical_GRF": {
+      "mean": 2.0427,
+      "stdev": 0.3119,
+      "median": 1.9637,
+      "q25": 1.8314,
+      "q75": 2.1371,
+      "min": 1.66,
+      "max": 3.26,
+      "n": 41
+    },
+    "Lead_leg_peak_AP_GRF": {
+      "mean": 1.1184,
+      "stdev": 0.198,
+      "median": 1.0577,
+      "q25": 0.973,
+      "q75": 1.1738,
+      "min": 0.8462,
+      "max": 1.6643,
+      "n": 41
+    },
+    "trail_to_lead_vgrf_peak_s": {
+      "mean": 0.3266,
+      "stdev": 0.0771,
+      "median": 0.3279,
+      "q25": 0.2885,
+      "q75": 0.3599,
+      "min": 0.1938,
+      "max": 0.6493,
+      "n": 41
+    },
+    "clawback_time": {
+      "mean": 0.2885,
+      "stdev": 0.1415,
+      "median": 0.271,
+      "q25": 0.2142,
+      "q75": 0.3081,
+      "min": 0.1239,
+      "max": 1.0313,
+      "n": 41
+    },
+    "mass": {
+      "mean": 84.2927,
+      "stdev": 6.7277,
+      "median": 84.0,
+      "q25": 80.0,
+      "q75": 87.0,
+      "min": 72.0,
+      "max": 108.0,
+      "n": 41
+    },
+    "height": {
+      "mean": 182.5366,
+      "stdev": 4.4164,
+      "median": 183.0,
+      "q25": 179.0,
+      "q75": 185.0,
+      "min": 175.0,
+      "max": 192.0,
+      "n": 41
+    }
+  }
+}

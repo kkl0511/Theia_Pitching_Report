@@ -1,0 +1,204 @@
+{
+  "meta": {
+    "version": "v0.1",
+    "cohort_id": "pro",
+    "cohort_label_kr": "프로 수준 reference (문헌 + Driveline)",
+    "cohort_label_en": "Professional Reference (Literature + Driveline)",
+    "evaluation_target": "프로 선수, 상위 아마추어 투수, 대학 elite 투수",
+    "cohort_description": "MLB·KBO 수준 elite 투수 문헌 메타분석 + Driveline R&D 공개 데이터 결합",
+    "n_players": "문헌 기반 (실측 X) — MLB pro 200+, Driveline 100+ aggregate",
+    "data_sources": [
+      "Wood-Smith JD et al. (2019) Sports Biomech — MLB pro pitchers (n=89)",
+      "Werner SL et al. (2008) Sports Biomech — Pro pitchers throwing biomechanics",
+      "Aguinaldo AL & Chambers H (2009) AJSM — pelvis-trunk sequencing (Pro vs HS)",
+      "Stodden DF et al. (2001) JAB — trunk·pelvis kinematics, Pro vs amateur",
+      "Driveline Baseball R&D (2020-2024) — public elite reports",
+      "Whiteley R (2018) IJSPT — release consistency",
+      "ASMI (American Sports Medicine Institute) Pro database"
+    ],
+    "notes": [
+      "★ 절대값 비교 시스템 — 문헌 메타 mean·SD를 Gaussian optimal로 사용",
+      "★ percentile 평가 X (실측 분포 아니라 합성 분포) — Gaussian 기반 점수 산출 권장",
+      "★ ball_speed elite 임계: 145 km/h(90 mph) — MLB pro median",
+      "GRF Pro 문헌 적음 — Theia hs_top10 q75를 fallback elite 임계로 활용"
+    ]
+  },
+  "var_distributions": {
+    "ball_speed": {
+      "optimal": 145,
+      "sigma": 7,
+      "elite_threshold": 150,
+      "unit": "km/h",
+      "polarity": "higher",
+      "ref": "MLB pro median 145 km/h(90 mph), elite 150+(93 mph). Driveline elite ≥88 mph"
+    },
+    "Pelvis_peak": {
+      "optimal": 700,
+      "sigma": 100,
+      "unit": "deg/s",
+      "polarity": "higher",
+      "ref": "Aguinaldo 2009 Pro 712±88, Wood-Smith 2019 750±90"
+    },
+    "Trunk_peak": {
+      "optimal": 1150,
+      "sigma": 150,
+      "unit": "deg/s",
+      "polarity": "higher",
+      "ref": "Werner 2008 1180±185, Wood-Smith 2019 1200±170"
+    },
+    "Arm_peak": {
+      "optimal": 7500,
+      "sigma": 1200,
+      "unit": "deg/s",
+      "polarity": "higher",
+      "ref": "MLB pro humerus IR vel 7000-9000 (Werner 2008), Driveline elite 7500+",
+      "note": "Theia Arm_peak = Pitching_Shoulder_Ang_Vel(Z) = humerus IR vel"
+    },
+    "pelvis_to_trunk": {
+      "optimal": 0.045,
+      "sigma": 0.02,
+      "unit": "s",
+      "polarity": "absolute",
+      "ref": "Aguinaldo 2007 Pro mean 45ms±20"
+    },
+    "trunk_to_arm": {
+      "optimal": 0.045,
+      "sigma": 0.02,
+      "unit": "s",
+      "polarity": "absolute",
+      "ref": "Aguinaldo 2007 Pro mean 45ms±20"
+    },
+    "peak_xfactor": {
+      "optimal": 50,
+      "sigma": 12,
+      "unit": "deg",
+      "polarity": "higher",
+      "ref": "Stodden 2001 Pro 50°±15, Aguinaldo 2007 elite 50°+"
+    },
+    "fc_xfactor": {
+      "optimal": 35,
+      "sigma": 12,
+      "unit": "deg",
+      "polarity": "higher",
+      "ref": "ASMI Pro DB FC 시점 30~45°"
+    },
+    "fc_trunk_forward_tilt": {
+      "optimal": -5,
+      "sigma": 12,
+      "unit": "deg",
+      "polarity": "absolute",
+      "ref": "Stodden 2001 Pro 직립±10°, Wood-Smith 2019 -5°±12"
+    },
+    "peak_trunk_CounterRotation": {
+      "optimal": 45,
+      "sigma": 12,
+      "unit": "deg",
+      "polarity": "higher",
+      "ref": "ASMI Pro 와인드업 counter rotation 30-60° (peak 45)"
+    },
+    "stride_length": {
+      "optimal": 90,
+      "sigma": 8,
+      "unit": "% of body height",
+      "polarity": "higher",
+      "ref": "MLB Pro stride 85~95% of height. 41명 145cm와 큰 차이",
+      "note": "★ 정규화 권장 — Pro 키 188 기준 약 170cm"
+    },
+    "fc_lead_leg_knee_flexion": {
+      "optimal": 50,
+      "sigma": 12,
+      "unit": "deg",
+      "polarity": "absolute",
+      "ref": "Wood-Smith 2019 Pro 50°±12, ASMI 45-55°"
+    },
+    "br_lead_leg_knee_flexion": {
+      "optimal": 35,
+      "sigma": 12,
+      "unit": "deg",
+      "polarity": "lower",
+      "ref": "Wood-Smith 2019 Pro 35°±15 (FC→BR 약 15° 펴짐)"
+    },
+    "max_shoulder_ER": {
+      "optimal": 185,
+      "sigma": 12,
+      "unit": "deg",
+      "polarity": "higher",
+      "elite_safety_upper": 200,
+      "ref": "Werner 2008 Pro 180-195°, Driveline elite 175-200° (200°+ valgus 위험)"
+    },
+    "fc_shoulder_abd": {
+      "optimal": 90,
+      "sigma": 10,
+      "unit": "deg",
+      "polarity": "absolute",
+      "ref": "ASMI Pro FC 어깨 외전 85-95°"
+    },
+    "mer_shoulder_abd": {
+      "optimal": 95,
+      "sigma": 8,
+      "unit": "deg",
+      "polarity": "absolute",
+      "elite_safety_lower": 80,
+      "elite_safety_upper": 110,
+      "ref": "Werner 2008 Pro MER 90-100° (90±10° 안전, MLB Pitch Smart)"
+    },
+    "br_shoulder_abd": {
+      "optimal": 95,
+      "sigma": 8,
+      "unit": "deg",
+      "polarity": "absolute",
+      "ref": "Werner 2008 Pro BR 85-100°"
+    },
+    "Max_CoG_Velo": {
+      "optimal": 3.2,
+      "sigma": 0.4,
+      "unit": "m/s",
+      "polarity": "higher",
+      "ref": "Werner 2008 Pro 3.0-3.5 m/s"
+    },
+    "Trail_leg_peak_vertical_GRF": {
+      "optimal": 1.8,
+      "sigma": 0.2,
+      "unit": "BW",
+      "polarity": "higher",
+      "fallback": "hs_top10_q75",
+      "ref": "Pro 1.5-2.0 BW (Slowik 2019 산발). HS Top10 q75 fallback"
+    },
+    "Trail_leg_peak_AP_GRF": {
+      "optimal": 0.85,
+      "sigma": 0.1,
+      "unit": "BW",
+      "polarity": "higher",
+      "fallback": "hs_top10_q75",
+      "ref": "Pro forward push 0.7-1.0 BW"
+    },
+    "Lead_leg_peak_vertical_GRF": {
+      "optimal": 2.4,
+      "sigma": 0.3,
+      "unit": "BW",
+      "polarity": "higher",
+      "ref": "Pro 2.0-3.0 BW (Slowik 2019 elite)"
+    },
+    "Lead_leg_peak_AP_GRF": {
+      "optimal": 1.3,
+      "sigma": 0.2,
+      "unit": "BW",
+      "polarity": "higher",
+      "ref": "Pro braking GRF 1.0-1.5 BW"
+    },
+    "trail_to_lead_vgrf_peak_s": {
+      "optimal": 0.25,
+      "sigma": 0.08,
+      "unit": "s",
+      "polarity": "lower",
+      "ref": "Pro trail→lead 전환 빠름 (0.20-0.30s)"
+    },
+    "clawback_time": {
+      "optimal": 0.2,
+      "sigma": 0.08,
+      "unit": "s",
+      "polarity": "absolute",
+      "ref": "elite clawback 0.15-0.25s (Driveline R&D)"
+    }
+  }
+}

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Theia Pitching Report v0.1</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --border: #d8dde2;
+    --primary: #1F3864;
+    --accent: #2E75B6;
+    --output: #C00000;
+    --transfer: #0070C0;
+    --leak: #7030A0;
+    --control: #2E7D32;
+    --injury: #FF8C00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Malgun Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; padding: 20px;
+    line-height: 1.5;
+  }
+  .container { max-width: 1200px; margin: 0 auto; }
+
+  header.app-header {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: white; padding: 24px; border-radius: 12px;
+    margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  header.app-header h1 { margin: 0 0 8px 0; font-size: 28px; }
+  header.app-header .subtitle { opacity: 0.9; font-size: 14px; }
+  header.app-header .version-badge {
+    display: inline-block; background: rgba(255,255,255,0.2);
+    padding: 4px 10px; border-radius: 12px; font-size: 12px;
+    margin-left: 8px; font-family: 'Consolas', monospace;
+  }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px; margin-bottom: 20px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  }
+  .panel h2 { margin-top: 0; color: var(--primary); }
+
+  .mode-selector { display: flex; gap: 16px; margin-bottom: 20px; }
+  .mode-option {
+    flex: 1; padding: 16px; border: 2px solid var(--border);
+    border-radius: 8px; cursor: pointer; transition: all 0.2s;
+    text-align: center;
+  }
+  .mode-option:hover { border-color: var(--accent); }
+  .mode-option.active {
+    border-color: var(--primary); background: #e8f0fa;
+    box-shadow: 0 2px 8px rgba(31,56,100,0.15);
+  }
+  .mode-option h3 { margin: 0 0 4px 0; font-size: 16px; }
+  .mode-option .mode-desc { font-size: 13px; color: var(--text-muted); }
+  .mode-option .mode-target { font-size: 12px; margin-top: 6px; color: var(--accent); }
+
+  .form-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: end; }
+  .form-row label { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .form-row input {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; font-family: inherit;
+  }
+  .form-row input:focus { outline: 2px solid var(--accent); }
+
+  .upload-zone {
+    border: 2px dashed var(--accent); border-radius: 12px;
+    padding: 40px; text-align: center; cursor: pointer;
+    transition: all 0.2s; background: #fafbfc;
+  }
+  .upload-zone:hover { background: #f0f5fb; border-color: var(--primary); }
+  .upload-zone.drag-over { background: #e8f0fa; transform: scale(1.01); }
+  .upload-zone input[type="file"] { display: none; }
+  .upload-zone .icon { font-size: 48px; margin-bottom: 8px; }
+  .upload-zone .hint { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+  .upload-zone .files-list { margin-top: 12px; font-size: 13px; color: var(--accent); }
+
+  button.primary {
+    background: var(--primary); color: white; border: none;
+    padding: 12px 24px; border-radius: 6px; font-size: 16px;
+    cursor: pointer; font-family: inherit; font-weight: 500;
+    transition: background 0.2s;
+  }
+  button.primary:hover { background: #2a4a7a; }
+  button.primary:disabled { background: #aaa; cursor: not-allowed; }
+
+  /* Report */
+  .report-header {
+    background: linear-gradient(135deg, #f8fafc, #eef2f7);
+    padding: 16px 20px; border-radius: 8px; margin-bottom: 20px;
+    border-left: 6px solid var(--primary);
+  }
+  .report-header h1 { margin: 0 0 8px 0; font-size: 20px; color: var(--primary); }
+  .report-header .meta { display: flex; gap: 16px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
+  .report-header .meta .mode {
+    background: var(--accent); color: white; padding: 2px 10px;
+    border-radius: 12px; font-size: 12px;
+  }
+  .report-header .meta .mode.pro { background: #C00000; }
+  .report-header .player-meta { margin-top: 8px; font-size: 14px; }
+
+  .categories {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    gap: 16px; margin-bottom: 24px;
+  }
+  .cat-card {
+    background: white; border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  }
+  .cat-header { display: flex; justify-content: space-between; align-items: baseline; }
+  .cat-header h3 { margin: 0; font-size: 16px; }
+  .cat-score { font-size: 28px; font-weight: bold; }
+  .cat-score span { font-size: 14px; color: var(--text-muted); font-weight: normal; }
+  .cat-desc { color: var(--text-muted); font-size: 13px; margin: 6px 0; }
+  .cat-stats { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
+  .cat-integration {
+    background: #fff8e7; padding: 8px; border-radius: 4px;
+    font-size: 13px; margin-top: 8px;
+  }
+
+  details summary {
+    cursor: pointer; padding: 8px 0; font-size: 13px;
+    color: var(--accent); border-top: 1px solid var(--border); margin-top: 8px;
+  }
+
+  table.var-table { width: 100%; font-size: 12px; margin-top: 8px; border-collapse: collapse; }
+  table.var-table th, table.var-table td {
+    padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left;
+  }
+  table.var-table th { background: #f0f4f8; font-weight: 600; }
+  table.var-table .score-good { color: #00B050; font-weight: 600; }
+  table.var-table .score-mid { color: #FFA500; font-weight: 600; }
+  table.var-table .score-low { color: #C00000; font-weight: 600; }
+  table.var-table .na { color: #aaa; }
+
+  .faults { background: #fff5f5; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .faults h2 { color: var(--output); margin-top: 0; font-size: 18px; }
+  .fault-card {
+    background: white; padding: 12px; margin-bottom: 8px;
+    border-radius: 6px;
+  }
+  .fault-card .sev { font-size: 11px; color: var(--text-muted); }
+  .fault-card .fault-cause, .fault-card .fault-coach { font-size: 13px; margin-top: 4px; }
+
+  .alert {
+    padding: 12px 16px; border-radius: 6px; margin-bottom: 16px;
+  }
+  .alert.error { background: #fef2f2; color: #991b1b; border-left: 4px solid #dc2626; }
+  .alert.info { background: #eff6ff; color: #1e40af; border-left: 4px solid #2563eb; }
+
+  .loading { text-align: center; padding: 40px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="app-header">
+  <h1>Theia Pitching Report <span class="version-badge" id="algo-version">v0.1</span></h1>
+  <div class="subtitle">Theia + Qualisys + 지면반력 마운드 — Output·Transfer·Leak 3분류 분석</div>
+</header>
+
+<!-- 입력 패널 -->
+<div class="panel" id="input-panel">
+  <h2>1. 평가 모드 선택</h2>
+  <div class="mode-selector">
+    <div class="mode-option active" data-mode="hs_top10" onclick="window.selectMode('hs_top10')">
+      <h3>🎓 고교 모드</h3>
+      <div class="mode-desc">고교 1학년 상위 10% (n=41)</div>
+      <div class="mode-target">Theia 실측 percentile</div>
+    </div>
+    <div class="mode-option" data-mode="pro" onclick="window.selectMode('pro')">
+      <h3>⚾ 프로 모드</h3>
+      <div class="mode-desc">문헌 + Driveline elite (Wood-Smith·Werner·ASMI)</div>
+      <div class="mode-target">Gaussian (optimal 기준)</div>
+    </div>
+  </div>
+
+  <h2>2. 선수 정보</h2>
+  <div class="form-row">
+    <label>이름 <input type="text" id="player-name" placeholder="예: 박명균"></label>
+    <label>체중 (kg) <input type="number" id="player-mass" placeholder="78" step="0.1"></label>
+    <label>키 (cm) <input type="number" id="player-height" placeholder="179" step="0.1"></label>
+    <label>좌·우투
+      <select id="player-hand" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;">
+        <option value="right">우투</option>
+        <option value="left">좌투</option>
+      </select>
+    </label>
+  </div>
+
+  <h2>3. c3d.txt 파일 업로드</h2>
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+    <input type="file" id="file-input" multiple accept=".txt,.c3d,.c3d.txt" onchange="window.handleFiles(this.files)">
+    <div class="icon">📁</div>
+    <div><strong>c3d.txt 파일 선택 또는 드래그</strong></div>
+    <div class="hint">한 선수의 여러 trial을 동시에 업로드하면 평균 + 제구 일관성(P 카테고리) 산출 가능</div>
+    <div class="files-list" id="files-list"></div>
+  </div>
+
+  <div style="margin-top: 16px; text-align: center;">
+    <button class="primary" id="analyze-btn" onclick="window.runAnalysis()" disabled>분석 실행</button>
+  </div>
+</div>
+
+<!-- 결과 패널 -->
+<div id="result-area"></div>
+
+</div>
+
+<!-- Theia 코호트 + 메타 + 앱 로직 -->
+<script src="cohort_theia.js"></script>
+<script src="metadata_theia.js"></script>
+<script src="theia_app.js"></script>
+
+<script>
+// ──────────────────────────────────────────────
+// UI 상호작용 로직
+// ──────────────────────────────────────────────
+let selectedFiles = [];
+
+window.selectMode = function(mode) {
+  document.querySelectorAll('.mode-option').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.mode-option[data-mode="${mode}"]`).classList.add('active');
+  window.TheiaApp.setMode(mode);
+};
+
+window.handleFiles = function(files) {
+  selectedFiles = Array.from(files);
+  document.getElementById('files-list').innerHTML = selectedFiles.length === 0
+    ? ''
+    : `📄 ${selectedFiles.length}개 파일 선택됨: ${selectedFiles.map(f => f.name).join(', ')}`;
+  document.getElementById('analyze-btn').disabled = selectedFiles.length === 0;
+};
+
+// 드래그 & 드롭
+const dropZone = document.getElementById('upload-zone');
+['dragenter','dragover'].forEach(ev => dropZone.addEventListener(ev, e => {
+  e.preventDefault(); dropZone.classList.add('drag-over');
+}));
+['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+}));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  window.handleFiles(e.dataTransfer.files);
+});
+
+window.runAnalysis = async function() {
+  const mode = window.TheiaApp.getMode();
+  const mass = parseFloat(document.getElementById('player-mass').value);
+  const height = parseFloat(document.getElementById('player-height').value);
+  const name = document.getElementById('player-name').value;
+  const hand = document.getElementById('player-hand').value;
+
+  if (!mass || !height) {
+    showAlert('체중과 키를 입력해주세요.', 'error');
+    return;
+  }
+  if (selectedFiles.length === 0) {
+    showAlert('c3d.txt 파일을 업로드해주세요.', 'error');
+    return;
+  }
+
+  document.getElementById('result-area').innerHTML = '<div class="loading">⏳ 분석 중...</div>';
+  document.getElementById('analyze-btn').disabled = true;
+
+  try {
+    window.TheiaApp.setPlayer({ mass_kg: mass, height_cm: height, name, handedness: hand });
+    const result = await window.TheiaApp.processFiles(selectedFiles, {
+      mode, mass_kg: mass, height_cm: height
+    });
+    const html = window.TheiaApp.renderReport(result);
+    document.getElementById('result-area').innerHTML = `<div class="panel">${html}</div>`;
+  } catch (e) {
+    console.error(e);
+    document.getElementById('result-area').innerHTML = '';
+    showAlert(`분석 실패: ${e.message}`, 'error');
+  } finally {
+    document.getElementById('analyze-btn').disabled = false;
+  }
+};
+
+function showAlert(msg, type='info') {
+  const div = document.createElement('div');
+  div.className = `alert ${type}`;
+  div.textContent = msg;
+  document.getElementById('result-area').prepend(div);
+  setTimeout(() => div.remove(), 6000);
+}
+
+// 코호트 데이터 로드
+(async function init() {
+  await window.TheiaCohort.load();
+  if (!window.TheiaCohort.isLoaded()) {
+    showAlert('코호트 데이터(cohort_theia_*.json) 로드 실패. 같은 폴더에 두 JSON 파일이 있는지 확인하세요.', 'error');
+  }
+  document.getElementById('algo-version').textContent = window.TheiaApp.ALGORITHM_VERSION;
+})();
+</script>
+
+</body>
+</html>
