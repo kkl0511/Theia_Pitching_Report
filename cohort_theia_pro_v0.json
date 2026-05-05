@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "v0.36",
+    "version": "v0.38",
     "cohort_id": "pro",
     "cohort_label_kr": "프로 수준 reference (Theia markerless 보정)",
     "cohort_label_en": "Professional Reference (Theia markerless calibrated)",
@@ -373,6 +373,50 @@
     "lead_braking_efficiency": {
       "optimal": 0.50, "sigma": 0.30, "unit": "ratio", "polarity": "higher",
       "ref": "★ v0.34 NewtForce — Lead brake impulse / Trail propulsive impulse. NewtForce §4 권장 산식. 이영하 0.05 (낮음, lead AP brake 작음)"
+    },
+    "arm_slot_angle": {
+      "optimal": 25, "sigma": 18, "unit": "deg", "polarity": "absolute",
+      "ref": "★ v0.38 — 오버핸드 30~45°, 쓰리쿼터 15~30°, 사이드암 0~15° (개인 스타일)"
+    },
+    "CoG_Decel": {
+      "optimal": 5.0, "sigma": 2.0, "unit": "m/s²", "polarity": "higher",
+      "ref": "★ v0.38 — 무게중심 감속 (앞다리 블로킹 강도). Pro 4-7 m/s²"
+    },
+    "Lead_Hip_Power_peak": {
+      "optimal": 1500, "sigma": 500, "unit": "W", "polarity": "higher",
+      "ref": "★ v0.38 — Lead hip 회전 power peak. 이영하 ~145 J 적분과 일관"
+    },
+    "trail_hip_absorption_ratio": {
+      "optimal": 0.6, "sigma": 0.3, "unit": "ratio", "polarity": "absolute",
+      "ref": "★ v0.38 — Trail hip |W⁻|/W⁺. ~0.6 적정 (생성 우세)"
+    },
+    "lead_hip_absorption_ratio": {
+      "optimal": 1.0, "sigma": 0.5, "unit": "ratio", "polarity": "absolute",
+      "ref": "★ v0.38 — Lead hip |W⁻|/W⁺. ~1.0 적정 (block에서 흡수와 생성 균형)"
+    },
+    "lead_knee_absorption_ratio": {
+      "optimal": 0.7, "sigma": 0.4, "unit": "ratio", "polarity": "absolute",
+      "ref": "★ v0.38 — Lead knee |W⁻|/W⁺. ~0.7 적정 (block 후 일부 흡수)"
+    },
+    "mer_to_br_time": {
+      "optimal": 5, "sigma": 8, "unit": "ms", "polarity": "absolute",
+      "ref": "★ v0.38 — MER→BR 시간. ~0~10ms 정상 (거의 동시)"
+    },
+    "stride_length_pct": {
+      "optimal": 90, "sigma": 8, "unit": "%", "polarity": "higher",
+      "ref": "★ v0.38 — 신장 대비 stride length. Pro 85~95%"
+    },
+    "trail_impulse_stride": {
+      "optimal": 0.50, "sigma": 0.15, "unit": "BW·s", "polarity": "higher",
+      "ref": "★ v0.38 — Trail leg KH→FC 전체 impulse"
+    },
+    "dE_trunk_KH_FC": {
+      "optimal": 65, "sigma": 25, "unit": "J", "polarity": "higher",
+      "ref": "★ v0.38 — KH→FC 동안 trunk 에너지 증가 (몸통 가속 phase). 이영하 ~68 J"
+    },
+    "dE_arm_FC_BR": {
+      "optimal": 65, "sigma": 25, "unit": "J", "polarity": "higher",
+      "ref": "★ v0.38 — FC→BR 동안 arm 에너지 증가 (팔 가속 phase). 이영하 ~67 J"
     },
     "pelvis_deceleration": {
       "optimal": 600, "sigma": 200, "unit": "deg/s", "polarity": "higher",

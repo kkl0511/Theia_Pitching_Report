@@ -1,4 +1,4 @@
-# Theia Pitching Report v0.36
+# Theia Pitching Report v0.41
 
 Theia 마커리스 + Qualisys 포스플레이트 측정 데이터로 야구 투수의 메카닉·제구·하체 효율을 분석하는 웹 앱.
 **선수·코치가 바로 이해할 수 있는 야구 현장 용어로 작성된 리포트**.
@@ -120,6 +120,11 @@ Visual3D pipeline export. 두 형식 모두 지원:
 - **v0.33~v0.34**: GRF 섹션에 NewtForce 통합 분석 + LHEI + 자동 진단
 - **v0.35**: GRF 섹션 야구 현장 용어 변환
 - **v0.36**: 전체 리포트 야구 현장 용어 통일 (학술 인용 펼침 카드로 이동)
+- **v0.37**: GRF 결측 fix (force-aware 시간 보간)
+- **v0.38**: 결측 점검 + 11개 distribution 추가 + valAtTime 시간 보간 강화
+- **v0.39**: jointPowerWork도 force-aware 통합 시계열 적용
+- **v0.40**: 인과 분석 변수에 야구 의미 표시 (각 row 아래 "→ 야구 코칭 톤 설명")
+- **v0.41**: 인과 카드 위치 교체 — 결과(좌) ← 원인(우)
 
 ---
 
