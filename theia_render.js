@@ -57,7 +57,7 @@
                     faultIds: ['WeakTrailDrive'] },
     lead_block:   { vars: ['lead_leg_braking_impulse','lead_vGRF_impulse','Lead_leg_peak_vertical_GRF','lead_knee_W_pos','lead_hip_W_pos','knee_flexion_change_FC_to_MER','br_lead_leg_knee_flexion','lead_knee_ext_change_fc_to_br'],
                     faultIds: ['WeakLeadBlock','LeadKneeCollapse','PoorBlock'] },
-    pelvis_trunk: { vars: ['ETE_pelvis_to_trunk','pelvis_deceleration','fc_xfactor','peak_xfactor'],   // ★ v0.28 — ETE 추가
+    pelvis_trunk: { vars: ['ETE_pelvis_to_trunk','pelvis_deceleration','fc_xfactor','peak_xfactor','peak_trunk_CounterRotation'],   // ★ v0.50 — counter rotation 추가 (와인드업 로딩 평가)
                     faultIds: ['FlyingOpen'] },
     trunk_power:  { vars: ['Trunk_peak','trunk_forward_flexion_vel_peak','pelvis_to_trunk','pelvis_trunk_speedup'],
                     faultIds: ['LateTrunkRotation','PoorSpeedupChain','ExcessForwardTilt'] },
@@ -314,6 +314,7 @@
         id: 'separation',
         title: '골반-상체 분리 (X-팩터)',
         causes: [
+          { key: 'peak_trunk_CounterRotation', name: '와인드업 counter-rotation', target: 30, unit: '°' },
           { key: 'peak_xfactor', name: '최대 분리 각도', target: 40, unit: '°' },
           { key: 'fc_xfactor', name: '앞발 착지 시점 분리 각도', target: 25, unit: '°' },
         ],
@@ -440,14 +441,14 @@
         </div>
         <div class="text-xs mb-3" style="color: ${chainColor}; font-style: italic;">${narrative}</div>
         <div class="grid" style="grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch;">
-          <div class="p-3" style="background: rgba(251,146,60,0.05); border-radius: 6px; border: 1px solid rgba(251,146,60,0.15);">
-            <div class="text-[10px] mb-2" style="color: #fb923c; font-weight: 700; letter-spacing: 0.05em;">⚡ 결과 — 힘 전달 손실</div>
-            ${effectRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
-          </div>
-          <div class="flex items-center justify-center" style="font-size: 28px; color: ${chainColor};">←</div>
           <div class="p-3" style="background: rgba(96,165,250,0.05); border-radius: 6px; border: 1px solid rgba(96,165,250,0.15);">
             <div class="text-[10px] mb-2" style="color: #60a5fa; font-weight: 700; letter-spacing: 0.05em;">🎯 원인 — 자세·동작</div>
             ${causeRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
+          </div>
+          <div class="flex items-center justify-center" style="font-size: 28px; color: ${chainColor};">→</div>
+          <div class="p-3" style="background: rgba(251,146,60,0.05); border-radius: 6px; border: 1px solid rgba(251,146,60,0.15);">
+            <div class="text-[10px] mb-2" style="color: #fb923c; font-weight: 700; letter-spacing: 0.05em;">⚡ 결과 — 힘 전달 손실</div>
+            ${effectRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
           </div>
         </div>
       </div>`;
