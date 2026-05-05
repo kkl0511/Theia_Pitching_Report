@@ -1,0 +1,195 @@
+/**
+ * cohort_theia.js — 듀얼 코호트 reference wrapper
+ *   ① cohort_theia_hs_top10_v0.json — 고교 1학년 상위 10% 실측 (n=41)
+ *   ② cohort_theia_pro_v0.json — 문헌+Driveline Pro reference (Gaussian)
+ *
+ * Mode 분기: percentile (HS Top 10%) / Gaussian (Pro)
+ * Exposes: window.TheiaCohort = { load, getDist, getMode, percentile, gaussianScore }
+ */
+(function () {
+  'use strict';
+
+  let HS_DATA = null;
+  let PRO_DATA = null;
+  let LOADED = false;
+
+  // Inline JSON (fetch 미사용 — file:// 환경 호환)
+  HS_DATA = /* @COHORT_HS_TOP10_JSON@ */ null;
+  PRO_DATA = /* @COHORT_PRO_JSON@ */ null;
+
+  /**
+   * load() — 외부 JSON 동적 로드 (서빙 환경에서). file:// 환경에서는 inline 데이터 사용.
+   */
+  async function load(opts = {}) {
+    if (LOADED) return;
+    if (HS_DATA && PRO_DATA) {
+      LOADED = true;
+      return;
+    }
+    try {
+      const hsPath = opts.hsPath || './cohort_theia_hs_top10_v0.json';
+      const proPath = opts.proPath || './cohort_theia_pro_v0.json';
+      [HS_DATA, PRO_DATA] = await Promise.all([
+        fetch(hsPath).then(r => r.json()),
+        fetch(proPath).then(r => r.json())
+      ]);
+      LOADED = true;
+    } catch (e) {
+      console.warn('TheiaCohort: 외부 JSON 로드 실패. inline 데이터 또는 수동 setData 필요.', e);
+    }
+  }
+
+  /**
+   * 외부에서 직접 데이터 주입 (file:// 또는 사용자 임의 데이터)
+   */
+  function setData(hs, pro) {
+    HS_DATA = hs;
+    PRO_DATA = pro;
+    LOADED = true;
+  }
+
+  /**
+   * 변수 분포 가져오기. mode = 'hs_top10' or 'pro'
+   * 반환: HS는 {mean, stdev, median, q25, q75, min, max, n}, Pro는 {optimal, sigma, ref, polarity, ...}
+   */
+  function getDist(varName, mode) {
+    const data = mode === 'pro' ? PRO_DATA : HS_DATA;
+    if (!data) return null;
+    return data.var_distributions?.[varName] || null;
+  }
+
+  function getMode(modeId) {
+    const data = modeId === 'pro' ? PRO_DATA : HS_DATA;
+    if (!data) return null;
+    return {
+      id: data.meta.cohort_id,
+      label: data.meta.cohort_label_kr,
+      target: data.meta.evaluation_target,
+      n: data.meta.n_players,
+      desc: data.meta.cohort_description,
+    };
+  }
+
+  /**
+   * Percentile 산출 (HS mode) — 코호트 상위 N% 위치
+   * polarity: 'higher' (높을수록 좋음) / 'lower' (낮을수록 좋음) / 'absolute' (양방향 sigma)
+   */
+  function percentile(value, varName, polarity = 'higher') {
+    const dist = getDist(varName, 'hs_top10');
+    if (!dist || value == null || isNaN(value)) return null;
+    const { mean, stdev, q25, q75 } = dist;
+    if (stdev === 0) return 50;
+
+    // Z-score 기반 normal CDF approximation
+    let z = (value - mean) / stdev;
+    if (polarity === 'lower') z = -z;
+    if (polarity === 'absolute') z = -Math.abs(z);
+
+    // Normal CDF (Abramowitz approximation)
+    const cdf = 0.5 * (1 + _erf(z / Math.SQRT2));
+    return Math.round(cdf * 100);
+  }
+
+  /**
+   * Gaussian score (Pro mode) — 문헌 optimal 대비 점수
+   * 정의: score = 100 × exp(-((value - optimal)/sigma)² / 2)
+   */
+  function gaussianScore(value, varName) {
+    const dist = getDist(varName, 'pro');
+    if (!dist || value == null || isNaN(value)) return null;
+    const { optimal, sigma, polarity } = dist;
+    if (sigma == null || sigma === 0) return null;
+
+    // ★ v0.23 — 새 polarity 2개 추가
+    //   capped_higher : optimal 이상 → 100점, 미만 → Gaussian 감점
+    //                   (예: max_shoulder_ER 170+ 만점, peak_xfactor 40+ 만점)
+    //   higher_abs    : |value| 사용 후 higher (부호 컨벤션 차이 흡수)
+    //                   (예: peak_trunk_CounterRotation Theia 음수 vs 코호트 양수)
+    let v = value;
+    if (polarity === 'higher_abs') {
+      v = Math.abs(value);
+    }
+
+    const dev = (v - optimal) / sigma;
+    let score;
+    if (polarity === 'higher' || polarity === 'higher_abs') {
+      // 양수 dev = 좋음, 음수 = 페널티 (sigma 1당 -34점)
+      score = 50 + 50 * _erf(dev / Math.SQRT2);
+    } else if (polarity === 'capped_higher') {
+      // optimal 이상이면 만점, 미만이면 Gaussian 감점
+      score = (v >= optimal) ? 100 : (50 + 50 * _erf(dev / Math.SQRT2));
+    } else if (polarity === 'lower') {
+      score = 50 - 50 * _erf(dev / Math.SQRT2);
+    } else if (polarity === 'capped_lower') {
+      score = (v <= optimal) ? 100 : (50 - 50 * _erf(dev / Math.SQRT2));
+    } else if (polarity === 'asymmetric_back') {
+      // ★ v0.26 — 음수쪽 관대(sigma_neg), 양수쪽 엄격(sigma_pos)
+      //   FC 시 몸통 자세: 뒤로(음수) 약간 굴곡 = 좋음, 앞으로(양수) 숙임 = 나쁨
+      //   dist에 sigma_neg, sigma_pos 별도 정의. 없으면 sigma 사용.
+      const sNeg = dist.sigma_neg != null ? dist.sigma_neg : sigma;
+      const sPos = dist.sigma_pos != null ? dist.sigma_pos : sigma * 0.5;
+      const rawDev = v - optimal;
+      const sig = rawDev < 0 ? sNeg : sPos;
+      const ndev = rawDev / sig;
+      score = 100 * Math.exp(-(ndev * ndev) / 2);
+    } else {
+      // absolute — 양방향 페널티 (절대값 가까울수록 좋음)
+      score = 100 * Math.exp(-(dev * dev) / 2);
+    }
+    return Math.round(Math.max(0, Math.min(100, score)));
+  }
+
+  /**
+   * 점수 산출 wrapper — mode에 따라 percentile or gaussian 자동 분기
+   * ★ v0.45 — hs_top10 분포 없을 시 pro Gaussian 폴백 (ETE/dE/Power 변수 결측 해결)
+   */
+  function getScore(value, varName, polarity, mode) {
+    if (mode === 'pro') {
+      return gaussianScore(value, varName);
+    } else {
+      // 1순위: hs_top10 코호트 percentile
+      const hsScore = percentile(value, varName, polarity);
+      if (hsScore != null) return hsScore;
+      // 2순위: hs_top10에 분포 없으면 pro Gaussian 폴백 (ETE/dE/Power 등)
+      return gaussianScore(value, varName);
+    }
+  }
+
+  /**
+   * 점수 출처 라벨 — UI 표시용
+   * 반환: 'hs_top10' | 'pro_fallback' | 'pro' | null
+   */
+  function getScoreSource(varName, mode) {
+    if (mode === 'pro') {
+      return getDist(varName, 'pro') ? 'pro' : null;
+    }
+    if (getDist(varName, 'hs_top10')) return 'hs_top10';
+    if (getDist(varName, 'pro')) return 'pro_fallback';
+    return null;
+  }
+
+  // Approximate erf function (Abramowitz & Stegun)
+  function _erf(x) {
+    const sign = x < 0 ? -1 : 1;
+    x = Math.abs(x);
+    const a1 = 0.254829592;
+    const a2 = -0.284496736;
+    const a3 = 1.421413741;
+    const a4 = -1.453152027;
+    const a5 = 1.061405429;
+    const p = 0.3275911;
+    const t = 1.0 / (1.0 + p * x);
+    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+    return sign * y;
+  }
+
+  function isLoaded() { return LOADED; }
+  function getRawData(mode) {
+    return mode === 'pro' ? PRO_DATA : HS_DATA;
+  }
+
+  window.TheiaCohort = {
+    load, setData, getDist, getMode, getScore, getScoreSource, percentile, gaussianScore,
+    isLoaded, getRawData
+  };
+})();
