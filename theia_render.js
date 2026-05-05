@@ -20,20 +20,21 @@
   const ALGORITHM_VERSION = 'v0.7';  // legacy 참조 호환 (실제로는 _appVer() 사용)
 
   function renderReport(result) {
+    // ★ v0.13 — 섹션 흐름 재배치 (사용자 요청: 개념→시퀀스→마네킹+ELI→상세 흐름)
     const html = [
-      _renderHeader(result),
-      _render3ColumnRadars(result),
-      _renderKineticChainEducation(result),
-      _renderELISection(result),             // ★ v0.12 — Integrated ELI 100점 + 등급 + 핵심 결론
-      _renderQuadrantDiagnosis(result),
-      _renderMannequinUplift(result),
-      _renderKinematicBellUplift(result),
-      _renderKineticChainStages(result),
-      _renderGRFSection(result),
-      _renderFaultsWithDrills(result),
-      _renderSummaryWithTraining(result),
-      _renderELIReferences(result),          // ★ v0.12 — 참고문헌
-      _renderActionButtons(result),
+      _renderHeader(result),                 // 1. 헤더 (잠재 구속 4 카드)
+      _render3ColumnRadars(result),          // 2. 3-col 라디아 (체력·메카닉·제구) — 개관
+      _renderQuadrantDiagnosis(result),      // 3. 출력 vs 에너지 효율 (4사분면) — 진단 입구
+      _renderKineticChainEducation(result),  // 4. 🎓 키네틱 체인이란? (GIF 교육)
+      _renderKinematicBellUplift(result),    // 5. 📊 키네매틱 시퀀스 (간접 추정)
+      _renderMannequinUplift(result),        // 6. 🤸 코칭 세션 — 마네킹 + ELI 통합 (직접 진단)
+      _renderELISection(result),             // 7. 🔋 ELI 상세 (PDF 산식·등급·핵심 결론)
+      _renderGRFSection(result),             // 8. 🦵 GRF 분석 (지면반력 디테일)
+      _renderFaultsWithDrills(result),       // 9. 🔬 결함 + drill (3+4단계 통합)
+      _renderSummaryWithTraining(result),    // 10. 📋 종합 평가 + 훈련 추천
+      _renderELIReferences(result),          // 11. 📚 참고문헌 (접기)
+      _renderActionButtons(result),          // 12. [저장 / 다운로드 / 인쇄]
+      // ❌ 삭제: _renderKineticChainStages (ELI 6영역과 100% 중복)
     ].join('\n');
     setTimeout(() => _initRadarCharts(result), 100);
     return html;
@@ -923,16 +924,25 @@
       </div>`;
     }).join('');
 
+    // ★ v0.13 — 3+4단계를 단일 카드로 통합 (단계 요약 → 변수별 결함 detail → drill)
     return `
     <div class="cat-card mb-6" style="padding: 18px; border: 2px solid ${summaryColor}; background: ${summaryColor}08;">
-      <div class="display text-xl mb-2" style="color: ${summaryColor};">⚡ 3단계 · 당신의 에너지 흐름</div>
+      <div class="display text-xl mb-2" style="color: ${summaryColor};">🔬 결함 진단 + 코칭 처방</div>
       <div class="text-sm mb-3" style="color: ${summaryColor}; font-weight: 600;">${summaryMsg}</div>
-      <div>${stageRows}</div>
-    </div>
-    <div class="cat-card mb-6" style="padding: 18px; border: 2px solid ${summaryColor}; background: ${summaryColor}05;">
-      <div class="display text-xl mb-2" style="color: ${summaryColor};">🔬 4단계 · 에너지 리크의 원인</div>
-      <div class="text-sm mb-3" style="color: var(--text-secondary);">위에서 감지된 ${totalLeak}개 단계의 에너지 누출 원인을 변인별로 분석합니다.</div>
-      ${faultDetailCards}
+
+      <!-- 단계별 요약 (이전 3단계) -->
+      <div class="mb-4">
+        <div class="text-xs mb-2 mono uppercase" style="color: var(--text-muted); letter-spacing: 0.05em;">단계별 진단</div>
+        ${stageRows}
+      </div>
+
+      <!-- 변수별 detail + drill (이전 4단계) -->
+      <div>
+        <div class="text-xs mb-2 mono uppercase" style="color: var(--text-muted); letter-spacing: 0.05em;">변수별 원인 분석 + 추천 drill</div>
+        <div class="text-xs mb-2" style="color: var(--text-secondary);">감지된 ${totalLeak}개 결함의 원인을 변수별로 분석하고 drill을 추천합니다.</div>
+        ${faultDetailCards}
+      </div>
+
       <div class="text-[11px] mt-2" style="color: var(--text-muted);">
         심각도: <span style="color: #dc2626;">🚨 매우 위험 (즉시 조치)</span> → <span style="color: #fb923c;">⚠️ 높음 (우선 보강)</span> → <span style="color: #fbbf24;">⚡ 중간</span> → <span style="color: #94a3b8;">ℹ 낮음</span>
       </div>

@@ -217,12 +217,89 @@
       </div>`;
     }).join('');
 
+    // ── ★ v0.13 — ELI 통합 표시 ──
+    // 마네킹에 6영역 ELI 라벨 박스 + 우상단 큰 ELI 점수 패널
+    const TM = window.TheiaMeta;
+    let eliPanel = '';
+    let eliAreaLabels = '';   // 마네킹 안 SVG 추가 라벨
+    let eliAreas = null;
+    let eliVal = null;
+    let eliGrade = null;
+    if (TM?.ELI_AREAS) {
+      // 6영역 점수 계산 (theia_render.js와 동일 로직)
+      const _avg = (keys) => {
+        const vals = keys.map(k => m[k]?.score).filter(x => x != null);
+        return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0) / vals.length) : null;
+      };
+      const dims = [
+        _avg(['Trail_leg_peak_vertical_GRF', 'Trail_leg_peak_AP_GRF', 'Trail_Hip_Power_peak', 'Pelvis_peak']),
+        _avg(['Lead_leg_peak_vertical_GRF', 'CoG_Decel', 'Lead_Knee_Power_peak', 'br_lead_leg_knee_flexion', 'lead_knee_ext_change_fc_to_br']),
+        _avg(['fc_xfactor', 'peak_xfactor', 'peak_trunk_CounterRotation', 'trunk_rotation_at_fc']),
+        _avg(['Pelvis_peak', 'Trunk_peak', 'trunk_forward_flexion_vel_peak', 'pelvis_to_trunk', 'pelvis_trunk_speedup']),
+        _avg(['Arm_peak', 'humerus_segment_peak', 'trunk_to_arm', 'arm_trunk_speedup', 'mer_shoulder_abd', 'max_shoulder_ER', 'Pitching_Shoulder_Power_peak']),
+      ];
+      const inj = result.catScores?.INJURY?.score;
+      eliAreas = TM.ELI_AREAS.map(a => ({
+        ...a, score: a.from_injury ? inj : dims[a.mech_idx],
+      }));
+      const measured = eliAreas.filter(a => a.score != null);
+      const totalW = measured.reduce((s, a) => s + a.weight, 0);
+      eliVal = totalW ? Math.round(measured.reduce((s, a) => s + a.score * a.weight, 0) / totalW) : null;
+      eliGrade = eliVal != null ? TM.getELIGrade(eliVal) : { color: '#94a3b8', label: '미평가', feedback: '' };
+
+      // 우상단 큰 ELI 점수 패널 (HTML)
+      eliPanel = `
+        <div style="background: #0b1220; border: 2px solid ${eliGrade.color}; border-radius: 8px; padding: 12px 16px; min-width: 220px;">
+          <div class="text-[10px] mono uppercase" style="color: var(--text-muted, #64748b); letter-spacing: 0.1em;">INTEGRATED ELI</div>
+          <div class="display" style="font-size: 42px; color: ${eliGrade.color}; font-weight: 700; line-height: 1;">${eliVal != null ? eliVal : '—'}<span class="text-sm" style="color: var(--text-muted, #64748b);">/100</span></div>
+          <div class="text-xs" style="color: ${eliGrade.color}; font-weight: 600; margin-top: 2px;">${eliGrade.label}</div>
+          <!-- 5단계 색상 띠 + 본 선수 위치 -->
+          <div style="position: relative; height: 8px; margin-top: 6px; border-radius: 2px; overflow: hidden; background: linear-gradient(90deg, #dc2626 0%, #dc2626 40%, #f87171 40%, #f87171 54%, #fb923c 54%, #fb923c 68%, #22d3ee 68%, #22d3ee 84%, #16a34a 84%, #16a34a 100%);">
+            ${eliVal != null ? `<div style="position: absolute; left: ${Math.min(100, eliVal)}%; top: -2px; width: 2px; height: 12px; background: white; box-shadow: 0 0 4px white;"></div>` : ''}
+          </div>
+          <div class="text-[9px] mono mt-1" style="color: var(--text-muted, #64748b); display: flex; justify-content: space-between;">
+            <span>0</span><span>40</span><span>55</span><span>70</span><span>85</span><span>100</span>
+          </div>
+        </div>`;
+
+      // 마네킹 SVG 안 6영역 라벨 박스 (분절 위치별)
+      // 위치: 좌상단·우상단·좌중·우중·좌하·우하 (마네킹 분절 위치에 매칭)
+      const labelPositions = [
+        { id: 'lower_drive',  x: 240, y: 470, anchor: 'middle', desc: 'Trail 발' },
+        { id: 'lead_block',   x: 410, y: 470, anchor: 'middle', desc: 'Lead 발' },
+        { id: 'pelvis_trunk', x: 70,  y: 280, anchor: 'start',  desc: '골반' },
+        { id: 'trunk_power',  x: 70,  y: 200, anchor: 'start',  desc: '몸통' },
+        { id: 'arm_transfer', x: 730, y: 200, anchor: 'end',    desc: '팔' },
+        { id: 'load_eff',     x: 730, y: 280, anchor: 'end',    desc: '팔꿈치' },
+      ];
+      eliAreaLabels = eliAreas.map((a, i) => {
+        const pos = labelPositions[i];
+        if (!pos) return '';
+        const sc = a.score;
+        const c = sc == null ? '#64748b' : sc >= 80 ? '#16a34a' : sc >= 60 ? '#22d3ee' : sc >= 40 ? '#fb923c' : '#dc2626';
+        const isStarred = a.weight >= 20 ? ' ★' : '';
+        const w = 130, h = 38;
+        const xRect = pos.anchor === 'end' ? pos.x - w : pos.anchor === 'middle' ? pos.x - w/2 : pos.x;
+        const yRect = pos.y;
+        return `<g>
+          <rect x="${xRect}" y="${yRect}" width="${w}" height="${h}" rx="4" fill="#0b1220" stroke="${c}" stroke-width="1.5" opacity="0.92"/>
+          <text x="${pos.anchor === 'end' ? pos.x - 6 : pos.anchor === 'middle' ? pos.x : pos.x + 6}" y="${yRect + 14}" font-size="9" fill="${c}" font-weight="700" text-anchor="${pos.anchor}" letter-spacing="0.5">${a.name}${isStarred}</text>
+          <text x="${pos.anchor === 'end' ? pos.x - 6 : pos.anchor === 'middle' ? pos.x : pos.x + 6}" y="${yRect + 30}" font-size="14" fill="#e2e8f0" font-weight="700" font-family="JetBrains Mono" text-anchor="${pos.anchor}">${sc != null ? sc + '점' : '—'}<tspan font-size="9" fill="var(--text-muted, #64748b)" font-family="Inter"> w=${a.weight}</tspan></text>
+        </g>`;
+      }).join('');
+    }
+
     return `
     <div class="cat-card mb-6" style="padding: 16px; background: #0b1220; border: 1px solid #1e293b;">
-      <div class="display text-xl mb-1" style="color: #fb923c;">⚡ 키네틱 체인 — 에너지 흐름 (파워 기반)</div>
-      <div class="text-xs mb-2" style="color: #64748b;">
-        ★ <strong>Kinetic Energy 기반</strong> 직접 계산 — Pelvis KE → Trunk KE → Arm KE → Wrist KE (Joule 단위 흐름).
-        분절별 KE = 0.5 × I × ω² (Winter BSP). 단순 ratio가 아닌 실제 에너지 손실량(J)으로 누수 진단.
+      <div class="flex justify-between items-start flex-wrap gap-3 mb-2">
+        <div>
+          <div class="display text-xl mb-1" style="color: #fb923c;">🤸 코칭 세션 — 마네킹 + ELI 통합</div>
+          <div class="text-xs mb-2" style="color: #64748b;">
+            ★ <strong>직관적 진단 hub</strong> — 6영역 Energy Leak Index + KE 기반 흐름 + GRF + 팔꿈치 토크 + lag 누수를 한 그림에 통합.
+            마네킹 분절 옆 라벨 = 해당 영역 점수(가중치 ★=20). 우상단 점수 = 통합 ELI.
+          </div>
+        </div>
+        ${eliPanel}
       </div>
 
       <!-- 에너지 흐름 판정 + 근거 (KE 기반) -->
@@ -249,6 +326,8 @@
         </div>
       </details>
       <svg viewBox="0 0 800 540" width="100%" preserveAspectRatio="xMidYMid meet" style="max-height: 540px;">
+        <!-- ★ v0.13 — ELI 6영역 라벨 박스 (마네킹 분절 위치별) -->
+        ${eliAreaLabels}
         <defs>
           <linearGradient id="bg-${uid}" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0" stop-color="#0b1220" stop-opacity="0"/>
@@ -603,9 +682,13 @@
 
     return `
     <div class="cat-card mb-6" style="padding: 18px;">
-      <div class="display text-xl mb-1">📊 키네매틱 시퀀스 — 피크 속도 타이밍</div>
-      <div class="text-sm mb-3" style="color: var(--text-secondary);">
-        골반 → 몸통 → 팔 순서로 회전 속도가 정점을 찍어야 합니다. 각 단계 사이 lag은 <strong>40~50 ms</strong>가 이상적.
+      <div class="display text-xl mb-1">📊 키네매틱 시퀀스 — 회전 타이밍 (간접 추정)</div>
+      <div class="text-sm mb-2" style="color: var(--text-secondary);">
+        키네틱 체인의 <strong>회전 타이밍</strong>을 통한 <strong>간접적 에너지 전달 추정</strong> — 골반 → 몸통 → 팔 순서로 피크 속도가 시간차를 두고 발생해야 합니다.
+        각 단계 사이 lag은 <strong>40~50 ms</strong>가 이상적 (Aguinaldo 2007).
+      </div>
+      <div class="text-xs mb-3 p-2 rounded" style="background: rgba(96,165,250,0.08); border-left: 2px solid var(--accent-soft, #60a5fa); color: var(--text-secondary);">
+        💡 <strong>다음 카드 (마네킹 + ELI)</strong>는 같은 키네틱 체인을 <strong>분절별 ELI 점수</strong>로 직접 진단합니다 — 시퀀스 그래프의 정량적 해석.
       </div>
       <div class="card p-3" style="background: #0a1322;">
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMidYMid meet">
