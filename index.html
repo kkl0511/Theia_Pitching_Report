@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
+<!-- ★ v0.42 — 캐시 무효화: 항상 최신 빌드 로드 -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Theia Pitching Report — 투수 메카닉·하체 효율 분석</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -506,11 +510,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js"></script>
-<script src="metadata_theia.js"></script>
-<script src="theia_app.js"></script>          <!-- 파서·점수·API · ~680줄 -->
-<script src="theia_mannequin.js"></script>     <!-- 마네킹·종형 동적 SVG · ~530줄 -->
-<script src="theia_render.js"></script>        <!-- 메인 리포트 렌더 · ~880줄 -->
+<script src="cohort_theia.js?v=0.42"></script>
+<script src="metadata_theia.js?v=0.42"></script>
+<script src="theia_app.js?v=0.42"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.42"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.42"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>

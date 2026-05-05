@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.36';
+  const ALGORITHM_VERSION = 'v0.42';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -377,10 +377,21 @@
     const idx = parsed.columnIndex[varKey];
     if (idx == null) return null;
     const tIdx = parsed.columnIndex['TIME_rel'];
+    // ★ v0.38 — kin frame 시간 보간 (가장 가까운 점 기준)
+    let prev = null, next = null;
     for (const r of parsed.kinematic) {
       const tt = safeNum(r[tIdx]);
-      if (tt != null && tt >= t) return safeNum(r[idx]);
+      const v = safeNum(r[idx]);
+      if (tt == null || v == null) continue;
+      if (tt <= t) prev = { t: tt, v };
+      else { next = { t: tt, v }; break; }
     }
+    if (prev && next && next.t > prev.t) {
+      const frac = (t - prev.t) / (next.t - prev.t);
+      return prev.v + frac * (next.v - prev.v);
+    }
+    if (prev) return prev.v;
+    if (next) return next.v;
     return null;
   }
 
@@ -492,9 +503,9 @@
   }
 
   function detectFCfromGRF(parsed, mass_kg, leadKey) {
-    // ★ v0.24 — leadKey 파라미터 추가 (auto-mapping 결과 사용)
+    // ★ v0.37 — 통합 force time series 사용 (kin + force-only)
     const key = leadKey ? `${leadKey}.Z` : 'Lead_Leg_GRF.Z';
-    const arr = forceOnlyTimes(parsed, key);
+    const arr = getForceTimeSeries(parsed, key);
     if (arr.length === 0) return null;
     const baselineN = Math.min(100, Math.floor(arr.length / 4));
     const baseline = arr.slice(0, baselineN).reduce((s, x) => s + x.v, 0) / baselineN;
@@ -546,6 +557,28 @@
     }
     const bw = mass_kg * 9.81;
     return total / bw;
+  }
+
+  // ★ v0.37 — force time series에서 시간 보간으로 값 추출 (force-aware valAtTime)
+  //   기존 valAtTime은 kin frame만 검색 → force-only 데이터 못 봄 → 결측 발생
+  //   이 함수는 getForceTimeSeries (kin + force-only 통합)에서 보간
+  function forceValAtTime(parsed, varKey, t) {
+    if (t == null) return null;
+    const series = getForceTimeSeries(parsed, varKey);
+    if (series.length === 0) return null;
+    // 시간 보간 — t 양쪽 가까운 두 점에서 선형 보간
+    let prev = null, next = null;
+    for (const p of series) {
+      if (p.t <= t) prev = p;
+      else { next = p; break; }
+    }
+    if (prev && next && next.t > prev.t) {
+      const frac = (t - prev.t) / (next.t - prev.t);
+      return prev.v + frac * (next.v - prev.v);
+    }
+    if (prev) return prev.v;
+    if (next) return next.v;
+    return null;
   }
 
   // ★ v0.30 — kin frame + force_only frame 통합 시계열
@@ -602,22 +635,16 @@
     return total / bw;
   }
 
-  // ★ v0.28 — Phase B: Joint Power 시계열 W⁺/W⁻ 적분
-  //   PDF §4 — W⁺ = ∫max(P,0) dt, W⁻ = ∫min(P,0) dt
-  //   반환: { Wpos, Wneg, absorption_ratio }
+  // ★ v0.39 — Joint Power W⁺/W⁻ 적분 (force-aware: kin + force_only 통합)
+  //   기존엔 kin frame만 → 일부 trial 결측. 통합 시계열 사용으로 강화.
   function jointPowerWork(parsed, key, tFrom, tTo) {
     if (parsed.columnIndex[key] == null || tFrom == null || tTo == null) {
       return { Wpos: null, Wneg: null, absorption: null };
     }
-    const idx = parsed.columnIndex[key];
-    const ti = parsed.columnIndex['TIME_rel'];
     const lo = Math.min(tFrom, tTo), hi = Math.max(tFrom, tTo);
-    const series = [];
-    for (const r of parsed.kinematic) {
-      if (r.length <= Math.max(idx, ti)) continue;
-      const t = safeNum(r[ti]); const v = safeNum(r[idx]);
-      if (t != null && v != null && lo <= t && t <= hi) series.push({ t, v });
-    }
+    // 통합 시계열 (kin + force_only) 사용
+    const fullSeries = getForceTimeSeries(parsed, key);
+    const series = fullSeries.filter(p => lo <= p.t && p.t <= hi);
     if (series.length < 2) return { Wpos: null, Wneg: null, absorption: null };
     let Wpos = 0, Wneg = 0;
     for (let i = 1; i < series.length; i++) {
@@ -811,9 +838,9 @@
           out.time_to_peak_lead_force = leadPeakT - ev.FC;    // s, FC→lead peak
         }
 
-        // Force at Ball Release (BR 시점 lead leg vertical force, BW)
+        // ★ v0.37 — Force at Ball Release (force-only sub-frame까지 활용)
         if (ev.BR != null) {
-          const fzAtBR = valAtTime(parsed, `${leadKey}.Z`, ev.BR);
+          const fzAtBR = forceValAtTime(parsed, `${leadKey}.Z`, ev.BR);
           if (fzAtBR != null && mass_kg) {
             out.force_at_ball_release = Math.abs(fzAtBR) / (mass_kg * 9.81);
           }
@@ -833,10 +860,10 @@
           }
         }
 
-        // Clawback Time (BR 후 lead leg force 50% baseline 도달 시간 — 안정 회복)
+        // ★ v0.37 — Clawback Time (force-aware)
         if (ev.BR != null && mass_kg) {
           const leadZ = getForceTimeSeries(parsed, `${leadKey}.Z`);
-          const peakAtBR = Math.abs(valAtTime(parsed, `${leadKey}.Z`, ev.BR) || 0);
+          const peakAtBR = Math.abs(forceValAtTime(parsed, `${leadKey}.Z`, ev.BR) || 0);
           const target = peakAtBR * 0.5;
           let recoveryT = null;
           for (const p of leadZ) {
@@ -845,7 +872,7 @@
               break;
             }
           }
-          if (recoveryT != null) out.clawback_time = recoveryT;  // s
+          if (recoveryT != null) out.clawback_time = recoveryT;
         }
 
         // Lead Braking Efficiency = brake_impulse / propulsive_impulse
