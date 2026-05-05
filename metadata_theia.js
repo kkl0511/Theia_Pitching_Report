@@ -514,13 +514,13 @@
       mech_idx: 1,
       desc: 'braking impulse, vertical GRF, lead knee flexion change',
       leak_when_low: '전방 이동을 회전으로 전환 못함' },
-    { id: 'pelvis_trunk', name: '골반-몸통 연결',    weight: 20,  // ★ 가중치 최대
+    { id: 'pelvis_trunk', name: '골반-몸통 연결',    weight: 15,  // ★ v0.26 — markerless 골반·Z축 회전 인식 한계 → 20→15
       mech_idx: 2,
       desc: 'hip-shoulder separation, pelvis-trunk delay, FC trunk rotation',
       leak_when_low: '상체 조기 회전 또는 분리 부족' },
-    { id: 'trunk_power',  name: '몸통 파워',          weight: 15,
+    { id: 'trunk_power',  name: '몸통 파워',          weight: 20,  // ★ v0.26 — FC 시 몸통 자세 중요 변수 추가 → 15→20
       mech_idx: 3,
-      desc: 'trunk angular velocity, trunk forward flexion, deceleration',
+      desc: 'trunk angular velocity, FC trunk back-tilt, forward flexion deceleration',
       leak_when_low: '몸통이 에너지원·전달원 역할 못함' },
     { id: 'arm_transfer', name: '팔 전달',            weight: 15,
       mech_idx: 4,

@@ -1,12 +1,12 @@
 {
   "meta": {
-    "version": "v0.1",
+    "version": "v0.26",
     "cohort_id": "pro",
-    "cohort_label_kr": "프로 수준 reference (문헌 + Driveline)",
-    "cohort_label_en": "Professional Reference (Literature + Driveline)",
+    "cohort_label_kr": "프로 수준 reference (Theia markerless 보정)",
+    "cohort_label_en": "Professional Reference (Theia markerless calibrated)",
     "evaluation_target": "프로 선수, 상위 아마추어 투수, 대학 elite 투수",
-    "cohort_description": "MLB·KBO 수준 elite 투수 문헌 메타분석 + Driveline R&D 공개 데이터 결합",
-    "n_players": "문헌 기반 (실측 X) — MLB pro 200+, Driveline 100+ aggregate",
+    "cohort_description": "MLB·KBO elite 투수 문헌 + Theia markerless 시스템 보정 (v0.23 — KBO 프로 실측 reference 반영)",
+    "n_players": "문헌 기반 + Theia markerless 시스템 보정 — KBO 프로 8 trial 사례 기반 calibration",
     "data_sources": [
       "Wood-Smith JD et al. (2019) Sports Biomech — MLB pro pitchers (n=89)",
       "Werner SL et al. (2008) Sports Biomech — Pro pitchers throwing biomechanics",
@@ -14,13 +14,16 @@
       "Stodden DF et al. (2001) JAB — trunk·pelvis kinematics, Pro vs amateur",
       "Driveline Baseball R&D (2020-2024) — public elite reports",
       "Whiteley R (2018) IJSPT — release consistency",
-      "ASMI (American Sports Medicine Institute) Pro database"
+      "ASMI (American Sports Medicine Institute) Pro database",
+      "★ v0.23 — KBO 프로 이영하 8 trial Theia markerless 실측 (시스템 보정용)"
     ],
     "notes": [
-      "★ 절대값 비교 시스템 — 문헌 메타 mean·SD를 Gaussian optimal로 사용",
-      "★ percentile 평가 X (실측 분포 아니라 합성 분포) — Gaussian 기반 점수 산출 권장",
-      "★ ball_speed elite 임계: 145 km/h(90 mph) — MLB pro median",
-      "GRF Pro 문헌 적음 — Theia hs_top10 q75를 fallback elite 임계로 활용"
+      "★ v0.23 — Theia markerless 시스템은 marker-based MLB 보다 회전 속도 약 10~20% 낮게 측정",
+      "★ Trunk_peak·Arm_peak optimal 하향 조정 (markerless 보정)",
+      "★ max_shoulder_ER·peak_xfactor·fc_xfactor capped_higher 적용 — 임계 이상이면 만점",
+      "★ peak_trunk_CounterRotation higher_abs — 부호 컨벤션 차이 흡수",
+      "★ GRF optimal 이영하 8 trial 기반 보정 (Theia markerless 시스템 ≠ MLB Pro 절대값)",
+      "★ ball_speed elite 임계: 145 km/h(90 mph) — MLB pro median"
     ]
   },
   "var_distributions": {
@@ -34,25 +37,26 @@
     },
     "Pelvis_peak": {
       "optimal": 700,
-      "sigma": 100,
-      "unit": "deg/s",
-      "polarity": "higher",
-      "ref": "Aguinaldo 2009 Pro 712±88, Wood-Smith 2019 750±90"
-    },
-    "Trunk_peak": {
-      "optimal": 1150,
       "sigma": 150,
       "unit": "deg/s",
       "polarity": "higher",
-      "ref": "Werner 2008 1180±185, Wood-Smith 2019 1200±170"
+      "ref": "★ v0.26 — markerless 골반 인식 약함 → σ 100→150 확대 (관대 평가). Aguinaldo 2009 Pro 712±88, Wood-Smith 2019 750±90"
     },
-    "Arm_peak": {
-      "optimal": 7500,
-      "sigma": 1200,
+    "Trunk_peak": {
+      "optimal": 1000,
+      "sigma": 150,
       "unit": "deg/s",
       "polarity": "higher",
-      "ref": "MLB pro humerus IR vel 7000-9000 (Werner 2008), Driveline elite 7500+",
-      "note": "Theia Arm_peak = Pitching_Shoulder_Ang_Vel(Z) = humerus IR vel"
+      "ref": "Werner 2008 1180±185 (marker), Theia markerless 보정 1000±150 (KBO 프로 1021°/s 사례)",
+      "note": "★ v0.23 — markerless 시스템 보정 (marker 기준 -13%)"
+    },
+    "Arm_peak": {
+      "optimal": 5500,
+      "sigma": 1000,
+      "unit": "deg/s",
+      "polarity": "higher",
+      "ref": "MLB pro humerus IR vel 7000-9000 (marker, Werner 2008), Theia markerless 보정 5500±1000 (KBO 프로 5100°/s 사례)",
+      "note": "★ v0.23 — markerless 시스템 보정 (marker 기준 -25%). Theia Arm_peak = Pitching_Shoulder_Ang_Vel(Z) = humerus IR vel"
     },
     "pelvis_to_trunk": {
       "optimal": 0.045,
@@ -69,32 +73,38 @@
       "ref": "Aguinaldo 2007 Pro mean 45ms±20"
     },
     "peak_xfactor": {
-      "optimal": 50,
-      "sigma": 12,
+      "optimal": 40,
+      "sigma": 20,
       "unit": "deg",
-      "polarity": "higher",
-      "ref": "Stodden 2001 Pro 50°±15, Aguinaldo 2007 elite 50°+"
+      "polarity": "capped_higher",
+      "ref": "★ v0.26 — markerless 수직축 회전각 인식 한계 → σ 14→20 더 관대. 40° 이상 만점, 30° 이하 감점",
+      "note": "Stodden 2001 Pro 50°±15는 MLB marker. Theia/markerless 일반 Pro 30~45°"
     },
     "fc_xfactor": {
-      "optimal": 35,
+      "optimal": 25,
       "sigma": 12,
       "unit": "deg",
-      "polarity": "higher",
-      "ref": "ASMI Pro DB FC 시점 30~45°"
+      "polarity": "capped_higher",
+      "ref": "★ v0.26 — markerless σ 8→12 확대. 25° 이상이면 적정 (early separation)",
+      "note": "추후 fc_xfactor / peak_xfactor 비율(early separation %) 별도 변수로 추가 검토"
     },
     "fc_trunk_forward_tilt": {
       "optimal": -5,
-      "sigma": 12,
+      "sigma": 8,
+      "sigma_neg": 10,
+      "sigma_pos": 6,
       "unit": "deg",
-      "polarity": "absolute",
-      "ref": "Stodden 2001 Pro 직립±10°, Wood-Smith 2019 -5°±12"
+      "polarity": "asymmetric_back",
+      "ref": "★ v0.26 — FC 시 몸통은 뒤로(음수) 약간 굴곡이 좋음. 앞으로 숙임(양수) = 나쁨. 비대칭 평가",
+      "note": "음수쪽 관대(σ=10), 양수쪽 엄격(σ=6). -5°=100, 0°=82, +5°=46, +10°=17"
     },
     "peak_trunk_CounterRotation": {
-      "optimal": 45,
-      "sigma": 12,
+      "optimal": 30,
+      "sigma": 18,
       "unit": "deg",
-      "polarity": "higher",
-      "ref": "ASMI Pro 와인드업 counter rotation 30-60° (peak 45)"
+      "polarity": "higher_abs",
+      "ref": "★ v0.26 — markerless 수직축 회전 인식 한계 σ 12→18 더 관대. |value| 사용. ASMI Pro 30-60°",
+      "note": "Theia 부호 컨벤션 차이 흡수. 25° 이상 적정 평가"
     },
     "stride_length": {
       "optimal": 90,
@@ -119,12 +129,13 @@
       "ref": "Wood-Smith 2019 Pro 35°±15 (FC→BR 약 15° 펴짐)"
     },
     "max_shoulder_ER": {
-      "optimal": 185,
-      "sigma": 12,
+      "optimal": 170,
+      "sigma": 10,
       "unit": "deg",
-      "polarity": "higher",
+      "polarity": "capped_higher",
       "elite_safety_upper": 200,
-      "ref": "Werner 2008 Pro 180-195°, Driveline elite 175-200° (200°+ valgus 위험)"
+      "ref": "★ v0.23 — 170° 이상 만점, 160° 미만 감점 (Werner 2008 Pro 180-195°, 무조건 클수록 좋은 것 아님 — UCL valgus stress 200° 이상 위험)",
+      "note": "175°는 elite 정상 (KBO 프로 평균). 충분히 외전·외회전 → 만점 처리"
     },
     "fc_shoulder_abd": {
       "optimal": 90,
@@ -157,34 +168,34 @@
       "ref": "Werner 2008 Pro 3.0-3.5 m/s"
     },
     "Trail_leg_peak_vertical_GRF": {
-      "optimal": 1.8,
-      "sigma": 0.2,
+      "optimal": 1.4,
+      "sigma": 0.25,
       "unit": "BW",
       "polarity": "higher",
-      "fallback": "hs_top10_q75",
-      "ref": "Pro 1.5-2.0 BW (Slowik 2019 산발). HS Top10 q75 fallback"
+      "ref": "★ v0.24 — Theia 포스플레이트 직접 측정. KBO 프로 이영하 10 trial 평균 1.38 BW (range 1.20~1.88)",
+      "note": "Theia는 Qualisys + force plate로 GRF 직접 측정 (markerless로 derived 아님)"
     },
     "Trail_leg_peak_AP_GRF": {
-      "optimal": 0.85,
-      "sigma": 0.1,
+      "optimal": 0.5,
+      "sigma": 0.15,
       "unit": "BW",
       "polarity": "higher",
-      "fallback": "hs_top10_q75",
-      "ref": "Pro forward push 0.7-1.0 BW"
+      "ref": "★ v0.24 — KBO 프로 측정 기반. Pro forward push 0.4-0.8 BW"
     },
     "Lead_leg_peak_vertical_GRF": {
-      "optimal": 2.4,
+      "optimal": 1.9,
       "sigma": 0.3,
       "unit": "BW",
       "polarity": "higher",
-      "ref": "Pro 2.0-3.0 BW (Slowik 2019 elite)"
+      "ref": "★ v0.24 — Theia 포스플레이트 측정. KBO 프로 이영하 10 trial 평균 1.92 BW (range 1.76~2.50)",
+      "note": "Marker MLB Pro 2.0-3.0 BW. KBO 1.9 BW가 Pro 평균 수준"
     },
     "Lead_leg_peak_AP_GRF": {
-      "optimal": 1.3,
-      "sigma": 0.2,
+      "optimal": 1.0,
+      "sigma": 0.25,
       "unit": "BW",
       "polarity": "higher",
-      "ref": "Pro braking GRF 1.0-1.5 BW"
+      "ref": "★ v0.24 — KBO 프로 측정 기반. Pro braking GRF 0.8-1.3 BW"
     },
     "trail_to_lead_vgrf_peak_s": {
       "optimal": 0.25,

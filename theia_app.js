@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.22';
+  const ALGORITHM_VERSION = 'v0.26';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -457,8 +457,52 @@
     return rows.map(({f, v}) => ({ t: (f - first) / span * dur, v }));
   }
 
-  function detectFCfromGRF(parsed, mass_kg) {
-    const arr = forceOnlyTimes(parsed, 'Lead_Leg_GRF.Z');
+  // ★ v0.24 — FP1/FP2 → Trail/Lead 자동 매핑
+  //   Theia c3d.txt는 FP1·FP2 헤더로 force plate 데이터 보유 (FORCE/COFP/FREEMOMENT × X/Y/Z)
+  //   Lab setup에 따라 어느 plate가 trail/lead인지 다름. 데이터 거동으로 자동 판별:
+  //   - Trail leg = 처음부터 정적 weight 받는 plate (mound 위에 먼저 디딤)
+  //   - Lead leg  = FC 후 처음 force 받는 plate (앞 발이 plate에 닿을 때 spike)
+  //   판별 기준: 처음 5% 구간 vGRF baseline >= 0.3 BW면 trail, < 0.2 BW면 lead 후보
+  function detectGRFPlateMapping(parsed, mass_kg) {
+    const fp1 = forceOnlyTimes(parsed, 'FP1.Z');
+    const fp2 = forceOnlyTimes(parsed, 'FP2.Z');
+    const has1 = fp1.length > 0;
+    const has2 = fp2.length > 0;
+    if (!has1 && !has2) return { trail: null, lead: null, source: 'no_force_data' };
+    const bw = (mass_kg || 80) * 9.81;
+    const baseMean = (arr) => {
+      if (arr.length < 20) return 0;
+      const n = Math.max(20, Math.floor(arr.length * 0.05));
+      const sum = arr.slice(0, n).reduce((s, x) => s + Math.abs(x.v), 0);
+      return sum / n;
+    };
+    const fp1Base = has1 ? baseMean(fp1) : 0;
+    const fp2Base = has2 ? baseMean(fp2) : 0;
+    // Trail leg는 baseline ≥ 0.3 BW (정적 weight ≈ 0.5~1 BW)
+    // Lead leg는 baseline < 0.2 BW (FC 전엔 0)
+    const fp1IsTrail = fp1Base >= bw * 0.3;
+    const fp2IsTrail = fp2Base >= bw * 0.3;
+    const fp1IsLead  = fp1Base <  bw * 0.2;
+    const fp2IsLead  = fp2Base <  bw * 0.2;
+    if (fp1IsTrail && fp2IsLead) return { trail: 'FP1', lead: 'FP2', source: 'auto_baseline' };
+    if (fp2IsTrail && fp1IsLead) return { trail: 'FP2', lead: 'FP1', source: 'auto_baseline' };
+    // Fallback: peak 시점이 늦은 쪽이 lead (lead leg vGRF peak은 trail보다 늦음)
+    if (has1 && has2) {
+      const fp1Peak = fp1.reduce((b, x) => Math.abs(x.v) > Math.abs(b.v) ? x : b, fp1[0]);
+      const fp2Peak = fp2.reduce((b, x) => Math.abs(x.v) > Math.abs(b.v) ? x : b, fp2[0]);
+      if (fp1Peak.t > fp2Peak.t) return { trail: 'FP2', lead: 'FP1', source: 'peak_time_fallback' };
+      else                       return { trail: 'FP1', lead: 'FP2', source: 'peak_time_fallback' };
+    }
+    // 한쪽만 활성이면 그쪽을 lead로 가정 (피칭 분석에서 lead가 더 critical)
+    if (has1) return { trail: null, lead: 'FP1', source: 'single_plate_FP1' };
+    if (has2) return { trail: null, lead: 'FP2', source: 'single_plate_FP2' };
+    return { trail: null, lead: null, source: 'none' };
+  }
+
+  function detectFCfromGRF(parsed, mass_kg, leadKey) {
+    // ★ v0.24 — leadKey 파라미터 추가 (auto-mapping 결과 사용)
+    const key = leadKey ? `${leadKey}.Z` : 'Lead_Leg_GRF.Z';
+    const arr = forceOnlyTimes(parsed, key);
     if (arr.length === 0) return null;
     const baselineN = Math.min(100, Math.floor(arr.length / 4));
     const baseline = arr.slice(0, baselineN).reduce((s, x) => s + x.v, 0) / baselineN;
@@ -520,8 +564,23 @@
     const ev = parsed.events;
     const ci = parsed.columnIndex;
 
+    // ★ v0.24 — FP1/FP2 → Trail/Lead 자동 매핑 (Theia c3d.txt에 FP1/FP2 헤더가 있는 경우)
+    //   기존 'Trail_Leg_GRF.Z' / 'Lead_Leg_GRF.Z' 헤더가 없으면 FP1/FP2로 fallback
+    const hasLegacyGRF = parsed.columnIndex['Trail_Leg_GRF.Z'] != null
+                       || parsed.columnIndex['Lead_Leg_GRF.Z'] != null;
+    let trailKey = hasLegacyGRF ? 'Trail_Leg_GRF' : null;
+    let leadKey  = hasLegacyGRF ? 'Lead_Leg_GRF'  : null;
+    let grfMapSource = hasLegacyGRF ? 'legacy_GRF_header' : null;
+    if (!hasLegacyGRF) {
+      const map = detectGRFPlateMapping(parsed, mass_kg);
+      trailKey = map.trail;
+      leadKey  = map.lead;
+      grfMapSource = map.source;
+    }
+    ev._grf_mapping = { trail: trailKey, lead: leadKey, source: grfMapSource };
+
     // FC 검출 — Lead vGRF 기반 우선, fallback to V3D Footstrike
-    const fcGrf = detectFCfromGRF(parsed, mass_kg);
+    const fcGrf = detectFCfromGRF(parsed, mass_kg, leadKey);
     ev.FC = fcGrf != null ? fcGrf : ev.FS;
     ev._fc_source = fcGrf != null ? 'lead_vGRF' : 'visual3d_label';
 
@@ -646,17 +705,23 @@
       }
     }
 
-    // ── GRF ──
+    // ── GRF ── (★ v0.24 — trailKey/leadKey 동적 매핑)
     if (mass_kg) {
-      out.Trail_leg_peak_vertical_GRF = grfPeakBW(parsed, 'Trail_Leg_GRF.Z', winFrom, winTo, mass_kg);
-      out.Trail_leg_peak_AP_GRF = grfPeakBW(parsed, 'Trail_Leg_GRF.X', winFrom, winTo, mass_kg);
-      out.Lead_leg_peak_vertical_GRF = grfPeakBW(parsed, 'Lead_Leg_GRF.Z', winFrom, winTo, mass_kg);
-      out.Lead_leg_peak_AP_GRF = grfPeakBW(parsed, 'Lead_Leg_GRF.X', winFrom, winTo, mass_kg);
-      out.trail_impulse_stride = grfImpulseBW(parsed, 'Trail_Leg_GRF.Z', ev.KH, ev.FC, mass_kg);
-      const trailPeakT = grfPeakTime(parsed, 'Trail_Leg_GRF.Z', winFrom, winTo);
-      const leadPeakT = grfPeakTime(parsed, 'Lead_Leg_GRF.Z', winFrom, winTo);
-      if (trailPeakT != null && leadPeakT != null) {
-        out.trail_to_lead_vgrf_peak_s = leadPeakT - trailPeakT;
+      if (trailKey) {
+        out.Trail_leg_peak_vertical_GRF = grfPeakBW(parsed, `${trailKey}.Z`, winFrom, winTo, mass_kg);
+        out.Trail_leg_peak_AP_GRF       = grfPeakBW(parsed, `${trailKey}.X`, winFrom, winTo, mass_kg);
+        out.trail_impulse_stride        = grfImpulseBW(parsed, `${trailKey}.Z`, ev.KH, ev.FC, mass_kg);
+      }
+      if (leadKey) {
+        out.Lead_leg_peak_vertical_GRF = grfPeakBW(parsed, `${leadKey}.Z`, winFrom, winTo, mass_kg);
+        out.Lead_leg_peak_AP_GRF       = grfPeakBW(parsed, `${leadKey}.X`, winFrom, winTo, mass_kg);
+      }
+      if (trailKey && leadKey) {
+        const trailPeakT = grfPeakTime(parsed, `${trailKey}.Z`, winFrom, winTo);
+        const leadPeakT  = grfPeakTime(parsed, `${leadKey}.Z`,  winFrom, winTo);
+        if (trailPeakT != null && leadPeakT != null) {
+          out.trail_to_lead_vgrf_peak_s = leadPeakT - trailPeakT;
+        }
       }
     }
 
@@ -703,17 +768,46 @@
     }
 
     // ── Wrist 3D 위치 (P1·P3 산출용 trial-level value) ──
-    if (ci['Pitching_Wrist_jc_Position.X'] != null && ev.BR != null) {
-      out.wrist_x_at_BR = valAtTime(parsed, 'Pitching_Wrist_jc_Position.X', ev.BR);
-      out.wrist_y_at_BR = valAtTime(parsed, 'Pitching_Wrist_jc_Position.Y', ev.BR);
-      out.wrist_z_at_BR = valAtTime(parsed, 'Pitching_Wrist_jc_Position.Z', ev.BR);
+    // ★ v0.25 — 두 c3d.txt 형식 호환:
+    //   Visual3D pipeline 형식: 'Pitching_Wrist_jc_Position.X/Y/Z' (LINK_MODEL_BASED)
+    //   Theia 직접 export 형식: 'R_WRIST.X/Y/Z' / 'L_WRIST.X/Y/Z' (LANDMARK)
+    //   case-insensitive 매칭 (R_WRIST·R_Elbow·R_ANKLE 등 케이스 mix)
+    function findKeyCI(prefix, axis) {
+      if (ci[`${prefix}.${axis}`] != null) return `${prefix}.${axis}`;
+      // case-insensitive 검색
+      const target = `${prefix}.${axis}`.toLowerCase();
+      for (const k of Object.keys(ci)) {
+        if (k.toLowerCase() === target) return k;
+      }
+      return null;
+    }
+    const isLH = parsed.meta?.handHint === 'left';
+    const sidePrefix = isLH ? 'L' : 'R';
+    function resolveJointKey(jcName, landmarkName) {
+      // jcName: 'Pitching_Wrist_jc_Position', landmarkName: 'WRIST' (uppercase 검색)
+      const xKey = findKeyCI(jcName, 'X');
+      if (xKey) return jcName;
+      // landmark 시도: R_WRIST or R_Wrist (case-insensitive)
+      const lmKey = findKeyCI(`${sidePrefix}_${landmarkName}`, 'X');
+      if (lmKey) return lmKey.replace('.X', '');
+      return null;
+    }
+    const wristKey    = resolveJointKey('Pitching_Wrist_jc_Position',    'WRIST');
+    const elbowKey    = resolveJointKey('Pitching_Elbow_jc_Position',    'ELBOW');
+    const shoulderKey = resolveJointKey('Pitching_Shoulder_jc_Position', 'SHOULDER');
+    ev._joint_keys = { wrist: wristKey, elbow: elbowKey, shoulder: shoulderKey, side: sidePrefix };
+
+    if (wristKey && ev.BR != null) {
+      out.wrist_x_at_BR = valAtTime(parsed, `${wristKey}.X`, ev.BR);
+      out.wrist_y_at_BR = valAtTime(parsed, `${wristKey}.Y`, ev.BR);
+      out.wrist_z_at_BR = valAtTime(parsed, `${wristKey}.Z`, ev.BR);
     }
 
-    // ── arm_slot ──
-    if (ev.BR != null && ci['Pitching_Shoulder_jc_Position.X'] != null) {
-      const sx = valAtTime(parsed, 'Pitching_Shoulder_jc_Position.X', ev.BR);
-      const sy = valAtTime(parsed, 'Pitching_Shoulder_jc_Position.Y', ev.BR);
-      const sz = valAtTime(parsed, 'Pitching_Shoulder_jc_Position.Z', ev.BR);
+    // ── arm_slot ── (어깨-손목 위치차로 던지는 팔 각도 산출 — 사이드암/오버핸드 구분)
+    if (ev.BR != null && shoulderKey && wristKey) {
+      const sx = valAtTime(parsed, `${shoulderKey}.X`, ev.BR);
+      const sy = valAtTime(parsed, `${shoulderKey}.Y`, ev.BR);
+      const sz = valAtTime(parsed, `${shoulderKey}.Z`, ev.BR);
       const wx = out.wrist_x_at_BR, wy = out.wrist_y_at_BR, wz = out.wrist_z_at_BR;
       if ([sx,sy,sz,wx,wy,wz].every(v => v != null)) {
         const vDiff = wz - sz;

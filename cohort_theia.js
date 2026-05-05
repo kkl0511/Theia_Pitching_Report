@@ -100,13 +100,38 @@
     const { optimal, sigma, polarity } = dist;
     if (sigma == null || sigma === 0) return null;
 
-    const dev = (value - optimal) / sigma;
+    // ★ v0.23 — 새 polarity 2개 추가
+    //   capped_higher : optimal 이상 → 100점, 미만 → Gaussian 감점
+    //                   (예: max_shoulder_ER 170+ 만점, peak_xfactor 40+ 만점)
+    //   higher_abs    : |value| 사용 후 higher (부호 컨벤션 차이 흡수)
+    //                   (예: peak_trunk_CounterRotation Theia 음수 vs 코호트 양수)
+    let v = value;
+    if (polarity === 'higher_abs') {
+      v = Math.abs(value);
+    }
+
+    const dev = (v - optimal) / sigma;
     let score;
-    if (polarity === 'higher') {
+    if (polarity === 'higher' || polarity === 'higher_abs') {
       // 양수 dev = 좋음, 음수 = 페널티 (sigma 1당 -34점)
       score = 50 + 50 * _erf(dev / Math.SQRT2);
+    } else if (polarity === 'capped_higher') {
+      // optimal 이상이면 만점, 미만이면 Gaussian 감점
+      score = (v >= optimal) ? 100 : (50 + 50 * _erf(dev / Math.SQRT2));
     } else if (polarity === 'lower') {
       score = 50 - 50 * _erf(dev / Math.SQRT2);
+    } else if (polarity === 'capped_lower') {
+      score = (v <= optimal) ? 100 : (50 - 50 * _erf(dev / Math.SQRT2));
+    } else if (polarity === 'asymmetric_back') {
+      // ★ v0.26 — 음수쪽 관대(sigma_neg), 양수쪽 엄격(sigma_pos)
+      //   FC 시 몸통 자세: 뒤로(음수) 약간 굴곡 = 좋음, 앞으로(양수) 숙임 = 나쁨
+      //   dist에 sigma_neg, sigma_pos 별도 정의. 없으면 sigma 사용.
+      const sNeg = dist.sigma_neg != null ? dist.sigma_neg : sigma;
+      const sPos = dist.sigma_pos != null ? dist.sigma_pos : sigma * 0.5;
+      const rawDev = v - optimal;
+      const sig = rawDev < 0 ? sNeg : sPos;
+      const ndev = rawDev / sig;
+      score = 100 * Math.exp(-(ndev * ndev) / 2);
     } else {
       // absolute — 양방향 페널티 (절대값 가까울수록 좋음)
       score = 100 * Math.exp(-(dev * dev) / 2);

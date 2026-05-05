@@ -54,7 +54,7 @@
                     faultIds: ['WeakLeadBlock','LeadKneeCollapse','PoorBlock'] },
     pelvis_trunk: { vars: ['fc_xfactor','peak_xfactor','peak_trunk_CounterRotation','trunk_rotation_at_fc'],
                     faultIds: ['FlyingOpen'] },
-    trunk_power:  { vars: ['Pelvis_peak','Trunk_peak','trunk_forward_flexion_vel_peak','pelvis_to_trunk','pelvis_trunk_speedup'],
+    trunk_power:  { vars: ['Trunk_peak','fc_trunk_forward_tilt','trunk_forward_flexion_vel_peak','pelvis_to_trunk','pelvis_trunk_speedup'],
                     faultIds: ['LateTrunkRotation','PoorSpeedupChain','ExcessForwardTilt'] },
     arm_transfer: { vars: ['Arm_peak','humerus_segment_peak','trunk_to_arm','arm_trunk_speedup','mer_shoulder_abd','max_shoulder_ER','Pitching_Shoulder_Power_peak'],
                     faultIds: ['MERShoulderRisk'] },
