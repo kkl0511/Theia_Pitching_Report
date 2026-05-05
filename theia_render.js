@@ -23,18 +23,167 @@
     const html = [
       _renderHeader(result),
       _render3ColumnRadars(result),
-      _renderKineticChainEducation(result),  // ★ v0.9 — 2단계 · 키네틱 체인이란? + GIF
+      _renderKineticChainEducation(result),
+      _renderELISection(result),             // ★ v0.12 — Integrated ELI 100점 + 등급 + 핵심 결론
       _renderQuadrantDiagnosis(result),
-      _renderMannequinUplift(result),       // ★ v0.6 — BBL Uplift dynamic SVG + GRF·Power·Torque 통합
-      _renderKinematicBellUplift(result),    // ★ v0.6 — BBL Uplift dynamic 종형 곡선
+      _renderMannequinUplift(result),
+      _renderKinematicBellUplift(result),
       _renderKineticChainStages(result),
       _renderGRFSection(result),
       _renderFaultsWithDrills(result),
       _renderSummaryWithTraining(result),
-      _renderActionButtons(result),         // ★ v0.9 — 저장·다운로드·HTML·인쇄 버튼
+      _renderELIReferences(result),          // ★ v0.12 — 참고문헌
+      _renderActionButtons(result),
     ].join('\n');
     setTimeout(() => _initRadarCharts(result), 100);
     return html;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // v0.12 — Integrated Energy Leak Index (ELI)
+  //   PDF baseball_pitching_energy_leak_index.pdf 프레임워크
+  //   Σ wₖ × LeakScoreₖ (100점, 높을수록 효율적)
+  // ════════════════════════════════════════════════════════════
+  function _calculateELI(result) {
+    const TM = window.TheiaMeta;
+    if (!TM?.ELI_AREAS) return null;
+    const dims = _compute6axisMech(result);
+    const inj = result.catScores?.INJURY?.score;
+    const areas = TM.ELI_AREAS.map(a => {
+      let score = null;
+      if (a.from_injury) score = inj;
+      else if (a.mech_idx != null) score = dims[a.mech_idx]?.val;
+      return { ...a, score };
+    });
+    const measured = areas.filter(a => a.score != null);
+    const totalW = measured.reduce((s, a) => s + a.weight, 0);
+    if (totalW === 0) return { eli: null, areas, measured: 0, totalW: 0 };
+    const eli = measured.reduce((s, a) => s + a.score * a.weight, 0) / totalW;
+    return { eli: Math.round(eli), areas, measured: measured.length, totalW };
+  }
+
+  function _renderELISection(result) {
+    const TM = window.TheiaMeta;
+    const eliResult = _calculateELI(result);
+    if (!eliResult) return '';
+    const { eli, areas, measured, totalW } = eliResult;
+    const grade = TM.getELIGrade(eli);
+
+    // 가장 약한 영역 식별 (점수 기준 오름차순) → 핵심 결론 문장 생성
+    const weakAreas = areas.filter(a => a.score != null && a.score < 60).sort((a, b) => a.score - b.score);
+    const topWeak = weakAreas[0];
+    const feedbackTpl = topWeak ? TM.ELI_FEEDBACK_TEMPLATES[topWeak.id] : null;
+
+    // 영역별 막대 (BBL/MLB 평균 = 50, elite ≥ 80)
+    const areaBars = areas.map(a => {
+      const sc = a.score;
+      const c = sc == null ? '#94a3b8' : sc >= 80 ? '#16a34a' : sc >= 60 ? '#22d3ee' : sc >= 40 ? '#fb923c' : '#dc2626';
+      const barWidth = sc == null ? 0 : Math.min(100, sc);
+      return `<div style="margin-bottom: 8px;">
+        <div class="flex justify-between items-baseline mb-1 flex-wrap gap-2">
+          <div style="font-size: 13px;">
+            <strong>${a.name}</strong>
+            <span class="mono text-xs" style="color: var(--text-muted); margin-left: 6px;">w=${a.weight}</span>
+          </div>
+          <span class="mono" style="color: ${c}; font-weight: 700; font-size: 14px;">${sc != null ? sc + '점' : '미측정'}</span>
+        </div>
+        <div style="background: var(--bg-elevated); border-radius: 3px; height: 8px; overflow: hidden;">
+          <div style="width: ${barWidth}%; height: 100%; background: ${c}; transition: width 0.4s;"></div>
+        </div>
+        <div class="text-[10px] mt-1" style="color: var(--text-muted); line-height: 1.4;">
+          ${a.desc} · <em style="color: ${sc != null && sc < 50 ? '#dc2626' : 'var(--text-muted)'};">${a.leak_when_low}</em>
+        </div>
+      </div>`;
+    }).join('');
+
+    // 핵심 결론 문장 (PDF 표 10 형식)
+    const conclusionHtml = topWeak && feedbackTpl ? `
+      <div class="mt-3 p-3 rounded" style="background: ${grade.color}15; border-left: 3px solid ${grade.color};">
+        <div class="text-sm font-semibold mb-1" style="color: ${grade.color};">📝 핵심 결론 (PDF §10 형식)</div>
+        <div class="text-sm leading-relaxed" style="color: var(--text-primary);">
+          이 선수의 주된 에너지 리크는 <strong>'${topWeak.name}'</strong> 구간에서 나타납니다.
+          ${feedbackTpl.diagnosis}
+        </div>
+        <div class="text-xs mt-2" style="color: var(--text-secondary);">
+          <strong style="color: #16a34a;">💪 추천 훈련 방향:</strong> ${feedbackTpl.training}
+        </div>
+      </div>` : (eli >= 70 ? `
+      <div class="mt-3 p-3 rounded" style="background: rgba(22,163,74,0.1); border-left: 3px solid #16a34a;">
+        <div class="text-sm" style="color: #16a34a; font-weight: 600;">✓ 영역별 점수 모두 60점 이상 — 명확한 리크 위치 없음. 세부 타이밍 조정 단계.</div>
+      </div>` : '');
+
+    // ETE 정의 박스 + 4가지 에너지 역할
+    const eteHtml = `
+      <details class="mt-3 text-xs" style="background: var(--bg-elevated); padding: 8px 12px; border-radius: 4px; border-left: 2px solid var(--accent-soft);">
+        <summary class="cursor-pointer" style="color: var(--accent-soft); font-weight: 600;">🔬 ETE / ELI 산식 (PDF §4-5)</summary>
+        <div class="mt-2 leading-relaxed" style="color: var(--text-secondary);">
+          <div class="mb-2"><strong>분절 에너지:</strong> <code class="mono text-[10px]">Eᵢ(t) = ½mᵢvᵢ² + ½ωᵢᵀIᵢωᵢ + mᵢghᵢ</code> (병진 + 회전 + 위치)</div>
+          <div class="mb-2"><strong>관절 파워:</strong> <code class="mono text-[10px]">Pⱼ(t) = Mⱼ(t) · ωⱼ(t)</code>, W⁺=∫max(P,0)dt 생성, W⁻=∫min(P,0)dt 흡수</div>
+          <div class="mb-2"><strong>전달 효율:</strong> <code class="mono text-[10px]">ETE = ΔE_distal / W_proximal⁺</code></div>
+          <div class="mb-2"><strong>리크 지수:</strong> <code class="mono text-[10px]">ELI = 1 − ETE</code> (값 클수록 비효율)</div>
+          <div class="mb-2"><strong>에너지 역할 4가지:</strong> <em>Source</em> (생성) · <em>Channel</em> (전달) · <em>Absorber</em> (감속) · <em>Sink</em> (비효율 보상)</div>
+          <div><strong>현장용 Integrated ELI</strong> = Σ wₖ × LeakScoreₖ (PDF §6 가중치 15·20·20·15·15·15 = 100)</div>
+        </div>
+      </details>`;
+
+    return `
+    <div class="cat-card mb-6" style="padding: 22px; border: 2px solid ${grade.color}; background: linear-gradient(135deg, ${grade.color}10, transparent);">
+      <div class="flex justify-between items-start flex-wrap gap-3 mb-3">
+        <div>
+          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">INTEGRATED ELI · PDF §6 프레임워크</div>
+          <div class="display text-2xl mt-1" style="color: ${grade.color};">🔋 Energy Leak Index</div>
+          <div class="text-xs mt-1" style="color: var(--text-muted);">
+            영역별 점수 × 가중치 합 (Aguinaldo 2019 · Pryhoda & Sabick 2022 기반)
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="display" style="font-size: 56px; color: ${grade.color}; font-weight: 700; line-height: 1;">${eli != null ? eli : '—'}<span class="text-lg" style="color: var(--text-muted);">/100</span></div>
+          <div class="text-sm mt-1" style="color: ${grade.color}; font-weight: 600;">${grade.label}</div>
+          <div class="text-xs mt-1" style="color: var(--text-muted);">${grade.feedback}</div>
+        </div>
+      </div>
+
+      <!-- 5단계 등급 색상 막대 -->
+      <div class="flex mb-3 mono text-[10px]" style="border-radius: 3px; overflow: hidden; height: 20px;">
+        <div style="flex: 0 0 40%; background: #dc262633; color: #dc2626; text-align: center; line-height: 20px;">&lt;40 팔 보상</div>
+        <div style="flex: 0 0 14%; background: #f8717133; color: #f87171; text-align: center; line-height: 20px;">40-54 저하</div>
+        <div style="flex: 0 0 14%; background: #fb923c33; color: #fb923c; text-align: center; line-height: 20px;">55-69 특정</div>
+        <div style="flex: 0 0 14%; background: #22d3ee33; color: #22d3ee; text-align: center; line-height: 20px;">70-84 경미</div>
+        <div style="flex: 0 0 18%; background: #16a34a33; color: #16a34a; text-align: center; line-height: 20px;">85-100 우수</div>
+      </div>
+
+      <div class="text-xs mb-3" style="color: var(--text-muted);">
+        측정 영역: <strong style="color: ${grade.color};">${measured}/${areas.length}</strong> · 가중치 합 ${totalW}/100
+      </div>
+
+      <!-- 6 영역 가중치 막대 -->
+      <div>${areaBars}</div>
+
+      ${conclusionHtml}
+      ${eteHtml}
+    </div>`;
+  }
+
+  // ── 참고문헌 카드 ──
+  function _renderELIReferences(result) {
+    const TM = window.TheiaMeta;
+    if (!TM?.ELI_REFERENCES) return '';
+    const refs = TM.ELI_REFERENCES.map(r => `
+      <li class="mb-2" style="font-size: 11px; line-height: 1.6;">
+        <strong style="color: var(--text-primary);">[${r.id}]</strong>
+        <span style="color: var(--text-secondary);">${r.authors} (${r.year}).</span>
+        <em style="color: var(--text-secondary);">${r.title}.</em>
+        <span style="color: var(--text-muted);">${r.journal}.</span>
+        ${r.doi ? `<a href="https://doi.org/${r.doi}" target="_blank" class="mono" style="color: var(--accent-soft); margin-left: 4px;">DOI: ${r.doi}</a>` : ''}
+      </li>`).join('');
+    return `
+    <details class="cat-card mt-4" style="padding: 14px;">
+      <summary class="cursor-pointer" style="color: var(--text-muted); font-size: 13px;">📚 참고문헌 (5건) — Integrated ELI 산식 근거</summary>
+      <ul class="mt-3 list-none pl-0">${refs}</ul>
+      <div class="text-[10px] mt-2" style="color: var(--text-muted); font-style: italic;">
+        본 리포트의 ETE·ELI 산식은 위 5개 문헌의 segmental power analysis + lower body energy generation/transfer + proximal-to-distal sequential distribution + sequential motions framework + youth pitcher injury prevention guidelines를 통합 적용함.
+      </div>
+    </details>`;
   }
 
   // ── 2단계 · 키네틱 체인이란? — 교육 카드 + GIF ──

@@ -497,6 +497,106 @@
 
   function getVarDetail(varName) { return VAR_DETAILS[varName] || null; }
 
+  // ════════════════════════════════════════════════════════════
+  // Integrated Energy Leak Index (ELI) — PDF 프레임워크 v0.12
+  //   Aguinaldo & Escamilla 2019, Pryhoda & Sabick 2022,
+  //   Naito 2021, Putnam 1993, Fleisig 2012 기반
+  //
+  //   ELI 효율 점수 = Σ wₖ × LeakScoreₖ (100점 만점, 높을수록 효율적)
+  //   영역별 LeakScore = 메카닉 6축 점수 + INJURY 안전도
+  // ════════════════════════════════════════════════════════════
+  const ELI_AREAS = [
+    { id: 'lower_drive',  name: '하체 추진',          weight: 15,
+      mech_idx: 0,  // 메카닉 6축 #1
+      desc: 'drive-leg impulse, COM velocity, stride momentum',
+      leak_when_low: '전방 이동 에너지 생성 부족' },
+    { id: 'lead_block',   name: '앞다리 블로킹',      weight: 20,  // ★ 가중치 최대
+      mech_idx: 1,
+      desc: 'braking impulse, vertical GRF, lead knee flexion change',
+      leak_when_low: '전방 이동을 회전으로 전환 못함' },
+    { id: 'pelvis_trunk', name: '골반-몸통 연결',    weight: 20,  // ★ 가중치 최대
+      mech_idx: 2,
+      desc: 'hip-shoulder separation, pelvis-trunk delay, FC trunk rotation',
+      leak_when_low: '상체 조기 회전 또는 분리 부족' },
+    { id: 'trunk_power',  name: '몸통 파워',          weight: 15,
+      mech_idx: 3,
+      desc: 'trunk angular velocity, trunk forward flexion, deceleration',
+      leak_when_low: '몸통이 에너지원·전달원 역할 못함' },
+    { id: 'arm_transfer', name: '팔 전달',            weight: 15,
+      mech_idx: 4,
+      desc: 'upper arm-forearm peak sequence, MER timing, ER',
+      leak_when_low: '팔 속도 피크 순서 오류' },
+    { id: 'load_eff',     name: '부하 대비 효율',     weight: 15,
+      from_injury: true,  // INJURY 카테고리 안전도 사용
+      desc: 'elbow valgus torque / ball speed, shoulder torque / ball speed',
+      leak_when_low: '팔 보상형 투구 가능성 (UCL stress↑)' },
+  ];
+
+  const ELI_GRADES = [
+    { min: 85, label: '에너지 전달 우수',   feedback: '현재 패턴 유지, 세부 타이밍 조정',                         color: '#16a34a' },
+    { min: 70, label: '경미한 리크',         feedback: '한두 구간의 세부 보완',                                    color: '#22d3ee' },
+    { min: 55, label: '특정 구간 리크 존재', feedback: '하체-몸통 또는 몸통-팔 연결 훈련 필요',                     color: '#fb923c' },
+    { min: 40, label: '전달 효율 저하',      feedback: '블로킹·회전 타이밍·팔 보상 동시 점검',                      color: '#f87171' },
+    { min: 0,  label: '팔 보상 가능성 큼',   feedback: '구속 증가보다 효율과 부하 관리 우선 (volume cap, arm care)', color: '#dc2626' },
+  ];
+
+  function getELIGrade(score) {
+    if (score == null) return null;
+    return ELI_GRADES.find(g => score >= g.min) || ELI_GRADES[ELI_GRADES.length - 1];
+  }
+
+  // 리크 위치별 선수 피드백 문장 (PDF 표 10 기반)
+  const ELI_FEEDBACK_TEMPLATES = {
+    lead_block: {
+      diagnosis: '착지 후 앞무릎이 계속 굴곡되면서 몸이 홈플레이트 방향으로 흘러갑니다. 전방 이동 에너지가 회전 에너지로 바뀌지 못하고, 골반·몸통 회전이 늦어지는 패턴이 나타납니다.',
+      training: 'lead-leg block drill, stride stabilization, deceleration control',
+    },
+    pelvis_trunk: {
+      diagnosis: '앞발 착지 전에 상체가 먼저 열리면서 골반-몸통 분리가 충분히 만들어지지 않습니다. 하체에서 만든 에너지를 몸통에 저장하기 전에 팔이 먼저 나가는 경향이 있습니다.',
+      training: 'delayed trunk rotation drill, separation awareness, med-ball sequencing',
+    },
+    arm_transfer: {
+      diagnosis: '몸통 회전속도 피크 이후 팔 속도가 순차적으로 증가해야 하지만, 몸통 감속과 팔 가속의 연결이 약해 팔이 독립적으로 공을 끌고 가는 보상 패턴이 나타납니다.',
+      training: 'trunk deceleration drill, scap·arm timing, connection drill',
+    },
+    load_eff: {
+      diagnosis: '구속에 비해 팔꿈치 또는 어깨 부하 지표가 높습니다. 하체와 몸통에서 충분히 전달되지 않은 에너지를 팔이 보상하고 있을 가능성이 있습니다.',
+      training: 'velocity cap, arm-care, lower-body·trunk efficiency before max effort',
+    },
+    lower_drive: {
+      diagnosis: '뒷다리에서 만들어지는 추진 에너지(drive-leg impulse, COM 전진 속도)가 부족합니다. 이후 단계의 회전 체인이 약해질 수 있는 시작점입니다.',
+      training: 'sled push, single-leg vertical jump, trap bar deadlift',
+    },
+    trunk_power: {
+      diagnosis: '몸통 회전속도와 굴곡 출력이 부족하여 trunk가 에너지원·전달원 역할을 충분히 못하고 있습니다.',
+      training: 'med-ball rotational throw, anti-rotation core, connected throw',
+    },
+  };
+
+  // 참고문헌 (PDF 12 페이지)
+  const ELI_REFERENCES = [
+    { id: 1, authors: 'Aguinaldo, A., & Escamilla, R.', year: 2019,
+      title: 'Segmental Power Analysis of Sequential Body Motion and Elbow Valgus Loading During Baseball Pitching: Comparison Between Professional and High School Baseball Players',
+      journal: 'Orthopaedic Journal of Sports Medicine, 7(2)',
+      doi: '10.1177/2325967119827924' },
+    { id: 2, authors: 'Pryhoda, M. K., & Sabick, M. B.', year: 2022,
+      title: 'Lower body energy generation, absorption, and transfer in youth baseball pitchers',
+      journal: 'Frontiers in Sports and Active Living, 4, 975107',
+      doi: '10.3389/fspor.2022.975107' },
+    { id: 3, authors: 'Naito, K., Takagi, T., Kubota, H., & Maruyama, T.', year: 2021,
+      title: 'Time-varying motor control strategy for proximal-to-distal sequential energy distribution: insights from baseball pitching',
+      journal: 'Journal of Experimental Biology, 224(20), jeb227207',
+      doi: '10.1242/jeb.227207' },
+    { id: 4, authors: 'Putnam, C. A.', year: 1993,
+      title: 'Sequential motions of body segments in striking and throwing skills: descriptions and explanations',
+      journal: 'Journal of Biomechanics, 26(Suppl. 1), 125-135',
+      doi: null },
+    { id: 5, authors: 'Fleisig, G. S., & Andrews, J. R.', year: 2012,
+      title: 'Prevention of elbow injuries in youth baseball pitchers',
+      journal: 'Sports Health, 4(5), 419-424',
+      doi: null },
+  ];
+
   function getCategoryVars(catId) {
     return OTL_CATEGORIES[catId]?.variables || [];
   }
@@ -506,6 +606,7 @@
 
   window.TheiaMeta = { OTL_CATEGORIES, VAR_DEFS, KINETIC_FAULTS,
                        P_THRESHOLDS, HIGHER_THRESHOLDS, SIGNED_THRESHOLDS, VAR_DETAILS,
-                       getCategoryVars, getVarMeta, getVarDetail,
+                       ELI_AREAS, ELI_GRADES, ELI_FEEDBACK_TEMPLATES, ELI_REFERENCES,
+                       getCategoryVars, getVarMeta, getVarDetail, getELIGrade,
                        pFallbackScore, higherFallbackScore, signedFallbackScore, getFallbackScore };
 })();
