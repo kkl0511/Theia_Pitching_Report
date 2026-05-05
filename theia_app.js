@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.52';
+  const ALGORITHM_VERSION = 'v0.53';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -152,28 +152,35 @@
         }
       }
       // ★ v0.20 — events sanity check (비정상 trial 자동 제외)
-      //   조건: KH > 0.3s · FS > KH+0.1 · MER > FS+0.05 · BR > MER 또는 |MER−BR|<0.05 · BR < 30s
-      //   부적합 시 events 무효화 → 시점 기반 변수 NULL → aggregateTrials에서 자동 제외
+      // ★ v0.53 — fatal vs partial 분리. MER 라벨링 오류만 있으면 MER만 무효화
+      //   fatal: KH/FS/BR 자체 비정상 → 전체 무효화 (timing 변수 전부 NULL)
+      //   partial: MER 라벨이 FS보다 이전 등 → MER만 삭제 → extractScalars에서 자동 재검출
       const KH = events.KH, FS = events.FS, MER = events.MER, BR = events.BR;
-      let sane = true;
-      const reasons = [];
-      if (KH != null && KH < 0.3) { sane = false; reasons.push('KH<0.3s'); }
-      if (BR != null && BR < 0.3) { sane = false; reasons.push('BR<0.3s'); }
-      if (BR != null && BR > 60) { sane = false; reasons.push('BR>60s'); }
-      if (KH != null && BR != null && BR <= KH) { sane = false; reasons.push('BR<=KH'); }
-      if (KH != null && FS != null && FS < KH + 0.1) { sane = false; reasons.push('FS<KH+0.1'); }
-      if (FS != null && MER != null && MER < FS + 0.05) { sane = false; reasons.push('MER<FS+0.05'); }
-      if (MER != null && BR != null && (BR < MER - 0.05 || BR > MER + 0.5)) { sane = false; reasons.push('BR-MER 비정상'); }
-      if (!sane) {
+      const fatal = [], partial = [];
+      if (KH != null && KH < 0.3) fatal.push('KH<0.3s');
+      if (BR != null && BR < 0.3) fatal.push('BR<0.3s');
+      if (BR != null && BR > 60) fatal.push('BR>60s');
+      if (KH != null && BR != null && BR <= KH) fatal.push('BR<=KH');
+      if (KH != null && FS != null && FS < KH + 0.1) fatal.push('FS<KH+0.1');
+      // ★ MER 단독 비정상 — partial로 처리 (MER만 무효화, 자동 재검출 trigger)
+      if (FS != null && MER != null && MER < FS + 0.05) {
+        partial.push('MER<FS+0.05 (라벨 오류 — extractScalars에서 자동 재검출)');
+        delete events.MER;
+      }
+      if (events.MER != null && BR != null && (BR < events.MER - 0.05 || BR > events.MER + 0.5)) {
+        partial.push('BR-MER 비정상 (MER만 무효화, 자동 재검출)');
+        delete events.MER;
+      }
+      if (fatal.length > 0) {
         events._invalid = true;
-        events._invalid_reasons = reasons;
-        // events 무효화 → 시점 기반 변수가 산출되지 않도록
+        events._invalid_reasons = fatal;
         delete events.KH;
         delete events.FS;
         delete events.MER;
         delete events.BR;
         delete events.BR100ms;
       }
+      if (partial.length > 0) events._partial_warnings = partial;
     }
 
     const result = {
@@ -690,6 +697,18 @@
     ev.FC = fcGrf != null ? fcGrf : ev.FS;
     ev._fc_source = fcGrf != null ? 'lead_vGRF' : 'visual3d_label';
 
+    // ★ v0.53 — MER 자동 재검출 (label이 비정상이거나 부재 시)
+    //   Pitching_Shoulder_Angle.Z의 FC~BR 구간 |Z| max 시점 = max external rotation
+    if (ev.MER == null && ev.FC != null && ev.BR != null) {
+      const merAuto = argmaxAbs(parsed, 'Pitching_Shoulder_Angle.Z', ev.FC, ev.BR + 0.05);
+      if (merAuto != null) {
+        ev.MER = merAuto;
+        ev._mer_source = 'auto_shoulder_Z';
+      }
+    } else if (ev.MER != null) {
+      ev._mer_source = 'visual3d_label';
+    }
+
     const out = {
       _meta: { ...parsed.meta, mass_kg, height_cm },
       _events: ev,
@@ -764,10 +783,17 @@
     }
 
     // ── 무릎 ──
-    out.fc_lead_leg_knee_flexion = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.FC);
-    out.br_lead_leg_knee_flexion = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.BR);
-    if (out.fc_lead_leg_knee_flexion != null && out.br_lead_leg_knee_flexion != null) {
-      out.lead_knee_ext_change_fc_to_br = out.br_lead_leg_knee_flexion - out.fc_lead_leg_knee_flexion;
+    // ★ v0.53 — Lead_Knee_Angle axis 자동 fallback (박명균 c3d는 .Z, 표준은 .X)
+    const lkKey = parsed.columnIndex['Lead_Knee_Angle.X'] != null ? 'Lead_Knee_Angle.X' :
+                  parsed.columnIndex['Lead_Knee_Angle.Z'] != null ? 'Lead_Knee_Angle.Z' :
+                  parsed.columnIndex['Lead_Knee_Angle.Y'] != null ? 'Lead_Knee_Angle.Y' :
+                  parsed.columnIndex['Lead_Knee_Angle']   != null ? 'Lead_Knee_Angle' : null;
+    if (lkKey) {
+      out.fc_lead_leg_knee_flexion = valAtTime(parsed, lkKey, ev.FC);
+      out.br_lead_leg_knee_flexion = valAtTime(parsed, lkKey, ev.BR);
+      if (out.fc_lead_leg_knee_flexion != null && out.br_lead_leg_knee_flexion != null) {
+        out.lead_knee_ext_change_fc_to_br = out.br_lead_leg_knee_flexion - out.fc_lead_leg_knee_flexion;
+      }
     }
 
     // ── 어깨 ──
@@ -1073,16 +1099,17 @@
 
     // ── Phase D: Δknee, Δω, pelvis_deceleration ──
     //   PDF §7: knee_flexion_change_FC_to_MER, pelvis_deceleration
-    if (ev.FC != null && ev.MER != null) {
-      const knee_FC  = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.FC);
-      const knee_MER = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.MER);
+    // ★ v0.53 — lkKey (위에서 axis 자동 매칭) 재사용
+    if (lkKey && ev.FC != null && ev.MER != null) {
+      const knee_FC  = valAtTime(parsed, lkKey, ev.FC);
+      const knee_MER = valAtTime(parsed, lkKey, ev.MER);
       if (knee_FC != null && knee_MER != null) {
         out.knee_flexion_change_FC_to_MER = Math.abs(knee_MER) - Math.abs(knee_FC);  // 양수=무릎 더 굴곡(무너짐)
       }
     }
-    if (ev.MER != null && ev.BR != null) {
-      const knee_MER = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.MER);
-      const knee_BR  = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.BR);
+    if (lkKey && ev.MER != null && ev.BR != null) {
+      const knee_MER = valAtTime(parsed, lkKey, ev.MER);
+      const knee_BR  = valAtTime(parsed, lkKey, ev.BR);
       if (knee_MER != null && knee_BR != null) {
         out.knee_flexion_change_MER_to_BR = Math.abs(knee_BR) - Math.abs(knee_MER);  // 양수=계속 굴곡, 음수=신전
       }
