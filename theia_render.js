@@ -1022,25 +1022,26 @@
     const fmt = (v, d=2, u='') => v != null ? `${v.toFixed(d)}${u}` : '—';
     const scoreColor = (sc) => sc == null ? '#94a3b8' : sc >= 75 ? '#16a34a' : sc >= 50 ? '#fb923c' : '#dc2626';
 
-    // ★ v0.32 — Impulse 막대 차트 추가 (vertical impulse + AP impulse)
-    const maxImp = Math.max(1.0, trailVZi || 0.6, leadVZi || 0.3) * 1.2;
-    const yScaleI = (v) => H - P - (v / maxImp) * (H - 2 * P);
-    const impBar = (trailVZi != null || leadVZi != null) ? `<svg viewBox="0 0 ${W} ${H}" style="width: 100%; max-width: 380px; height: auto;">
+    // ★ v0.55 — Impulse 막대 차트: AP impulse(축발 전진 vs 디딤발 브레이킹)로 변경
+    //   기존 vGRF impulse(수직 방향) → AP impulse(앞뒤 방향)로 바꿔 차고 나가기·브레이킹 직관적 비교
+    const maxImpAP = Math.max(0.05, driveAP || 0.025, brakeAP || 0.01) * 1.2;
+    const yScaleI = (v) => H - P - (v / maxImpAP) * (H - 2 * P);
+    const impBar = (driveAP != null || brakeAP != null) ? `<svg viewBox="0 0 ${W} ${H}" style="width: 100%; max-width: 380px; height: auto;">
       <line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="var(--text-muted)"/>
       <line x1="${P}" y1="${P}" x2="${P}" y2="${H-P}" stroke="var(--text-muted)"/>
-      ${trailVZi != null ? `
-        <rect x="${W*0.25 - barW/2}" y="${yScaleI(trailVZi)}" width="${barW}" height="${(H-P) - yScaleI(trailVZi)}" fill="#0070C0" opacity="0.7"/>
-        <text x="${W*0.25}" y="${yScaleI(trailVZi) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#0070C0">${trailVZi.toFixed(3)}</text>
-        <text x="${W*0.25}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Trail vGRF impulse</text>
+      ${driveAP != null ? `
+        <rect x="${W*0.25 - barW/2}" y="${yScaleI(driveAP)}" width="${barW}" height="${(H-P) - yScaleI(driveAP)}" fill="#0070C0" opacity="0.7"/>
+        <text x="${W*0.25}" y="${yScaleI(driveAP) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#0070C0">${driveAP.toFixed(4)}</text>
+        <text x="${W*0.25}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">축발 전진 충격량</text>
       ` : ''}
-      ${leadVZi != null ? `
-        <rect x="${W*0.65 - barW/2}" y="${yScaleI(leadVZi)}" width="${barW}" height="${(H-P) - yScaleI(leadVZi)}" fill="#C00000" opacity="0.7"/>
-        <text x="${W*0.65}" y="${yScaleI(leadVZi) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#C00000">${leadVZi.toFixed(3)}</text>
-        <text x="${W*0.65}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Lead vGRF impulse</text>
+      ${brakeAP != null ? `
+        <rect x="${W*0.65 - barW/2}" y="${yScaleI(brakeAP)}" width="${barW}" height="${(H-P) - yScaleI(brakeAP)}" fill="#C00000" opacity="0.7"/>
+        <text x="${W*0.65}" y="${yScaleI(brakeAP) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#C00000">${brakeAP.toFixed(4)}</text>
+        <text x="${W*0.65}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">디딤발 브레이킹 충격량</text>
       ` : ''}
       <text x="${P-4}" y="${yScaleI(0)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">0</text>
-      <text x="${P-4}" y="${yScaleI(maxImp/2)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${(maxImp/2).toFixed(2)}</text>
-      <text x="${P-4}" y="${yScaleI(maxImp)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${maxImp.toFixed(2)} BW·s</text>
+      <text x="${P-4}" y="${yScaleI(maxImpAP/2)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${(maxImpAP/2).toFixed(3)}</text>
+      <text x="${P-4}" y="${yScaleI(maxImpAP)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${maxImpAP.toFixed(3)} BW·s</text>
     </svg>` : '';
 
     // ★ v0.33 — 5-phase GRF 시퀀스 시각화
@@ -1114,38 +1115,38 @@
       </div>
 
       <!-- ③ Peak + Impulse 측정값 + 차트 -->
-      <div class="text-sm mb-2" style="color: var(--text-primary); font-weight: 600;">📊 측정값 — 최대 힘 vs 누적 힘</div>
+      <div class="text-sm mb-2" style="color: var(--text-primary); font-weight: 600;">📊 측정값 — 최대 힘 vs 충격량</div>
       <div class="text-xs mb-3" style="color: var(--text-muted); line-height: 1.5;">
         <strong>최대 힘 (Peak, BW)</strong>: 순간 가장 세게 누른 힘 — 강하지만 짧으면 효과 제한적.
-        <strong>누적 힘 (Impulse, BW·s)</strong>: 힘 × 시간 — <strong>실제로 몸을 움직이는 데 쓴 힘</strong>. NewtForce도 누적 힘을 더 중요하게 봅니다.
+        <strong>충격량 (Impulse, BW·s)</strong>: 힘 × 시간 — <strong>실제로 몸을 움직이는 데 쓴 힘</strong>. NewtForce도 충격량을 더 중요하게 봅니다.
       </div>
       <div class="grid md:grid-cols-2 gap-4 items-start">
         <div>
-          <div class="text-xs mb-1" style="color: var(--text-muted); font-weight: 600;">최대 누르는 힘 (BW)</div>
+          <div class="text-xs mb-1" style="color: var(--text-muted); font-weight: 600;">최대 수직 힘 (BW)</div>
           ${grfBar}
-          ${impBar ? `<div class="text-xs mt-3 mb-1" style="color: var(--text-muted); font-weight: 600;">누적 힘 (BW·s)</div>` + impBar : ''}
+          ${impBar ? `<div class="text-xs mt-3 mb-1" style="color: var(--text-muted); font-weight: 600;">앞뒤(AP) 충격량 (BW·s)</div>` + impBar : ''}
         </div>
         <div>
           <table class="var-table" style="font-size: 12px;">
             <thead><tr><th>변수</th><th>값</th><th>점수</th></tr></thead>
             <tbody>
               <tr style="border-bottom: 2px solid var(--border);"><td colspan="3" style="padding-top: 4px; font-weight: 600; color: #0070C0;">축발(뒷발) — 무릎 들기 → 앞발 착지</td></tr>
-              <tr><td>축발 최대 누르는 힘</td><td class="mono">${fmt(trailV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailVS)};">${trailVS != null ? trailVS : '—'}</strong></td></tr>
-              <tr><td>축발 앞으로 미는 힘</td><td class="mono">${fmt(trailAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailAPS)};">${trailAPS != null ? trailAPS : '—'}</strong></td></tr>
-              <tr><td>★ 축발 누적 누르는 힘</td><td class="mono">${fmt(trailVZi, 3, ' BW·s')}</td><td><strong style="color: ${scoreColor(trailVZiS)};">${trailVZiS != null ? trailVZiS : '—'}</strong></td></tr>
-              <tr><td>★ 축발 누적 미는 힘 (차고 나가기)</td><td class="mono">${fmt(driveAP, 4, ' BW·s')}</td><td><strong style="color: ${scoreColor(driveAPS)};">${driveAPS != null ? driveAPS : '—'}</strong></td></tr>
-              <tr><td>축발 전체 운동량</td><td class="mono">${fmt(trailImpulse, 3, ' BW·s')}</td><td>—</td></tr>
+              <tr><td>축발 최대 수직힘</td><td class="mono">${fmt(trailV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailVS)};">${trailVS != null ? trailVS : '—'}</strong></td></tr>
+              <tr><td>축발 최대 전진힘</td><td class="mono">${fmt(trailAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailAPS)};">${trailAPS != null ? trailAPS : '—'}</strong></td></tr>
+              <tr><td>★ 축발 수직 충격량</td><td class="mono">${fmt(trailVZi, 3, ' BW·s')}</td><td><strong style="color: ${scoreColor(trailVZiS)};">${trailVZiS != null ? trailVZiS : '—'}</strong></td></tr>
+              <tr><td>★ 축발 전진 충격량 (차고 나가기)</td><td class="mono">${fmt(driveAP, 4, ' BW·s')}</td><td><strong style="color: ${scoreColor(driveAPS)};">${driveAPS != null ? driveAPS : '—'}</strong></td></tr>
+              <tr><td>축발 전체 충격량</td><td class="mono">${fmt(trailImpulse, 3, ' BW·s')}</td><td>—</td></tr>
               <tr style="border-bottom: 2px solid var(--border);"><td colspan="3" style="padding-top: 8px; font-weight: 600; color: #C00000;">디딤발(앞발) — 앞발 착지 → 릴리스</td></tr>
-              <tr><td>디딤발 최대 누르는 힘</td><td class="mono">${fmt(leadV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadVS)};">${leadVS != null ? leadVS : '—'}</strong></td></tr>
-              <tr><td>디딤발 뒤로 미는 힘 (브레이킹)</td><td class="mono">${fmt(leadAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadAPS)};">${leadAPS != null ? leadAPS : '—'}</strong></td></tr>
-              <tr><td>★ 디딤발 누적 받쳐주는 힘</td><td class="mono">${fmt(leadVZi, 3, ' BW·s')}</td><td><strong style="color: ${scoreColor(leadVZiS)};">${leadVZiS != null ? leadVZiS : '—'}</strong></td></tr>
-              <tr><td>★ 디딤발 누적 브레이킹 힘</td><td class="mono">${fmt(brakeAP, 4, ' BW·s')}</td><td><strong style="color: ${scoreColor(brakeAPS)};">${brakeAPS != null ? brakeAPS : '—'}</strong></td></tr>
+              <tr><td>디딤발 최대 수직힘</td><td class="mono">${fmt(leadV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadVS)};">${leadVS != null ? leadVS : '—'}</strong></td></tr>
+              <tr><td>디딤발 최대 브레이킹힘</td><td class="mono">${fmt(leadAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadAPS)};">${leadAPS != null ? leadAPS : '—'}</strong></td></tr>
+              <tr><td>★ 디딤발 수직 충격량</td><td class="mono">${fmt(leadVZi, 3, ' BW·s')}</td><td><strong style="color: ${scoreColor(leadVZiS)};">${leadVZiS != null ? leadVZiS : '—'}</strong></td></tr>
+              <tr><td>★ 디딤발 브레이킹 충격량</td><td class="mono">${fmt(brakeAP, 4, ' BW·s')}</td><td><strong style="color: ${scoreColor(brakeAPS)};">${brakeAPS != null ? brakeAPS : '—'}</strong></td></tr>
               <tr style="border-bottom: 1px solid var(--border);"><td colspan="3" style="padding-top: 8px; font-weight: 600; color: var(--text-muted);">축발→디딤발 전환</td></tr>
               <tr><td>두 발 사이 힘 전환 시간</td><td class="mono">${fmt(transition, 3, ' s')}</td><td><strong style="color: ${scoreColor(transitionS)};">${transitionS != null ? transitionS : '—'}</strong></td></tr>
             </tbody>
           </table>
           <div class="text-xs mt-2" style="color: var(--text-muted); line-height: 1.5;">
-            KBO 프로(이영하) 평균: 축발 누적 힘 ~0.88, 디딤발 ~0.24 BW·s
+            KBO 프로(이영하) 평균: 축발 전진 ~0.020, 디딤발 브레이킹 ~0.001 BW·s
           </div>
         </div>
       </div>
@@ -1158,8 +1159,8 @@
             <div class="text-xs mb-2" style="color: ${trail_color}; font-weight: 700;">🟦 축발 (뒷발) — 차고 나가는 엔진</div>
             <div class="text-xs" style="color: var(--text-secondary); line-height: 1.7;">
               <strong>역할</strong>: 무게중심을 포수 방향으로 밀어주고 회전 준비.
-              무릎 들기에서 한 발에 체중 집중 → 차고 나갈 때 누르는 힘이 1.0~1.5 BW까지 올라갑니다.<br><br>
-              <strong>Slowik 2019</strong>: 축발이 앞으로 미는 누적 힘이 클수록 구속 ↑ (r=0.41~0.55)<br>
+              무릎 들기에서 한 발에 체중 집중 → 차고 나갈 때 수직 힘이 1.0~1.5 BW까지 올라갑니다.<br><br>
+              <strong>Slowik 2019</strong>: 축발 전진 충격량이 클수록 구속 ↑ (r=0.41~0.55)<br>
               <strong>McNally 2015</strong>: 축발/디딤발 힘의 균형이 프로 vs 아마추어를 가르는 핵심
             </div>
           </div>
@@ -1168,9 +1169,9 @@
             <div class="text-xs" style="color: var(--text-secondary); line-height: 1.7;">
               <strong>역할</strong>: 앞발 착지 순간 강하게 받쳐주어 앞으로 가던 몸을 회전으로 바꿉니다.
               디딤발이 강할수록 몸통과 팔이 더 빠르게 회전합니다.<br><br>
-              <strong>Kageyama 2014</strong>: 디딤발 누르는 힘이 클수록 구속 ↑ (r=0.55~0.70)<br>
-              <strong>Howenstein 2019</strong>: 디딤발 받쳐주기 강도 = 몸통 회전속도와 직결<br>
-              <strong>MLB 프로 우수 투수</strong>: 디딤발 최대 누르는 힘 ≥ 2.0 BW
+              <strong>Kageyama 2014</strong>: 디딤발 수직힘이 클수록 구속 ↑ (r=0.55~0.70)<br>
+              <strong>Howenstein 2019</strong>: 디딤발 수직힘 강도 = 몸통 회전속도와 직결<br>
+              <strong>MLB 프로 우수 투수</strong>: 디딤발 최대 수직힘 ≥ 2.0 BW
             </div>
           </div>
         </div>
@@ -1300,7 +1301,7 @@
             <div class="mt-2 text-xs p-3" style="background: var(--bg-elevated); border-radius: 6px; line-height: 1.7; color: var(--text-secondary);">
               <strong>① 무릎 들기 ~ 로딩</strong>: 축발 안정적으로 체중 받기, 힙힌지, 좌우 흔들림 없음<br>
               <strong>② 스트라이드 ~ 라이드</strong>: 축발 차고 나가기 충분, 몸 전진 속도 적정 (뒤에 처지지도, 앞으로 쏟아지지도 X)<br>
-              <strong>③ 앞발 착지</strong>: 디딤발 빠르게 받쳐주기, 누르는 힘 유지, 두 발 전환 부드러움<br>
+              <strong>③ 앞발 착지</strong>: 디딤발 빠르게 받쳐주기, 수직힘 유지, 두 발 전환 부드러움<br>
               <strong>④ 어깨 외회전 ~ 릴리스</strong>: 디딤발 끝까지 버텨주기, 균형 회복 빠름, 앞무릎 무너짐 없음
             </div>
           </details>
@@ -1314,7 +1315,7 @@
             <thead><tr><th>측정 결과</th><th>선수에게 말할 때</th><th>훈련 방향</th></tr></thead>
             <tbody>
               ${yBackS != null && yBackS < 50 ? '<tr><td>축발이 마운드를 덜 누름</td><td>"축발로 마운드를 오래 잡고 가자"</td><td>뒤에서 버티며 앞으로 타고 나가기</td></tr>' : ''}
-              ${accelImpS != null && accelImpS < 50 ? '<tr><td>축발 누적 힘 부족</td><td>"잠깐 미는 게 아니라 끝까지 밀어"</td><td>힘을 오래 유지하는 템포·리듬</td></tr>' : ''}
+              ${accelImpS != null && accelImpS < 50 ? '<tr><td>축발 충격량 부족</td><td>"잠깐 미는 게 아니라 끝까지 밀어"</td><td>힘을 오래 유지하는 템포·리듬</td></tr>' : ''}
               ${playerVeloS != null && playerVeloS < 50 ? '<tr><td>몸 전진 속도 부족</td><td>"뒤에서 멈추지 말고 포수 쪽으로 타고 나가"</td><td>라이드 드릴, 몸 전진 감각</td></tr>' : ''}
               ${frontBrakeS != null && frontBrakeS < 50 ? '<tr><td>디딤발 받쳐주기 약함</td><td>"앞발로 단단히 받쳐줘"</td><td>착지하면 앞발로 몸 받아내기 드릴</td></tr>' : ''}
               ${xInstS != null && xInstS < 50 ? '<tr><td>좌우 흔들림 큼</td><td>"몸이 1루(3루) 쪽으로 새고 있어"</td><td>발 방향·골반 경로·몸통 기울기 정렬</td></tr>' : ''}
@@ -1330,14 +1331,14 @@
         <summary class="cursor-pointer text-xs" style="color: var(--accent-soft);">📚 산식과 참고자료</summary>
         <div class="mt-2 text-xs p-3" style="background: var(--bg-elevated); border-radius: 6px; line-height: 1.7; color: var(--text-secondary);">
           <strong>핵심 산식</strong>:<br>
-          • 누적 힘 (Impulse) = ∫F(t) dt — 힘의 크기 × 시간 (최대 힘보다 더 의미 있는 추진/받쳐주기 지표)<br>
+          • 충격량 (Impulse) = ∫F(t) dt — 힘의 크기 × 시간 (최대 힘보다 더 의미 있는 추진/받쳐주기 지표)<br>
           • 체중 정규화 = 힘 / 체중 — 선수끼리 비교 가능하게<br>
-          • 받쳐주기 효율 = 디딤발 누적 브레이킹 / 축발 누적 차고 나가기<br>
+          • 받쳐주기 효율 = 디딤발 브레이킹 충격량 / 축발 전진 충격량<br>
           • 하체 종합 점수 (LHEI) = 8개 지표 가중 평균 (NewtForce §13)<br><br>
           <strong>참고자료</strong>:<br>
           [1] NewtForce. <em>피칭 마운드 지면반력 분석 시스템</em>. newtforce.com<br>
           [2] NewtForce. <em>지면반력과 구속의 관계</em><br>
-          [3] Slowik 등 (2019) — 축발 누적 힘이 구속에 미치는 영향<br>
+          [3] Slowik 등 (2019) — 축발 전진 충격량이 구속에 미치는 영향<br>
           [4] Kageyama 등 (2014) — 디딤발 지면반력과 구속 상관관계<br>
           [5] Howenstein 등 (2019) — 디딤발 받쳐주기 패턴 분석<br>
           [6] MacWilliams 등 (1998) — 투구 동작 포스플레이트 분석<br>
