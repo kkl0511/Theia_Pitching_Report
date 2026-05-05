@@ -29,6 +29,8 @@
       _renderKinematicBellUplift(result),    // 5. 📊 키네매틱 시퀀스 (간접 추정)
       _renderMannequinUplift(result),        // 6. 🤸 코칭 세션 — 마네킹 + ELI 통합 (직접 진단)
       _renderELISection(result),             // 7. 🔋 ELI 상세 (PDF 산식·등급·핵심 결론)
+      _renderCausalAnalysis(result),         // 7.5 🔗 동작 결함 → 에너지 전달 인과 분석 (★ v0.32)
+      _renderETESection(result),             // 7.6 ⚡ 분절 간 에너지 전달 (ETE) 정량 — PDF §4·5
       _renderGRFSection(result),             // 8. 🦵 GRF 분석 (지면반력 디테일)
       _renderFaultsWithDrills(result),       // 9. 🔬 결함 + drill (3+4단계 통합)
       _renderSummaryWithTraining(result),    // 10. 📋 종합 평가 + 훈련 추천
@@ -47,18 +49,21 @@
   // ════════════════════════════════════════════════════════════
   // ★ v0.16 — _calculateELI 확장: 변수별 산정 근거 정보까지 반환
   // 영역별 변수 매핑 (산정 근거 expand에 사용)
+  // ★ v0.28 — PDF §4·5·7 적용: GRF impulse + Joint W⁺/W⁻ + ETE 변수 추가
+  //   GRF는 markerless보다 신뢰도 높아 lead_block·lower_drive에 비중 ↑
+  //   ETE는 Phase C 핵심 산식 (PDF §5)
   const ELI_AREA_VARS = {
-    lower_drive:  { vars: ['Trail_leg_peak_vertical_GRF','Trail_leg_peak_AP_GRF','Trail_Hip_Power_peak','Pelvis_peak'],
+    lower_drive:  { vars: ['drive_leg_propulsive_impulse','trail_vGRF_impulse','Trail_leg_peak_vertical_GRF','Trail_leg_peak_AP_GRF','trail_hip_W_pos','Trail_Hip_Power_peak'],
                     faultIds: ['WeakTrailDrive'] },
-    lead_block:   { vars: ['Lead_leg_peak_vertical_GRF','CoG_Decel','Lead_Knee_Power_peak','br_lead_leg_knee_flexion','lead_knee_ext_change_fc_to_br'],
+    lead_block:   { vars: ['lead_leg_braking_impulse','lead_vGRF_impulse','Lead_leg_peak_vertical_GRF','lead_knee_W_pos','lead_hip_W_pos','knee_flexion_change_FC_to_MER','br_lead_leg_knee_flexion','lead_knee_ext_change_fc_to_br'],
                     faultIds: ['WeakLeadBlock','LeadKneeCollapse','PoorBlock'] },
-    pelvis_trunk: { vars: ['fc_xfactor','peak_xfactor','peak_trunk_CounterRotation','trunk_rotation_at_fc'],
+    pelvis_trunk: { vars: ['ETE_pelvis_to_trunk','pelvis_deceleration','fc_xfactor','peak_xfactor'],   // ★ v0.28 — ETE 추가
                     faultIds: ['FlyingOpen'] },
-    trunk_power:  { vars: ['Trunk_peak','fc_trunk_forward_tilt','trunk_forward_flexion_vel_peak','pelvis_to_trunk','pelvis_trunk_speedup'],
+    trunk_power:  { vars: ['Trunk_peak','trunk_forward_flexion_vel_peak','pelvis_to_trunk','pelvis_trunk_speedup'],
                     faultIds: ['LateTrunkRotation','PoorSpeedupChain','ExcessForwardTilt'] },
-    arm_transfer: { vars: ['Arm_peak','humerus_segment_peak','trunk_to_arm','arm_trunk_speedup','mer_shoulder_abd','max_shoulder_ER','Pitching_Shoulder_Power_peak'],
+    arm_transfer: { vars: ['ETE_trunk_to_arm','Arm_peak','humerus_segment_peak','trunk_to_arm','arm_trunk_speedup','shoulder_W_pos','elbow_W_pos','mer_shoulder_abd','max_shoulder_ER','Pitching_Shoulder_Power_peak'],
                     faultIds: ['MERShoulderRisk'] },
-    load_eff:     { from_injury: true, vars: [], faultIds: ['HighElbowValgus','PoorReleaseConsistency'] },
+    load_eff:     { from_injury: true, vars: ['shoulder_absorption_ratio','elbow_absorption_ratio'], faultIds: ['HighElbowValgus','PoorReleaseConsistency'] },
   };
 
   function _calculateELI(result) {
@@ -214,12 +219,12 @@
       </details>`;
     }).join('');
 
-    // 핵심 결론 문장 (PDF 표 10 형식)
+    // 핵심 결론 — 코칭 톤
     const conclusionHtml = topWeak && feedbackTpl ? `
       <div class="mt-3 p-3 rounded" style="background: ${grade.color}15; border-left: 3px solid ${grade.color};">
-        <div class="text-sm font-semibold mb-1" style="color: ${grade.color};">📝 핵심 결론 (PDF §10 형식)</div>
+        <div class="text-sm font-semibold mb-1" style="color: ${grade.color};">📝 핵심 진단</div>
         <div class="text-sm leading-relaxed" style="color: var(--text-primary);">
-          이 선수의 주된 에너지 리크는 <strong>'${topWeak.name}'</strong> 구간에서 나타납니다.
+          이 선수의 가장 큰 약점은 <strong>'${topWeak.name}'</strong> 구간에서 힘이 새고 있다는 점입니다.
           ${feedbackTpl.diagnosis}
         </div>
         <div class="text-xs mt-2" style="color: var(--text-secondary);">
@@ -230,17 +235,16 @@
         <div class="text-sm" style="color: #16a34a; font-weight: 600;">✓ 영역별 점수 모두 60점 이상 — 명확한 리크 위치 없음. 세부 타이밍 조정 단계.</div>
       </div>` : '');
 
-    // ETE 정의 박스 + 4가지 에너지 역할
+    // 산식 펼침 카드 (관심 있는 사용자만 보도록 숨김)
     const eteHtml = `
       <details class="mt-3 text-xs" style="background: var(--bg-elevated); padding: 8px 12px; border-radius: 4px; border-left: 2px solid var(--accent-soft);">
-        <summary class="cursor-pointer" style="color: var(--accent-soft); font-weight: 600;">🔬 ETE / ELI 산식 (PDF §4-5)</summary>
+        <summary class="cursor-pointer" style="color: var(--accent-soft); font-weight: 600;">🔬 산식·계산 방법 (관심 있을 때만)</summary>
         <div class="mt-2 leading-relaxed" style="color: var(--text-secondary);">
-          <div class="mb-2"><strong>분절 에너지:</strong> <code class="mono text-[10px]">Eᵢ(t) = ½mᵢvᵢ² + ½ωᵢᵀIᵢωᵢ + mᵢghᵢ</code> (병진 + 회전 + 위치)</div>
-          <div class="mb-2"><strong>관절 파워:</strong> <code class="mono text-[10px]">Pⱼ(t) = Mⱼ(t) · ωⱼ(t)</code>, W⁺=∫max(P,0)dt 생성, W⁻=∫min(P,0)dt 흡수</div>
-          <div class="mb-2"><strong>전달 효율:</strong> <code class="mono text-[10px]">ETE = ΔE_distal / W_proximal⁺</code></div>
-          <div class="mb-2"><strong>리크 지수:</strong> <code class="mono text-[10px]">ELI = 1 − ETE</code> (값 클수록 비효율)</div>
-          <div class="mb-2"><strong>에너지 역할 4가지:</strong> <em>Source</em> (생성) · <em>Channel</em> (전달) · <em>Absorber</em> (감속) · <em>Sink</em> (비효율 보상)</div>
-          <div><strong>현장용 Integrated ELI</strong> = Σ wₖ × LeakScoreₖ (PDF §6 가중치 15·20·20·15·15·15 = 100)</div>
+          <div class="mb-2"><strong>분절 에너지</strong>: 골반·몸통·팔 각각이 가진 운동 + 회전 에너지의 시간 변화</div>
+          <div class="mb-2"><strong>관절 일</strong>: 양의 일(W⁺ = 만든 힘) + 음의 일(W⁻ = 흡수한 힘)</div>
+          <div class="mb-2"><strong>전달율</strong>: 다음 분절로 넘어간 에너지 / 앞 분절이 만든 일</div>
+          <div class="mb-2"><strong>손실율</strong> = 1 − 전달율 (값 클수록 손실 많음)</div>
+          <div><strong>종합 점수</strong> = 6개 영역 점수 × 가중치 합 (총 100점)</div>
         </div>
       </details>`;
 
@@ -248,10 +252,10 @@
     <div class="cat-card mb-6" style="padding: 22px; border: 2px solid ${grade.color}; background: linear-gradient(135deg, ${grade.color}10, transparent);">
       <div class="flex justify-between items-start flex-wrap gap-3 mb-3">
         <div>
-          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">INTEGRATED ELI · PDF §6 프레임워크</div>
-          <div class="display text-2xl mt-1" style="color: ${grade.color};">🔋 Energy Leak Index</div>
+          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">에너지 손실 종합 점수</div>
+          <div class="display text-2xl mt-1" style="color: ${grade.color};">🔋 발에서 공까지 — 힘이 얼마나 잘 전달됐는가</div>
           <div class="text-xs mt-1" style="color: var(--text-muted);">
-            영역별 점수 × 가중치 합 (Aguinaldo 2019 · Pryhoda & Sabick 2022 기반)
+            발·골반·몸통·팔 6개 단계의 힘 전달 효율을 종합한 점수
           </div>
         </div>
         <div class="text-right">
@@ -279,6 +283,269 @@
 
       ${conclusionHtml}
       ${eteHtml}
+    </div>`;
+  }
+
+  // ── ⚡ ETE (Energy Transfer Efficiency) 별도 섹션 — PDF §4·5 ★ v0.28+ ──
+  // ════════════════════════════════════════════════════════════
+  // ★ v0.32 — 동작 비효율 (B) → 에너지 전달 손실 (A) 인과 분석
+  //   PDF §1·§7·§11 — 각 운동학적 결함이 어떤 에너지 전달 실패로 이어지는지 명시
+  //   "B 동작 결함이 원인, A 에너지 손실이 결과"
+  // ════════════════════════════════════════════════════════════
+  function _renderCausalAnalysis(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const sc = (k) => m[k]?.score;
+
+    // ── 6개 인과 사슬 정의 (B 원인 → A 결과) ──
+    const chains = [
+      {
+        id: 'sequencing',
+        title: '골반·몸통·팔 순서대로 이어가기',
+        causes: [
+          { key: 'pelvis_to_trunk', name: '골반→몸통 시간차', target_ms: 45, unit: 'ms' },
+          { key: 'trunk_to_arm', name: '몸통→팔 시간차', target_ms: 45, unit: 'ms' },
+        ],
+        effects: ['ETE_pelvis_to_trunk', 'ETE_trunk_to_arm'],
+        narrative_low: '분절 사이 시간차가 너무 짧아 한 번에 다 열림 → 힘이 모이지 않고 흩어짐',
+        narrative_high: '골반 → 몸통 → 팔 순서 잘 지켜짐 — 채찍처럼 이어짐',
+      },
+      {
+        id: 'separation',
+        title: '골반-상체 분리 (X-팩터)',
+        causes: [
+          { key: 'peak_xfactor', name: '최대 분리 각도', target: 40, unit: '°' },
+          { key: 'fc_xfactor', name: '앞발 착지 시점 분리 각도', target: 25, unit: '°' },
+        ],
+        effects: ['ETE_pelvis_to_trunk', 'dE_trunk_KH_FC'],
+        narrative_low: '골반과 상체 분리 부족 → 고무줄처럼 당겨놓고 놓는 효과 약함',
+        narrative_high: '골반과 상체 충분히 분리 → 회전 stretch 효과로 몸통 가속 강력',
+      },
+      {
+        id: 'lead_block',
+        title: '앞발 받쳐주기 (블로킹)',
+        causes: [
+          { key: 'knee_flexion_change_FC_to_MER', name: '착지 → 외회전 시점 무릎 변화', target: -10, unit: '°', polarity: 'lower' },
+          { key: 'knee_flexion_change_MER_to_BR', name: '외회전 → 릴리스 시점 무릎 변화', target: -3, unit: '°', polarity: 'lower' },
+        ],
+        effects: ['lead_vGRF_impulse', 'lead_leg_braking_impulse', 'lead_knee_W_pos', 'lead_hip_W_pos'],
+        narrative_low: '앞발이 무너짐 → 앞으로 가던 힘이 회전으로 안 바뀌고 그대로 흘러감',
+        narrative_high: '앞발 단단히 받쳐줌 → 회전축 형성, block power 정상',
+      },
+      {
+        id: 'trunk_posture',
+        title: '앞발 착지 시점 몸통 자세',
+        causes: [
+          { key: 'fc_trunk_forward_tilt', name: '착지 시점 몸통 기울기', target: -5, unit: '°', polarity: 'asymmetric' },
+        ],
+        effects: ['dE_trunk_FC_BR', 'ETE_trunk_to_arm'],
+        narrative_low: '착지 시점에 몸통이 앞으로 숙이면 — 몸통이 미리 빠져버려 팔로 전달 못 함',
+        narrative_high: '몸통이 약간 뒤로 굴곡된 자세 — 채찍 휘두를 준비 완료',
+      },
+      {
+        id: 'shoulder_align',
+        title: '어깨 정렬 (외전·외회전)',
+        causes: [
+          { key: 'mer_shoulder_abd', name: '외회전 시점 어깨 외전 (90° 적정)', target: 95, unit: '°', polarity: 'absolute' },
+          { key: 'max_shoulder_ER', name: '최대 어깨 외회전 (170° 이상 만점)', target: 170, unit: '°' },
+        ],
+        effects: ['shoulder_W_pos', 'elbow_absorption_ratio'],
+        narrative_low: '어깨 외전 각도 부적정 또는 외회전 부족 → 팔꿈치 부담 ↑',
+        narrative_high: '어깨 정렬 적정 — 팔이 효율적으로 코킹됨',
+      },
+      {
+        id: 'pelvis_decel',
+        title: '골반 감속 (브레이크 걸기)',
+        causes: [
+          { key: 'pelvis_deceleration', name: '골반 회전 감속 (peak − 외회전 시점)', target: 600, unit: '°/s' },
+        ],
+        effects: ['ETE_pelvis_to_trunk', 'dE_trunk_KH_FC'],
+        narrative_low: '골반이 충분히 멈춰주지 못함 → 몸통으로 힘 넘기는 타이밍 늦음',
+        narrative_high: '골반 잘 멈춰줌 → 몸통이 채찍처럼 가속',
+      },
+    ];
+
+    // 각 chain 카드 생성
+    const chainCards = chains.map(ch => {
+      // 원인 (B) 변수 score 평균
+      const causesData = ch.causes.map(c => ({
+        ...c,
+        value: v(c.key),
+        score: sc(c.key),
+      })).filter(c => c.value != null);
+
+      // 결과 (A) 변수 score 평균
+      const effectsData = ch.effects.map(k => ({
+        key: k,
+        name: window.TheiaMeta?.getVarMeta(k)?.name || k,
+        unit: window.TheiaMeta?.getVarMeta(k)?.unit || '',
+        value: v(k),
+        score: sc(k),
+      })).filter(e => e.value != null);
+
+      if (causesData.length === 0 && effectsData.length === 0) return ''; // 데이터 없음
+
+      const causeScore = causesData.length > 0 ?
+        causesData.reduce((s, c) => s + (c.score ?? 50), 0) / causesData.length : null;
+      const effectScore = effectsData.length > 0 ?
+        effectsData.reduce((s, e) => s + (e.score ?? 50), 0) / effectsData.length : null;
+
+      // chain 종합 등급
+      const chainScore = causeScore != null && effectScore != null ?
+        (causeScore + effectScore) / 2 : (causeScore ?? effectScore);
+      const chainColor = chainScore == null ? '#94a3b8' :
+        chainScore >= 75 ? '#16a34a' : chainScore >= 50 ? '#22d3ee' : chainScore >= 30 ? '#fb923c' : '#dc2626';
+      const narrative = chainScore != null && chainScore >= 60 ? ch.narrative_high : ch.narrative_low;
+
+      // 인과 화살표 시각
+      const causeRows = causesData.map(c => {
+        const cc = c.score == null ? '#94a3b8' : c.score >= 75 ? '#16a34a' : c.score >= 50 ? '#22d3ee' : c.score >= 30 ? '#fb923c' : '#dc2626';
+        return `<div class="flex items-center justify-between text-xs py-1" style="border-bottom: 1px dashed var(--border);">
+          <span style="color: var(--text-secondary);">${c.name}</span>
+          <span class="mono" style="color: var(--text-muted);">${c.value.toFixed(2)} ${c.unit}</span>
+          <span class="mono" style="color: ${cc}; font-weight: 600; min-width: 36px; text-align: right;">${c.score ?? '—'}점</span>
+        </div>`;
+      }).join('');
+
+      const effectRows = effectsData.map(e => {
+        const ec = e.score == null ? '#94a3b8' : e.score >= 75 ? '#16a34a' : e.score >= 50 ? '#22d3ee' : e.score >= 30 ? '#fb923c' : '#dc2626';
+        return `<div class="flex items-center justify-between text-xs py-1" style="border-bottom: 1px dashed var(--border);">
+          <span style="color: var(--text-secondary);">${e.name}</span>
+          <span class="mono" style="color: var(--text-muted);">${typeof e.value === 'number' ? e.value.toFixed(2) : e.value} ${e.unit}</span>
+          <span class="mono" style="color: ${ec}; font-weight: 600; min-width: 36px; text-align: right;">${e.score ?? '—'}점</span>
+        </div>`;
+      }).join('');
+
+      return `<div class="card-elev p-4 mb-3" style="background: rgba(15,23,42,0.4); border-left: 3px solid ${chainColor};">
+        <div class="flex items-baseline justify-between mb-3 flex-wrap" style="gap: 8px;">
+          <div class="display" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">🔗 ${ch.title}</div>
+          <div class="text-xs" style="color: ${chainColor}; font-weight: 600;">종합 ${chainScore != null ? Math.round(chainScore) + '점' : '—'}</div>
+        </div>
+        <div class="text-xs mb-3" style="color: ${chainColor}; font-style: italic;">${narrative}</div>
+        <div class="grid" style="grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch;">
+          <div class="p-3" style="background: rgba(96,165,250,0.05); border-radius: 6px; border: 1px solid rgba(96,165,250,0.15);">
+            <div class="text-[10px] mb-2" style="color: #60a5fa; font-weight: 700; letter-spacing: 0.05em;">🎯 원인 — 자세·동작</div>
+            ${causeRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
+          </div>
+          <div class="flex items-center justify-center" style="font-size: 28px; color: ${chainColor};">→</div>
+          <div class="p-3" style="background: rgba(251,146,60,0.05); border-radius: 6px; border: 1px solid rgba(251,146,60,0.15);">
+            <div class="text-[10px] mb-2" style="color: #fb923c; font-weight: 700; letter-spacing: 0.05em;">⚡ 결과 — 힘 전달 손실</div>
+            ${effectRows || '<div class="text-xs" style="color: var(--text-muted);">측정 변수 없음</div>'}
+          </div>
+        </div>
+      </div>`;
+    }).filter(c => c).join('');
+
+    if (!chainCards) return '';
+
+    return `<div class="card-elev p-5 mt-6" style="background: linear-gradient(135deg, rgba(96,165,250,0.04), rgba(251,146,60,0.04)); border: 1px solid rgba(96,165,250,0.3);">
+      <div class="flex items-baseline justify-between mb-3 flex-wrap" style="gap: 8px;">
+        <div>
+          <div class="display" style="font-size: 22px; font-weight: 700; color: var(--text-primary);">🔗 동작이 어디서 막혀 힘이 새고 있는가</div>
+          <div class="text-xs mt-1" style="color: var(--text-secondary);">자세·동작의 문제(원인) → 발에서 공까지 힘 전달의 손실(결과)</div>
+        </div>
+        <div class="text-xs" style="color: var(--text-muted);">★ "어떤 동작이 어디서 힘을 새게 만들었나"</div>
+      </div>
+      <div class="mt-4">${chainCards}</div>
+      <details class="mt-4">
+        <summary class="cursor-pointer text-xs" style="color: var(--accent-soft);">📖 색상·해석 가이드</summary>
+        <div class="mt-2 text-xs p-3" style="background: var(--bg-elevated); border-radius: 6px; line-height: 1.6; color: var(--text-secondary);">
+          <strong>색상 등급</strong>: 🟢 75+ 우수 · 🔵 50-74 보통 · 🟠 30-49 손실 큼 · 🔴 &lt;30 심각<br>
+          <strong>판독 패턴</strong>:<br>
+          • <strong>동작 좋음 + 전달 좋음</strong>: 매끄러운 메커닉 ✓<br>
+          • <strong>동작 좋음 + 전달 나쁨</strong>: 동작은 깔끔한데 힘이 새는 중 — 측정 시점 점검 필요<br>
+          • <strong>동작 나쁨 + 전달 나쁨</strong>: 자세 문제가 직접 힘 손실로 이어짐 — 동작 교정 시급<br>
+          • <strong>동작 나쁨 + 전달 좋음</strong>: 비전형 자세지만 보상으로 효율 유지 (개인 스타일)
+        </div>
+      </details>
+    </div>`;
+  }
+
+  function _renderETESection(result) {
+    const m = result.varScores || {};
+    const ete_pt = m.ETE_pelvis_to_trunk?.value;
+    const ete_ta = m.ETE_trunk_to_arm?.value;
+    const ete_pt_score = m.ETE_pelvis_to_trunk?.score;
+    const ete_ta_score = m.ETE_trunk_to_arm?.score;
+    const dE_trunk_KH_FC = m.dE_trunk_KH_FC?.value;
+    const dE_trunk_FC_BR = m.dE_trunk_FC_BR?.value;
+    const dE_arm_FC_BR  = m.dE_arm_FC_BR?.value;
+    const W_hip_pos     = m.W_hip_pos_KH_FC?.value;
+    const sh_W_pos = m.shoulder_W_pos?.value;
+    const sh_W_neg = m.shoulder_W_neg?.value;
+    const sh_abs   = m.shoulder_absorption_ratio?.value;
+    const el_W_pos = m.elbow_W_pos?.value;
+    const el_W_neg = m.elbow_W_neg?.value;
+    const el_abs   = m.elbow_absorption_ratio?.value;
+
+    if (ete_pt == null && ete_ta == null && sh_W_pos == null) return '';  // 데이터 없으면 섹션 숨김
+
+    const fmt = (v, d=2) => v == null ? '—' : v.toFixed(d);
+    const eteCard = (label, ete, score, formula, dist) => {
+      const pct = ete == null ? null : Math.round(ete * 100);
+      const c = score == null ? '#94a3b8' : score >= 75 ? '#16a34a' : score >= 50 ? '#22d3ee' : score >= 30 ? '#fb923c' : '#dc2626';
+      return `<div class="card-elev p-4" style="background: rgba(15,23,42,0.4); border-left: 3px solid ${c};">
+        <div class="text-xs mb-1" style="color: var(--text-muted); letter-spacing: 0.05em;">${label}</div>
+        <div class="display flex items-baseline" style="gap: 8px;">
+          <span style="font-size: 36px; color: ${c}; font-weight: 700; line-height: 1;">${pct == null ? '—' : pct}</span>
+          <span class="text-sm" style="color: var(--text-muted);">%</span>
+          <span class="text-xs ml-2" style="color: var(--text-muted);">점수 ${score != null ? score : '—'}/100</span>
+        </div>
+        <div class="text-xs mt-2 mono" style="color: var(--text-muted);">${formula}</div>
+        <div class="text-[10px] mt-1" style="color: var(--text-muted);">${dist}</div>
+      </div>`;
+    };
+
+    const W_card = (label, W_pos, W_neg, abs_ratio) => `
+      <div class="p-3" style="background: rgba(15,23,42,0.3); border-radius: 8px; flex: 1; min-width: 180px;">
+        <div class="text-xs mb-2" style="color: var(--text-muted); font-weight: 600;">${label}</div>
+        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 6px;">
+          <div><div class="text-[10px]" style="color: var(--text-muted);">만든 힘</div><div class="mono" style="color: #16a34a;">${fmt(W_pos, 1)} J</div></div>
+          <div><div class="text-[10px]" style="color: var(--text-muted);">흡수한 힘</div><div class="mono" style="color: #f87171;">${fmt(W_neg, 1)} J</div></div>
+          <div style="grid-column: 1/3;"><div class="text-[10px]" style="color: var(--text-muted);">흡수/만든 비율</div><div class="mono" style="color: var(--text-primary);">${fmt(abs_ratio)}</div></div>
+        </div>
+      </div>`;
+
+    return `<div class="card-elev p-5 mt-6" style="background: linear-gradient(135deg, rgba(34,211,238,0.04), rgba(99,102,241,0.04)); border: 1px solid rgba(34,211,238,0.3);">
+      <div class="flex items-baseline justify-between mb-3 flex-wrap" style="gap: 8px;">
+        <div>
+          <div class="display" style="font-size: 22px; font-weight: 700; color: #22d3ee;">⚡ 골반 → 몸통 → 팔로 힘이 얼마나 잘 넘어갔나</div>
+          <div class="text-xs mt-1" style="color: var(--text-secondary);">앞 분절이 만든 힘이 다음 분절로 얼마나 전달됐는지 측정</div>
+        </div>
+        <div class="text-xs" style="color: var(--text-muted);">★ 100% = 손실 없이 다 넘김</div>
+      </div>
+
+      <div class="grid mt-4" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+        ${eteCard('골반 → 몸통 전달율', ete_pt, ete_pt_score,
+          '몸통이 받은 에너지 ÷ 골반이 만든 일',
+          `몸통 에너지 변화 = ${fmt(dE_trunk_KH_FC, 1)} J · 골반 일 = ${fmt(W_hip_pos, 1)} J · 프로 기준 55%±20`)}
+        ${eteCard('몸통 → 팔 전달율', ete_ta, ete_ta_score,
+          '팔이 받은 에너지 ÷ 몸통이 잃은 에너지',
+          `팔 에너지 변화 = ${fmt(dE_arm_FC_BR, 1)} J · 몸통 잃은 양 = ${fmt(Math.abs(dE_trunk_FC_BR || 0), 1)} J · 프로 기준 50%±18`)}
+      </div>
+
+      <div class="mt-5">
+        <div class="text-xs mb-2" style="color: var(--text-muted); font-weight: 600;">관절이 만든 힘 vs 흡수한 힘</div>
+        <div class="flex flex-wrap" style="gap: 12px;">
+          ${W_card('어깨', sh_W_pos, sh_W_neg, sh_abs)}
+          ${W_card('팔꿈치', el_W_pos, el_W_neg, el_abs)}
+        </div>
+      </div>
+
+      <details class="mt-4">
+        <summary class="cursor-pointer text-xs" style="color: var(--accent-soft);">📖 해석 가이드</summary>
+        <div class="mt-2 text-xs p-3" style="background: var(--bg-elevated); border-radius: 6px; line-height: 1.6; color: var(--text-secondary);">
+          <strong>전달율</strong>: 앞 분절(골반·몸통)이 만든 힘이 다음 분절(몸통·팔)로 얼마나 잘 넘어갔는지.
+          <ul class="mt-1 ml-4" style="list-style: disc;">
+            <li>50% 이상 = 우수 (힘이 잘 넘어감)</li>
+            <li>35~50% = 보통</li>
+            <li>35% 미만 = 손실 큼 (힘이 새고 있음)</li>
+          </ul>
+          <strong>관절이 만든 힘 vs 흡수한 힘</strong>:<br>
+          • 어깨 흡수비 ~1.0 = 정상 (만든 만큼 멈춤)<br>
+          • 팔꿈치 흡수비 ~2.0 = 정상 (브레이크 역할이 강함, 즉 통로 역할 잘 함)
+        </div>
+      </details>
     </div>`;
   }
 
@@ -381,11 +648,11 @@
     </div>`;
   }
 
-  // ── 잠재 구속 예측 ──
+  // ── 잠재 구속 예측 ── (★ v0.27 — 향상치 상수 확대)
   // HS Top 10% mode: 측정 구속 기준 카테고리 점수의 부족분만큼 향상 가능치 추정
-  // - 체력만 100점 발달 → +5 km/h (lever effect)
-  // - 메카닉(Output+Transfer) 100점 발달 → +5 km/h
-  // - 둘 다 100점 → +7 km/h (interaction)
+  // - 체력만 100점 발전 → +6 km/h (기존 5)
+  // - 메카닉(Output+Transfer) 100점 발전 → +10 km/h (기존 5)
+  // - 둘 다 100점 → +14 km/h (기존 7)
   function _predictPotentialVelo(result) {
     const cur = result.varScores?.ball_speed?.value;
     if (cur == null) return null;
@@ -396,9 +663,9 @@
     // 부족분 — 100 - score
     const fitGap = (100 - ctrl + 0) / 100;  // proxy 체력 (실측 fitness 데이터 있으면 대체)
     const mechGap = (100 - (out + tr) / 2) / 100;
-    const fitOnly  = +(cur + 5.0 * fitGap).toFixed(1);
-    const mechOnly = +(cur + 5.0 * mechGap).toFixed(1);
-    const both     = +(cur + 7.0 * Math.max(fitGap, mechGap)).toFixed(1);
+    const fitOnly  = +(cur + 6.0  * fitGap).toFixed(1);
+    const mechOnly = +(cur + 10.0 * mechGap).toFixed(1);
+    const both     = +(cur + 14.0 * Math.max(fitGap, mechGap)).toFixed(1);
     return { current: cur, fitOnly, mechOnly, both };
   }
 
@@ -408,8 +675,8 @@
     const eliteThr = hand === 'left' ? 135 : 140;
     const devThr   = hand === 'left' ? 125 : 130;
     if (ballSp >= eliteThr) return { id: 'B', label: '⭐ Elite 정착 (Mode B)', color: '#c084fc', desc: 'MaxV ≥' + eliteThr + ' km/h — 미세조정 (좁은 σ)' };
-    if (ballSp >= devThr)   return { id: 'C', label: '🔧 표준 발달 (Mode C)', color: '#fb923c', desc: '발달 단계 — 출력·전달 동시 향상' };
-    return { id: 'A', label: '🌱 발달 단계 (Mode A)', color: '#60a5fa', desc: '기초 단계 — 체력·시퀀싱 기초 형성' };
+    if (ballSp >= devThr)   return { id: 'C', label: '🔧 표준 발전 (Mode C)', color: '#fb923c', desc: '발전 단계 — 출력·전달 동시 향상' };
+    return { id: 'A', label: '🌱 발전 단계 (Mode A)', color: '#60a5fa', desc: '기초 단계 — 체력·시퀀싱 기초 형성' };
   }
 
   function _renderHeader(result) {
@@ -445,9 +712,9 @@
       velocityCards = `
       <div class="flex gap-6 flex-wrap mt-3">
         ${card('측정 구속', pred.current, 'var(--text-primary)', null)}
-        ${card('체력만 발달 시 잠재 구속', pred.fitOnly, '#60a5fa', dFit > 0 ? dFit : null)}
-        ${card('메카닉만 발달 시 잠재 구속', pred.mechOnly, '#fb923c', dMech > 0 ? dMech : null)}
-        ${card('동시 발달 시 잠재 구속', pred.both, '#fbbf24', dBoth > 0 ? dBoth : null)}
+        ${card('체력만 발전 시 잠재 구속', pred.fitOnly, '#60a5fa', dFit > 0 ? dFit : null)}
+        ${card('메카닉만 발전 시 잠재 구속', pred.mechOnly, '#fb923c', dMech > 0 ? dMech : null)}
+        ${card('동시 발전 시 잠재 구속', pred.both, '#fbbf24', dBoth > 0 ? dBoth : null)}
       </div>`;
     } else {
       velocityCards = `<div class="text-sm mt-2" style="color: var(--text-muted);">⚾ 구속 미입력 — Step 1에서 평균 구속 입력 또는 Step 2 metadata xlsx 업로드</div>`;
@@ -512,7 +779,7 @@
       qMessage = '메카닉 효율은 좋은데 <strong>출력 자체가 부족</strong>. 체력(파워·근력)으로 출력을 끌어올리면 elite로 점프 가능.';
     } else {
       quadrant = 4; qLabel = '④ 아마 (Amateur)'; qColor = '#94a3b8'; qPriority = '기초';
-      qMessage = '둘 다 평균 미만 — Amateur 수준. 체력·시퀀싱 기초 동시 향상 — 인내심 있게 단계별 발달.';
+      qMessage = '둘 다 평균 미만 — Amateur 수준. 체력·시퀀싱 기초 동시 향상 — 인내심 있게 단계별 발전.';
     }
 
     // SVG 4사분면 (pos: outScore=x, trScore=y)
@@ -685,14 +952,23 @@
     const transition = m['trail_to_lead_vgrf_peak_s']?.value;
     const transitionS = m['trail_to_lead_vgrf_peak_s']?.score;
     const trailImpulse = m['trail_impulse_stride']?.value;
+    // ★ v0.32 — v0.31의 새 impulse 변수
+    const driveAP = m['drive_leg_propulsive_impulse']?.value;
+    const driveAPS = m['drive_leg_propulsive_impulse']?.score;
+    const brakeAP = m['lead_leg_braking_impulse']?.value;
+    const brakeAPS = m['lead_leg_braking_impulse']?.score;
+    const trailVZi = m['trail_vGRF_impulse']?.value;
+    const trailVZiS = m['trail_vGRF_impulse']?.score;
+    const leadVZi = m['lead_vGRF_impulse']?.value;
+    const leadVZiS = m['lead_vGRF_impulse']?.score;
 
-    const measured = [trailV, leadV, trailAP, leadAP, transition, trailImpulse].filter(x => x != null).length;
+    const measured = [trailV, leadV, trailAP, leadAP, transition, trailImpulse, driveAP, brakeAP, trailVZi, leadVZi].filter(x => x != null).length;
     if (measured === 0) {
       return `
       <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid #6b7280;">
         <div class="display text-xl mb-2" style="color: #6b7280;">🦵 GRF 분석 (지면반력)</div>
         <div class="text-sm" style="color: var(--text-muted);">
-          지면반력 데이터 없음 — Visual3D pipeline에서 <strong>Trail_Leg_GRF / Lead_Leg_GRF</strong>로 정규화된 c3d.txt 필요. (박명균 옛 형식의 FP1/FP2 raw는 미지원)
+          지면반력 데이터 없음 — c3d.txt에 <strong>FP1/FP2 force plate</strong> 데이터 (FORCE X/Y/Z) 또는 <strong>Trail_Leg_GRF/Lead_Leg_GRF</strong> 컬럼 필요.
         </div>
       </div>`;
     }
@@ -709,16 +985,16 @@
       ${trailV != null ? `
         <rect x="${W*0.25 - barW/2}" y="${yScale(trailV)}" width="${barW}" height="${(H-P) - yScale(trailV)}" fill="#0070C0" opacity="0.7"/>
         <text x="${W*0.25}" y="${yScale(trailV) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#0070C0">${trailV.toFixed(2)}</text>
-        <text x="${W*0.25}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Trail vGRF</text>
+        <text x="${W*0.25}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">축발 (뒷발)</text>
       ` : ''}
       ${leadV != null ? `
         <rect x="${W*0.65 - barW/2}" y="${yScale(leadV)}" width="${barW}" height="${(H-P) - yScale(leadV)}" fill="#C00000" opacity="0.7"/>
         <text x="${W*0.65}" y="${yScale(leadV) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#C00000">${leadV.toFixed(2)}</text>
-        <text x="${W*0.65}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Lead vGRF</text>
+        <text x="${W*0.65}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">디딤발 (앞발)</text>
       ` : ''}
-      <!-- elite reference 라인 (Trail≥1.5, Lead≥2.0 BW) -->
+      <!-- 우수 기준선 (디딤발 ≥2.0 BW) -->
       <line x1="${P}" y1="${yScale(2.0)}" x2="${W-P}" y2="${yScale(2.0)}" stroke="#16a34a" stroke-dasharray="3,3" opacity="0.6"/>
-      <text x="${W-P-2}" y="${yScale(2.0)-3}" text-anchor="end" font-size="9" fill="#16a34a">elite ≥2.0 BW</text>
+      <text x="${W-P-2}" y="${yScale(2.0)-3}" text-anchor="end" font-size="9" fill="#16a34a">프로 우수 ≥2.0 BW</text>
       <!-- Y축 단위 -->
       <text x="${P-4}" y="${yScale(0)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">0</text>
       <text x="${P-4}" y="${yScale(maxV/2)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${(maxV/2).toFixed(1)}</text>
@@ -728,31 +1004,330 @@
     const fmt = (v, d=2, u='') => v != null ? `${v.toFixed(d)}${u}` : '—';
     const scoreColor = (sc) => sc == null ? '#94a3b8' : sc >= 75 ? '#16a34a' : sc >= 50 ? '#fb923c' : '#dc2626';
 
+    // ★ v0.32 — Impulse 막대 차트 추가 (vertical impulse + AP impulse)
+    const maxImp = Math.max(1.0, trailVZi || 0.6, leadVZi || 0.3) * 1.2;
+    const yScaleI = (v) => H - P - (v / maxImp) * (H - 2 * P);
+    const impBar = (trailVZi != null || leadVZi != null) ? `<svg viewBox="0 0 ${W} ${H}" style="width: 100%; max-width: 380px; height: auto;">
+      <line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="var(--text-muted)"/>
+      <line x1="${P}" y1="${P}" x2="${P}" y2="${H-P}" stroke="var(--text-muted)"/>
+      ${trailVZi != null ? `
+        <rect x="${W*0.25 - barW/2}" y="${yScaleI(trailVZi)}" width="${barW}" height="${(H-P) - yScaleI(trailVZi)}" fill="#0070C0" opacity="0.7"/>
+        <text x="${W*0.25}" y="${yScaleI(trailVZi) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#0070C0">${trailVZi.toFixed(3)}</text>
+        <text x="${W*0.25}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Trail vGRF impulse</text>
+      ` : ''}
+      ${leadVZi != null ? `
+        <rect x="${W*0.65 - barW/2}" y="${yScaleI(leadVZi)}" width="${barW}" height="${(H-P) - yScaleI(leadVZi)}" fill="#C00000" opacity="0.7"/>
+        <text x="${W*0.65}" y="${yScaleI(leadVZi) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#C00000">${leadVZi.toFixed(3)}</text>
+        <text x="${W*0.65}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Lead vGRF impulse</text>
+      ` : ''}
+      <text x="${P-4}" y="${yScaleI(0)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">0</text>
+      <text x="${P-4}" y="${yScaleI(maxImp/2)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${(maxImp/2).toFixed(2)}</text>
+      <text x="${P-4}" y="${yScaleI(maxImp)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${maxImp.toFixed(2)} BW·s</text>
+    </svg>` : '';
+
+    // ★ v0.33 — 5-phase GRF 시퀀스 시각화
+    const trail_color = '#0070C0', lead_color = '#C00000';
+    const phaseChart = `<svg viewBox="0 0 600 130" style="width: 100%; max-width: 580px; height: auto;">
+      <!-- 축 -->
+      <line x1="40" y1="100" x2="580" y2="100" stroke="var(--text-muted)" stroke-width="1"/>
+      <!-- Trail curve (예시 곡선) -->
+      <path d="M 40,80 Q 120,80 160,75 Q 200,55 220,40 Q 250,30 270,55 Q 290,80 320,95 L 580,100"
+            stroke="${trail_color}" stroke-width="2.5" fill="none" opacity="0.85"/>
+      <!-- Lead curve (FC 후 spike) -->
+      <path d="M 40,100 L 320,100 Q 350,98 380,55 Q 410,25 440,20 Q 470,30 510,55 L 580,80"
+            stroke="${lead_color}" stroke-width="2.5" fill="none" opacity="0.85"/>
+      <!-- Phase 라벨 -->
+      <text x="80" y="118" text-anchor="middle" font-size="10" fill="var(--text-secondary)">①셋업</text>
+      <text x="220" y="118" text-anchor="middle" font-size="10" fill="var(--text-secondary)">②차고 나가기</text>
+      <text x="320" y="118" text-anchor="middle" font-size="10" fill="var(--text-secondary)">③전환</text>
+      <text x="440" y="118" text-anchor="middle" font-size="10" fill="var(--text-secondary)">④받쳐주기</text>
+      <text x="540" y="118" text-anchor="middle" font-size="10" fill="var(--text-secondary)">⑤릴리스</text>
+      <!-- Event 마커 -->
+      <line x1="220" y1="20" x2="220" y2="100" stroke="#94a3b8" stroke-dasharray="2,3" opacity="0.6"/>
+      <text x="220" y="14" text-anchor="middle" font-size="9" fill="var(--text-muted)">무릎 들기</text>
+      <line x1="320" y1="20" x2="320" y2="100" stroke="#94a3b8" stroke-dasharray="2,3" opacity="0.6"/>
+      <text x="320" y="14" text-anchor="middle" font-size="9" fill="var(--text-muted)">앞발 착지</text>
+      <line x1="510" y1="20" x2="510" y2="100" stroke="#94a3b8" stroke-dasharray="2,3" opacity="0.6"/>
+      <text x="510" y="14" text-anchor="middle" font-size="9" fill="var(--text-muted)">릴리스</text>
+      <!-- 범례 -->
+      <line x1="50" y1="40" x2="80" y2="40" stroke="${trail_color}" stroke-width="2.5"/>
+      <text x="85" y="44" font-size="11" fill="${trail_color}" font-weight="600">축발 (뒷발)</text>
+      <line x1="50" y1="55" x2="80" y2="55" stroke="${lead_color}" stroke-width="2.5"/>
+      <text x="85" y="59" font-size="11" fill="${lead_color}" font-weight="600">디딤발 (앞발)</text>
+      <text x="40" y="100" font-size="9" fill="var(--text-muted)" text-anchor="end">0</text>
+      <text x="40" y="35" font-size="9" fill="var(--text-muted)" text-anchor="end">F</text>
+    </svg>`;
+
     return `
     <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid var(--accent-soft);">
-      <div class="display text-xl mb-2" style="color: var(--accent-soft);">🦵 GRF 분석 (지면반력)</div>
-      <div class="text-sm mb-3" style="color: var(--text-secondary);">
-        Trail leg(뒷다리) push와 Lead leg(앞다리) block의 지면반력 — 키네틱 체인 1·2 단계의 직접 측정값.
+      <div class="display text-xl mb-2" style="color: var(--accent-soft);">🦵 지면반력 — 투구의 시작은 발 끝에서</div>
+
+      <!-- ① 메카닉 의미 narrative -->
+      <div class="p-3 mb-4" style="background: rgba(34,211,238,0.06); border-left: 3px solid #22d3ee; border-radius: 4px;">
+        <div class="text-sm" style="color: var(--text-secondary); line-height: 1.7;">
+          공을 빠르게 던지는 힘은 결국 <strong>발이 마운드를 미는 힘</strong>에서 시작됩니다.
+          이 힘이 <strong>골반 → 몸통 → 팔</strong>로 차례차례 전달되어야 좋은 공이 나옵니다.
+          이 섹션은 (a) <strong style="color: ${trail_color};">축발(뒷발)이 만드는 차고 나가는 힘</strong>과
+          (b) <strong style="color: ${lead_color};">디딤발(앞발)이 만드는 회전축</strong>을 직접 측정한 결과입니다.
+        </div>
       </div>
-      <div class="grid md:grid-cols-2 gap-4 items-center">
-        <div>${grfBar}</div>
+
+      <!-- ② 5-phase GRF 시퀀스 -->
+      <div class="mb-4">
+        <div class="text-sm mb-2" style="color: var(--text-primary); font-weight: 600;">📈 투구 5단계 — 발이 마운드를 미는 흐름</div>
+        ${phaseChart}
+        <div class="grid mt-2" style="grid-template-columns: repeat(5, 1fr); gap: 6px;">
+          <div class="text-[10px] p-2" style="background: var(--bg-elevated); border-radius: 4px; line-height: 1.4;">
+            <strong>① 셋업</strong><br><span style="color: var(--text-muted);">두 발에 체중 안정</span>
+          </div>
+          <div class="text-[10px] p-2" style="background: rgba(0,112,192,0.08); border-radius: 4px; line-height: 1.4;">
+            <strong style="color: ${trail_color};">② 차고 나가기</strong><br><span style="color: var(--text-muted);">축발로 밀어 몸 전진</span>
+          </div>
+          <div class="text-[10px] p-2" style="background: var(--bg-elevated); border-radius: 4px; line-height: 1.4;">
+            <strong>③ 무게 이동</strong><br><span style="color: var(--text-muted);">축발→디딤발 전환</span>
+          </div>
+          <div class="text-[10px] p-2" style="background: rgba(192,0,0,0.08); border-radius: 4px; line-height: 1.4;">
+            <strong style="color: ${lead_color};">④ 받쳐주기</strong><br><span style="color: var(--text-muted);">디딤발로 회전축 형성</span>
+          </div>
+          <div class="text-[10px] p-2" style="background: var(--bg-elevated); border-radius: 4px; line-height: 1.4;">
+            <strong>⑤ 릴리스</strong><br><span style="color: var(--text-muted);">팔로우스루</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ Peak + Impulse 측정값 + 차트 -->
+      <div class="text-sm mb-2" style="color: var(--text-primary); font-weight: 600;">📊 측정값 — 최대 힘 vs 누적 힘</div>
+      <div class="text-xs mb-3" style="color: var(--text-muted); line-height: 1.5;">
+        <strong>최대 힘 (Peak, BW)</strong>: 순간 가장 세게 누른 힘 — 강하지만 짧으면 효과 제한적.
+        <strong>누적 힘 (Impulse, BW·s)</strong>: 힘 × 시간 — <strong>실제로 몸을 움직이는 데 쓴 힘</strong>. NewtForce도 누적 힘을 더 중요하게 봅니다.
+      </div>
+      <div class="grid md:grid-cols-2 gap-4 items-start">
+        <div>
+          <div class="text-xs mb-1" style="color: var(--text-muted); font-weight: 600;">최대 누르는 힘 (BW)</div>
+          ${grfBar}
+          ${impBar ? `<div class="text-xs mt-3 mb-1" style="color: var(--text-muted); font-weight: 600;">누적 힘 (BW·s)</div>` + impBar : ''}
+        </div>
         <div>
           <table class="var-table" style="font-size: 12px;">
             <thead><tr><th>변수</th><th>값</th><th>점수</th></tr></thead>
             <tbody>
-              <tr><td>Trail vGRF (수직)</td><td class="mono">${fmt(trailV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailVS)};">${trailVS != null ? trailVS : '—'}</strong></td></tr>
-              <tr><td>Trail AP GRF (전후)</td><td class="mono">${fmt(trailAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailAPS)};">${trailAPS != null ? trailAPS : '—'}</strong></td></tr>
-              <tr><td>Trail leg impulse</td><td class="mono">${fmt(trailImpulse, 3, ' BW·s')}</td><td>—</td></tr>
-              <tr><td>Lead vGRF (수직)</td><td class="mono">${fmt(leadV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadVS)};">${leadVS != null ? leadVS : '—'}</strong></td></tr>
-              <tr><td>Lead AP GRF (전후)</td><td class="mono">${fmt(leadAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadAPS)};">${leadAPS != null ? leadAPS : '—'}</strong></td></tr>
-              <tr><td>Trail→Lead 전환 시간</td><td class="mono">${fmt(transition, 3, ' s')}</td><td><strong style="color: ${scoreColor(transitionS)};">${transitionS != null ? transitionS : '—'}</strong></td></tr>
+              <tr style="border-bottom: 2px solid var(--border);"><td colspan="3" style="padding-top: 4px; font-weight: 600; color: #0070C0;">축발(뒷발) — 무릎 들기 → 앞발 착지</td></tr>
+              <tr><td>축발 최대 누르는 힘</td><td class="mono">${fmt(trailV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailVS)};">${trailVS != null ? trailVS : '—'}</strong></td></tr>
+              <tr><td>축발 앞으로 미는 힘</td><td class="mono">${fmt(trailAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailAPS)};">${trailAPS != null ? trailAPS : '—'}</strong></td></tr>
+              <tr><td>★ 축발 누적 누르는 힘</td><td class="mono">${fmt(trailVZi, 3, ' BW·s')}</td><td><strong style="color: ${scoreColor(trailVZiS)};">${trailVZiS != null ? trailVZiS : '—'}</strong></td></tr>
+              <tr><td>★ 축발 누적 미는 힘 (차고 나가기)</td><td class="mono">${fmt(driveAP, 4, ' BW·s')}</td><td><strong style="color: ${scoreColor(driveAPS)};">${driveAPS != null ? driveAPS : '—'}</strong></td></tr>
+              <tr><td>축발 전체 운동량</td><td class="mono">${fmt(trailImpulse, 3, ' BW·s')}</td><td>—</td></tr>
+              <tr style="border-bottom: 2px solid var(--border);"><td colspan="3" style="padding-top: 8px; font-weight: 600; color: #C00000;">디딤발(앞발) — 앞발 착지 → 릴리스</td></tr>
+              <tr><td>디딤발 최대 누르는 힘</td><td class="mono">${fmt(leadV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadVS)};">${leadVS != null ? leadVS : '—'}</strong></td></tr>
+              <tr><td>디딤발 뒤로 미는 힘 (브레이킹)</td><td class="mono">${fmt(leadAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadAPS)};">${leadAPS != null ? leadAPS : '—'}</strong></td></tr>
+              <tr><td>★ 디딤발 누적 받쳐주는 힘</td><td class="mono">${fmt(leadVZi, 3, ' BW·s')}</td><td><strong style="color: ${scoreColor(leadVZiS)};">${leadVZiS != null ? leadVZiS : '—'}</strong></td></tr>
+              <tr><td>★ 디딤발 누적 브레이킹 힘</td><td class="mono">${fmt(brakeAP, 4, ' BW·s')}</td><td><strong style="color: ${scoreColor(brakeAPS)};">${brakeAPS != null ? brakeAPS : '—'}</strong></td></tr>
+              <tr style="border-bottom: 1px solid var(--border);"><td colspan="3" style="padding-top: 8px; font-weight: 600; color: var(--text-muted);">축발→디딤발 전환</td></tr>
+              <tr><td>두 발 사이 힘 전환 시간</td><td class="mono">${fmt(transition, 3, ' s')}</td><td><strong style="color: ${scoreColor(transitionS)};">${transitionS != null ? transitionS : '—'}</strong></td></tr>
             </tbody>
           </table>
           <div class="text-xs mt-2" style="color: var(--text-muted); line-height: 1.5;">
-            <strong>해석:</strong> Trail vGRF≥1.5 BW (push), Lead vGRF≥2.0 BW (block, elite). 전환시간 짧을수록 sequencing 우수. AP GRF는 forward 추진력.
+            KBO 프로(이영하) 평균: 축발 누적 힘 ~0.88, 디딤발 ~0.24 BW·s
           </div>
         </div>
       </div>
+
+      <!-- ④ 연구 기반 메카닉 해석 -->
+      <div class="mt-5 p-4" style="background: linear-gradient(135deg, rgba(0,112,192,0.04), rgba(192,0,0,0.04)); border-radius: 6px; border: 1px solid var(--border);">
+        <div class="text-sm mb-3" style="color: var(--text-primary); font-weight: 600;">🔬 연구로 보는 두 발의 역할</div>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs mb-2" style="color: ${trail_color}; font-weight: 700;">🟦 축발 (뒷발) — 차고 나가는 엔진</div>
+            <div class="text-xs" style="color: var(--text-secondary); line-height: 1.7;">
+              <strong>역할</strong>: 무게중심을 포수 방향으로 밀어주고 회전 준비.
+              무릎 들기에서 한 발에 체중 집중 → 차고 나갈 때 누르는 힘이 1.0~1.5 BW까지 올라갑니다.<br><br>
+              <strong>Slowik 2019</strong>: 축발이 앞으로 미는 누적 힘이 클수록 구속 ↑ (r=0.41~0.55)<br>
+              <strong>McNally 2015</strong>: 축발/디딤발 힘의 균형이 프로 vs 아마추어를 가르는 핵심
+            </div>
+          </div>
+          <div>
+            <div class="text-xs mb-2" style="color: ${lead_color}; font-weight: 700;">🟥 디딤발 (앞발) — 회전축 + 몸 받쳐주기</div>
+            <div class="text-xs" style="color: var(--text-secondary); line-height: 1.7;">
+              <strong>역할</strong>: 앞발 착지 순간 강하게 받쳐주어 앞으로 가던 몸을 회전으로 바꿉니다.
+              디딤발이 강할수록 몸통과 팔이 더 빠르게 회전합니다.<br><br>
+              <strong>Kageyama 2014</strong>: 디딤발 누르는 힘이 클수록 구속 ↑ (r=0.55~0.70)<br>
+              <strong>Howenstein 2019</strong>: 디딤발 받쳐주기 강도 = 몸통 회전속도와 직결<br>
+              <strong>MLB 프로 우수 투수</strong>: 디딤발 최대 누르는 힘 ≥ 2.0 BW
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 pt-3 text-xs" style="border-top: 1px dashed var(--border); color: var(--text-secondary); line-height: 1.7;">
+          <strong>⚠ 부상 위험 연결</strong>: 디딤발이 약하면 → 팔이 더 일하게 됨 → 팔꿈치·어깨 부담 증가.
+          디딤발 1.8~2.5 BW가 팔꿈치 부담 감소와 연관 (MacWilliams 1998).
+          따라서 <strong>지면반력 분석은 구속 향상뿐 아니라 팔 부상 예방의 출발점</strong>입니다.
+        </div>
+      </div>
+
+      <!-- ⑤ NewtForce 시그니처 변수 + LHEI -->
+      ${(() => {
+        const tPkT = m['time_to_peak_trail_force']?.value;
+        const tPkTS = m['time_to_peak_trail_force']?.score;
+        const tPkL = m['time_to_peak_lead_force']?.value;
+        const tPkLS = m['time_to_peak_lead_force']?.score;
+        const fBR = m['force_at_ball_release']?.value;
+        const fBRS = m['force_at_ball_release']?.score;
+        const xInst = m['x_force_instability']?.value;
+        const xInstS = m['x_force_instability']?.score;
+        const cb = m['clawback_time']?.value;
+        const cbS = m['clawback_time']?.score;
+        const brakeEff = m['lead_braking_efficiency']?.value;
+        const brakeEffS = m['lead_braking_efficiency']?.score;
+
+        // LHEI 종합 — NewtForce §13 가중 평균
+        const lhei_components = [
+          { name: 'Y Back (drive AP)', score: m['drive_leg_propulsive_impulse']?.score, w: 1, sign: 1 },
+          { name: 'Accel Impulse (trail vGRF)', score: m['trail_vGRF_impulse']?.score, w: 1, sign: 1 },
+          { name: 'Front-leg Braking', score: m['lead_leg_braking_impulse']?.score, w: 1, sign: 1 },
+          { name: 'Lead vGRF', score: m['lead_vGRF_impulse']?.score, w: 1, sign: 1 },
+          { name: 'Transfer Time', score: m['trail_to_lead_vgrf_peak_s']?.score, w: 0.5, sign: 1 },
+          { name: 'Force at Release', score: fBRS, w: 1, sign: 1 },
+          { name: 'X Instability (역)', score: xInstS, w: 0.5, sign: 1 },
+          { name: 'Clawback (역)', score: cbS, w: 0.5, sign: 1 },
+        ].filter(c => c.score != null);
+
+        let lhei = null;
+        if (lhei_components.length >= 4) {
+          const totalW = lhei_components.reduce((s, c) => s + c.w, 0);
+          lhei = lhei_components.reduce((s, c) => s + c.score * c.w, 0) / totalW;
+        }
+        const lheiC = lhei == null ? '#94a3b8' : lhei >= 75 ? '#16a34a' : lhei >= 60 ? '#22d3ee' : lhei >= 45 ? '#fb923c' : '#dc2626';
+        const lheiLabel = lhei == null ? '미평가' : lhei >= 75 ? '우수' : lhei >= 60 ? '양호' : lhei >= 45 ? '보통' : '개선 필요';
+
+        // 진단 패턴 자동 감지 (NewtForce §6, §10)
+        const diagnoses = [];
+        const yBackS = m['drive_leg_propulsive_impulse']?.score;
+        const playerVeloS = m['Max_CoG_Velo']?.score;
+        const accelImpS = m['trail_vGRF_impulse']?.score;
+        const frontBrakeS = m['lead_leg_braking_impulse']?.score;
+
+        if (yBackS != null && yBackS < 50 && (playerVeloS == null || playerVeloS < 50)) {
+          diagnoses.push({ icon: '🟠', title: '뒤에 처지는 타입', narrative: '축발로 마운드를 충분히 누르지 못하고 몸이 뒤에 남아있음. <strong>훈련</strong>: 힙힌지, 라이드 드릴, 스텝백 드릴 — "뒤에서 버티며 앞으로 타고 나가는" 느낌', color: '#fb923c' });
+        }
+        if (yBackS != null && yBackS >= 60 && frontBrakeS != null && frontBrakeS < 50) {
+          diagnoses.push({ icon: '🔴', title: '앞으로 쏟아지는 타입', narrative: '축발은 잘 미는데 디딤발이 못 받쳐줘서 몸이 앞으로 흘러감 (lunging). <strong>훈련</strong>: 디딤발 받쳐주기 드릴, 스트라이드 컨트롤, 앞무릎 안정화', color: '#dc2626' });
+        }
+        if (accelImpS != null && accelImpS < 50 && m['Trail_leg_peak_vertical_GRF']?.score >= 60) {
+          diagnoses.push({ icon: '🟡', title: '잠깐만 세게 미는 타입', narrative: '순간 힘은 강한데 너무 빨리 끝나버림 (peak ↑ but impulse ↓). <strong>훈련</strong>: 힘을 오래 유지하는 템포·리듬 조절', color: '#fbbf24' });
+        }
+        if (accelImpS != null && accelImpS < 50 && fBRS != null && fBRS < 50) {
+          diagnoses.push({ icon: '🔴', title: '팔로 던지는 타입 (팔 보상)', narrative: '하체 힘이 약한데 구속이 나오면 팔·상체로 보상하고 있을 가능성. <strong>훈련</strong>: 3D 동작 분석·팔꿈치/어깨 부하 측정 병행, 하체 강화', color: '#dc2626' });
+        }
+        if (xInstS != null && xInstS < 50) {
+          diagnoses.push({ icon: '🟠', title: '좌우로 새는 타입', narrative: '발이 1루·3루 쪽으로 흔들림. <strong>훈련</strong>: 발 방향 정렬, 골반 경로 직진, 몸통 기울기 점검', color: '#fb923c' });
+        }
+        if (diagnoses.length === 0 && lhei != null && lhei >= 70) {
+          diagnoses.push({ icon: '🟢', title: '하체 메카닉 우수', narrative: '축발·디딤발·전환·받쳐주기·안정성 모두 적정. 현재 패턴 유지하면서 세부 미세조정만 권장', color: '#16a34a' });
+        }
+
+        const fmt2 = (v, d=3, u='') => v == null ? '—' : `${v.toFixed(d)}${u}`;
+        const sc2 = (s) => s == null ? '#94a3b8' : s >= 75 ? '#16a34a' : s >= 50 ? '#22d3ee' : s >= 30 ? '#fb923c' : '#dc2626';
+
+        return `
+        <!-- ⑥ NewtForce 시그니처 변수 -->
+        <div class="mt-5 p-4" style="background: linear-gradient(135deg, rgba(34,211,238,0.04), rgba(99,102,241,0.04)); border-radius: 6px; border: 1px solid rgba(34,211,238,0.3);">
+          <div class="flex items-baseline justify-between mb-3 flex-wrap" style="gap: 8px;">
+            <div class="text-sm" style="color: #22d3ee; font-weight: 700;">⚙ 하체 효율 핵심 지표 (NewtForce 기준)</div>
+            <div class="text-xs" style="color: var(--text-muted);">차고 나가기·전환·받쳐주기·안정성 종합 평가</div>
+          </div>
+          <table class="var-table" style="font-size: 12px; width: 100%;">
+            <thead><tr><th>지표</th><th>값</th><th>의미</th><th>점수</th></tr></thead>
+            <tbody>
+              <tr><td>축발 최대 힘 도달 시간</td><td class="mono">${fmt2(tPkT, 3, ' s')}</td><td class="text-xs" style="color: var(--text-muted);">무릎 들기→축발 최대 힘 (0.6초 적정)</td><td><strong style="color: ${sc2(tPkTS)};">${tPkTS ?? '—'}</strong></td></tr>
+              <tr><td>디딤발 최대 힘 도달 시간</td><td class="mono">${fmt2(tPkL, 3, ' s')}</td><td class="text-xs" style="color: var(--text-muted);">앞발 착지→디딤발 최대 힘 (0.14초 적정)</td><td><strong style="color: ${sc2(tPkLS)};">${tPkLS ?? '—'}</strong></td></tr>
+              <tr><td>★ 릴리스 순간 디딤발 힘</td><td class="mono">${fmt2(fBR, 2, ' BW')}</td><td class="text-xs" style="color: var(--text-muted);">릴리스 때 디딤발 받쳐주기 (1.0+ BW = 회전축 유지)</td><td><strong style="color: ${sc2(fBRS)};">${fBRS ?? '—'}</strong></td></tr>
+              <tr><td>좌우 흔들림</td><td class="mono">${fmt2(xInst, 4, ' BW')}</td><td class="text-xs" style="color: var(--text-muted);">1루·3루 쪽으로 새는 정도 (작을수록 안정)</td><td><strong style="color: ${sc2(xInstS)};">${xInstS ?? '—'}</strong></td></tr>
+              <tr><td>착지 후 균형 회복 시간</td><td class="mono">${fmt2(cb, 3, ' s')}</td><td class="text-xs" style="color: var(--text-muted);">릴리스 후 몸 안정까지 (짧을수록 좋음)</td><td><strong style="color: ${sc2(cbS)};">${cbS ?? '—'}</strong></td></tr>
+              <tr><td>디딤발 받쳐주기 효율</td><td class="mono">${fmt2(brakeEff, 3, '')}</td><td class="text-xs" style="color: var(--text-muted);">브레이킹 / 차고 나가기 비율</td><td><strong style="color: ${sc2(brakeEffS)};">${brakeEffS ?? '—'}</strong></td></tr>
+            </tbody>
+          </table>
+
+          <!-- LHEI 종합 점수 -->
+          <div class="mt-4 p-4" style="background: rgba(15,23,42,0.5); border-radius: 6px; border-left: 4px solid ${lheiC};">
+            <div class="flex items-center justify-between flex-wrap" style="gap: 12px;">
+              <div>
+                <div class="text-xs" style="color: var(--text-muted); letter-spacing: 0.05em;">하체 종합 효율 점수 (LHEI)</div>
+                <div class="display flex items-baseline" style="gap: 8px; margin-top: 4px;">
+                  <span style="font-size: 42px; color: ${lheiC}; font-weight: 700; line-height: 1;">${lhei == null ? '—' : Math.round(lhei)}</span>
+                  <span class="text-sm" style="color: var(--text-muted);">/100</span>
+                  <span class="text-sm ml-2" style="color: ${lheiC}; font-weight: 600;">${lheiLabel}</span>
+                </div>
+              </div>
+              <div class="text-xs" style="color: var(--text-muted); max-width: 360px; line-height: 1.5;">
+                차고 나가기 · 무게 이동 · 받쳐주기 · 전달 · 안정성을 합쳐 평가한 점수.
+                <strong>${lhei_components.length}개 지표</strong>의 가중 평균.
+              </div>
+            </div>
+          </div>
+
+          <!-- 투수 유형 자동 진단 -->
+          ${diagnoses.length > 0 ? `
+          <div class="mt-4">
+            <div class="text-xs mb-2" style="color: var(--text-primary); font-weight: 600;">🩺 투수 유형 자동 진단</div>
+            ${diagnoses.map(d => `
+              <div class="p-3 mb-2" style="background: rgba(15,23,42,0.4); border-radius: 6px; border-left: 3px solid ${d.color};">
+                <div class="text-xs mb-1" style="color: ${d.color}; font-weight: 700;">${d.icon} ${d.title}</div>
+                <div class="text-xs" style="color: var(--text-secondary); line-height: 1.6;">${d.narrative}</div>
+              </div>
+            `).join('')}
+          </div>` : ''}
+
+          <!-- 4-phase 해석 -->
+          <details class="mt-3">
+            <summary class="cursor-pointer text-xs" style="color: var(--accent-soft);">📊 투구 단계별 체크포인트</summary>
+            <div class="mt-2 text-xs p-3" style="background: var(--bg-elevated); border-radius: 6px; line-height: 1.7; color: var(--text-secondary);">
+              <strong>① 무릎 들기 ~ 로딩</strong>: 축발 안정적으로 체중 받기, 힙힌지, 좌우 흔들림 없음<br>
+              <strong>② 스트라이드 ~ 라이드</strong>: 축발 차고 나가기 충분, 몸 전진 속도 적정 (뒤에 처지지도, 앞으로 쏟아지지도 X)<br>
+              <strong>③ 앞발 착지</strong>: 디딤발 빠르게 받쳐주기, 누르는 힘 유지, 두 발 전환 부드러움<br>
+              <strong>④ 어깨 외회전 ~ 릴리스</strong>: 디딤발 끝까지 버텨주기, 균형 회복 빠름, 앞무릎 무너짐 없음
+            </div>
+          </details>
+        </div>
+
+        <!-- ⑦ 선수 피드백 카드 (NewtForce §11) -->
+        ${diagnoses.length > 0 ? `
+        <div class="mt-4 p-4" style="background: rgba(251,191,36,0.05); border-radius: 6px; border: 1px solid rgba(251,191,36,0.2);">
+          <div class="text-xs mb-2" style="color: #fbbf24; font-weight: 700;">💬 코칭 큐 — 선수에게 전달할 표현</div>
+          <table class="var-table" style="font-size: 11px; width: 100%;">
+            <thead><tr><th>측정 결과</th><th>선수에게 말할 때</th><th>훈련 방향</th></tr></thead>
+            <tbody>
+              ${yBackS != null && yBackS < 50 ? '<tr><td>축발이 마운드를 덜 누름</td><td>"축발로 마운드를 오래 잡고 가자"</td><td>뒤에서 버티며 앞으로 타고 나가기</td></tr>' : ''}
+              ${accelImpS != null && accelImpS < 50 ? '<tr><td>축발 누적 힘 부족</td><td>"잠깐 미는 게 아니라 끝까지 밀어"</td><td>힘을 오래 유지하는 템포·리듬</td></tr>' : ''}
+              ${playerVeloS != null && playerVeloS < 50 ? '<tr><td>몸 전진 속도 부족</td><td>"뒤에서 멈추지 말고 포수 쪽으로 타고 나가"</td><td>라이드 드릴, 몸 전진 감각</td></tr>' : ''}
+              ${frontBrakeS != null && frontBrakeS < 50 ? '<tr><td>디딤발 받쳐주기 약함</td><td>"앞발로 단단히 받쳐줘"</td><td>착지하면 앞발로 몸 받아내기 드릴</td></tr>' : ''}
+              ${xInstS != null && xInstS < 50 ? '<tr><td>좌우 흔들림 큼</td><td>"몸이 1루(3루) 쪽으로 새고 있어"</td><td>발 방향·골반 경로·몸통 기울기 정렬</td></tr>' : ''}
+              ${cbS != null && cbS < 50 ? '<tr><td>착지 후 안정 늦음</td><td>"착지하고도 몸이 계속 앞으로 흘러가"</td><td>브레이싱 후 회전 안정 드릴</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>` : ''}
+        `;
+      })()}
+
+      <!-- ⑧ 산식 reference 펼침 -->
+      <details class="mt-3">
+        <summary class="cursor-pointer text-xs" style="color: var(--accent-soft);">📚 산식과 참고자료</summary>
+        <div class="mt-2 text-xs p-3" style="background: var(--bg-elevated); border-radius: 6px; line-height: 1.7; color: var(--text-secondary);">
+          <strong>핵심 산식</strong>:<br>
+          • 누적 힘 (Impulse) = ∫F(t) dt — 힘의 크기 × 시간 (최대 힘보다 더 의미 있는 추진/받쳐주기 지표)<br>
+          • 체중 정규화 = 힘 / 체중 — 선수끼리 비교 가능하게<br>
+          • 받쳐주기 효율 = 디딤발 누적 브레이킹 / 축발 누적 차고 나가기<br>
+          • 하체 종합 점수 (LHEI) = 8개 지표 가중 평균 (NewtForce §13)<br><br>
+          <strong>참고자료</strong>:<br>
+          [1] NewtForce. <em>피칭 마운드 지면반력 분석 시스템</em>. newtforce.com<br>
+          [2] NewtForce. <em>지면반력과 구속의 관계</em><br>
+          [3] Slowik 등 (2019) — 축발 누적 힘이 구속에 미치는 영향<br>
+          [4] Kageyama 등 (2014) — 디딤발 지면반력과 구속 상관관계<br>
+          [5] Howenstein 등 (2019) — 디딤발 받쳐주기 패턴 분석<br>
+          [6] MacWilliams 등 (1998) — 투구 동작 포스플레이트 분석<br>
+          [7] Florida Baseball ARMory — <em>투수의 힙힌지 분석</em><br>
+          [8] Florida Baseball ARMory — <em>클로백 — 구속·제구·팔 건강의 숨은 키</em><br>
+          [9] Frontiers Sports (2025) — 스트라이드 길이와 하체 에너지 흐름
+        </div>
+      </details>
     </div>`;
   }
 
@@ -777,7 +1352,7 @@
         formula: 'CMJ RSI-modified = Jump Height / Contact Time', threshold_text: 'Elite ≥1.0 m/s · 평균 0.7 · <0.5 부족',
         mlb_avg: '0.95 m/s (Driveline)', coaching: 'Stretch-shortening cycle 효율 — block leg ecc→con 전환의 직접 지표.', drill: 'Drop Jump 3×5, Pogo Jump 3×10, Bounding 3×20m' },
       { label: '체격 (BMI)', val: fitness.bmi != null ? _bmiScore(fitness.bmi) : null, raw: fitness.bmi, unit: '', desc: '신체 구성 (BMI 기반)',
-        formula: 'BMI = Mass(kg) / Height(m)²', threshold_text: 'Optimal 22~25 (피칭 elite) · <19 또는 >28 = 발달 권장',
+        formula: 'BMI = Mass(kg) / Height(m)²', threshold_text: 'Optimal 22~25 (피칭 elite) · <19 또는 >28 = 발전 권장',
         mlb_avg: '23 (MLB Combine)', coaching: 'BMI 적정 범위는 라인레버리지·체질량 조합. 너무 낮으면 출력 부족, 너무 높으면 가동 제한.', drill: '단백질 1.6~2.0 g/kg, Compound 리프트, 수면 8h+' },
     ];
     const fitMeasured = fitDims.filter(d => d.val != null).length;
@@ -800,7 +1375,7 @@
       const detailRows = dims.map(d => {
         const c = colorScore(d.val);
         const sc = d.val == null ? '—' : d.val + '점';
-        const grade = d.val == null ? '미측정' : d.val >= 80 ? '최상위' : d.val >= 70 ? '우수' : d.val >= 50 ? '상위 평균' : '평균 수준 — 발달 여지 큼';
+        const grade = d.val == null ? '미측정' : d.val >= 80 ? '최상위' : d.val >= 70 ? '우수' : d.val >= 50 ? '상위 평균' : '평균 수준 — 발전 여지 큼';
         // 항목별 detail (산식·임계·MLB 평균·코칭·drill)
         // 우선순위: (1) d.varKey → VAR_DETAILS lookup, (2) d 객체 내 인라인 detail (체력 fitDims), (3) d.refVars 첫 번째 매핑
         const detail = (d.varKey && TM?.VAR_DETAILS) ? TM.VAR_DETAILS[d.varKey] : null;
@@ -845,7 +1420,7 @@
           측정 변수: <span style="color: ${color}; font-weight: 600;">${measured}/${total}</span> · 신뢰도 ${measured/total >= 0.7 ? '<span style="color: #16a34a;">높음</span>' : measured/total >= 0.4 ? '<span style="color: #fb923c;">중간</span>' : '<span style="color: #dc2626;">낮음</span>'}
         </div>
         <div class="text-[10px] mb-3" style="color: var(--text-muted); font-style: italic;">
-          ※ 100점 = MLB 평균 표준값. 80점+ = 한국 고1 elite. 50점 = 발달 평균.
+          ※ 100점 = MLB 평균 표준값. 80점+ = 한국 고1 elite. 50점 = 발전 평균.
         </div>
         <div style="height: 240px; position: relative;">
           <canvas id="${canvasId}"></canvas>

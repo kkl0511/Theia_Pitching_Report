@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>Theia Pitching Report — 키네틱 체인 Output·Transfer·Leak 분석</title>
+<title>Theia Pitching Report — 투수 메카닉·하체 효율 분석</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -290,7 +290,7 @@
         <button id="mode-pill-pro" class="mode-pill" onclick="selectMode('pro')">프로</button>
       </div>
       <button onclick="toggleFilter()" class="theme-toggle" id="filter-btn"
-              title="자동 디지털 필터 (default OFF — 대부분 데이터는 Visual3D에서 이미 필터링됨. raw 미필터링 데이터일 때만 ON)"
+              title="자동 데이터 정리 (기본 OFF — 데이터가 이미 정리됐다고 가정. raw 데이터일 때만 ON)"
               style="color: var(--text-muted); border-color: var(--border);">
         🌊 필터 <span id="filter-state">OFF</span>
       </button>
@@ -450,8 +450,8 @@
       <div class="step-title">c3d.txt 메카닉 데이터 업로드</div>
     </div>
     <div class="info-box">
-      <strong>Visual3D pipeline</strong>이 적용된 c3d.txt 파일 — 한 선수의 여러 trial을 동시에 업로드하면 평균 + 제구 일관성 (P1 wrist SD, P3 release height SD, P5 arm slot SD) 자동 산출.
-      박명균 옛 형식 (46-col) 및 새 87-col 형식 모두 지원.
+      Theia 측정 c3d.txt 파일을 업로드하세요. 한 선수의 여러 투구를 동시에 올리면 <strong>평균 + 제구 일관성</strong>(손목 위치 변동, 릴리스 높이 변동 등)이 자동 산출됩니다.
+      두 가지 export 형식(46 컬럼·87 컬럼) 모두 지원.
     </div>
 
     <div class="file-drop mb-3" id="c3d-drop-zone" onclick="document.getElementById('c3d-upload').click()">
@@ -534,8 +534,8 @@ function toggleFilter() {
     else { btn.style.color = 'var(--text-muted)'; btn.style.borderColor = 'var(--border)'; }
   }
   showAlert(window._THEIA_FILTER_ON
-    ? '✓ 자동 필터링 ON — Butterworth 4th 적용 (angle/pos·power·ME 10Hz, ang_vel 15Hz, GRF 25Hz). ⚠ Visual3D pipeline에서 이미 필터링된 데이터면 이중 필터링이 되니 OFF 권장.'
-    : '✓ 자동 필터링 OFF (default) — Visual3D pipeline에서 이미 좌표 필터링된 데이터로 가정. 학생이 raw 미필터링 좌표로 산출했다면 ON 필요.', 'info');
+    ? '✓ 자동 데이터 정리 ON — 노이즈 제거. ⚠ 데이터가 이미 정리된 상태면 이중 처리되어 peak 값이 깎일 수 있으니 OFF 권장.'
+    : '✓ 자동 데이터 정리 OFF (기본값) — 데이터가 이미 정리됐다고 가정. 정리 안 된 raw 데이터를 받았을 때만 ON으로 켜세요.', 'info');
 }
 
 // 테마 토글 (Day ↔ Night)
@@ -576,8 +576,8 @@ function selectLevel(level) {
   selectMode(mode);
 
   const desc = {
-    '중학': '중학 → <strong>HS Top 10%</strong> 모드 추천 (발달 단계 유사, 고교 1년차 상위 10% reference로 percentile 평가)',
-    '고교': '고교 → <strong>HS Top 10%</strong> 모드 (n=41 percentile 기준 — 가장 정확한 발달 코호트)',
+    '중학': '중학 → <strong>HS Top 10%</strong> 모드 추천 (발전 단계 유사, 고교 1년차 상위 10% reference로 percentile 평가)',
+    '고교': '고교 → <strong>HS Top 10%</strong> 모드 (n=41 percentile 기준 — 가장 정확한 발전 코호트)',
     '대학': '대학 → <strong>Pro Reference</strong> 모드 추천 (elite 문헌 기반 Gaussian — Wood-Smith·Werner·ASMI)',
     '프로': '프로 → <strong>Pro Reference</strong> 모드 (MLB·KBO 수준 elite 비교 — Driveline R&D 종합)',
   };

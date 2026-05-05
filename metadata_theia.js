@@ -73,6 +73,53 @@
     'P4_mer_to_br_SD':      { name: 'P4 MER→BR 시간 SD', unit: 'ms', polarity: 'lower', cat: 'CONTROL', hint: '타이밍 일관성' },
     'P5_stride_SD':         { name: 'P5 Stride SD', unit: 'cm', polarity: 'lower', cat: 'CONTROL', hint: '발 위치 일관성' },
     'P6_trunk_tilt_SD':     { name: 'P6 몸통 기울기 SD', unit: 'deg', polarity: 'lower', cat: 'CONTROL', hint: '몸통 자세 일관성' },
+
+    // ════════════════════════════════════════════════════════════
+    // ★ v0.28 — PDF §4·5·7 적용: GRF impulse · Joint W⁺/W⁻ · ETE
+    // ════════════════════════════════════════════════════════════
+    // ── Phase A: GRF impulse (PDF §7) ──
+    'drive_leg_propulsive_impulse': { name: 'Drive leg propulsive impulse', unit: 'BW·s', polarity: 'higher', cat: 'OUTPUT', hint: '★ ∫F_AP_trail dt/BW (KH→FC) — GRF 직접 측정' },
+    'lead_leg_braking_impulse':     { name: 'Lead leg braking impulse', unit: 'BW·s', polarity: 'higher', cat: 'OUTPUT', hint: '★ ∫(-F_AP_lead) dt/BW (FC→BR)' },
+    'trail_vGRF_impulse':           { name: 'Trail vGRF impulse', unit: 'BW·s', polarity: 'higher', cat: 'OUTPUT', hint: '∫F_Z_trail dt/BW (KH→FC)' },
+    'lead_vGRF_impulse':            { name: 'Lead vGRF impulse', unit: 'BW·s', polarity: 'higher', cat: 'OUTPUT', hint: '∫F_Z_lead dt/BW (FC→BR)' },
+
+    // ── Phase B: Joint Power W⁺/W⁻ (PDF §4) ──
+    'shoulder_W_pos':   { name: '어깨 W⁺ (양의 일)', unit: 'J', polarity: 'higher', cat: 'OUTPUT', hint: '∫max(P,0) dt — 어깨가 생성한 에너지' },
+    'shoulder_W_neg':   { name: '어깨 W⁻ (음의 일)', unit: 'J', polarity: 'lower', cat: 'LEAK', hint: '∫min(P,0) dt — 어깨 감속 work' },
+    'shoulder_absorption_ratio': { name: '어깨 흡수비 |W⁻|/W⁺', unit: 'ratio', polarity: 'absolute', cat: 'LEAK', hint: '~1.0 정상' },
+    'elbow_W_pos':      { name: '팔꿈치 W⁺', unit: 'J', polarity: 'higher', cat: 'OUTPUT', hint: '팔꿈치 생성 에너지' },
+    'elbow_W_neg':      { name: '팔꿈치 W⁻', unit: 'J', polarity: 'lower', cat: 'LEAK', hint: '큰 음의 일 = 정상 brake' },
+    'elbow_absorption_ratio': { name: '팔꿈치 흡수비', unit: 'ratio', polarity: 'absolute', cat: 'LEAK', hint: '~2.0 정상 elite (channel 역할)' },
+    'trail_hip_W_pos':  { name: 'Trail hip W⁺', unit: 'J', polarity: 'higher', cat: 'OUTPUT', hint: '뒷다리 hip 생성 일' },
+    'lead_hip_W_pos':   { name: 'Lead hip W⁺', unit: 'J', polarity: 'higher', cat: 'OUTPUT', hint: '앞다리 hip 생성 일' },
+    'lead_knee_W_pos':  { name: 'Lead knee W⁺', unit: 'J', polarity: 'higher', cat: 'OUTPUT', hint: '★ block power' },
+
+    // ── Phase C: ETE — Energy Transfer Efficiency (PDF §5 핵심) ──
+    'dE_pelvis_KH_FC':  { name: 'ΔE 골반 (KH→FC)', unit: 'J', polarity: 'higher', cat: 'TRANSFER', hint: '골반 에너지 변화' },
+    'dE_trunk_KH_FC':   { name: 'ΔE 몸통 (KH→FC)', unit: 'J', polarity: 'higher', cat: 'TRANSFER', hint: '몸통 가속 phase' },
+    'dE_trunk_FC_BR':   { name: 'ΔE 몸통 (FC→BR)', unit: 'J', polarity: 'lower', cat: 'TRANSFER', hint: '음수=trunk 손실 (정상)' },
+    'dE_arm_FC_BR':     { name: 'ΔE 팔 (FC→BR)', unit: 'J', polarity: 'higher', cat: 'TRANSFER', hint: '팔 가속 phase' },
+    'W_hip_pos_KH_FC':  { name: 'W⁺ 양 hip (KH→FC)', unit: 'J', polarity: 'higher', cat: 'OUTPUT', hint: 'ETE 분모' },
+    'trunk_loss_FC_BR': { name: 'Trunk loss (FC→BR)', unit: 'J', polarity: 'higher', cat: 'TRANSFER', hint: '|ΔE_trunk_neg|' },
+    'ETE_pelvis_to_trunk': { name: '★ ETE 골반→몸통', unit: 'ratio', polarity: 'higher', cat: 'TRANSFER', hint: 'ΔE_trunk / W⁺_hip — PDF §5 핵심 산식' },
+    'ETE_trunk_to_arm':    { name: '★ ETE 몸통→팔', unit: 'ratio', polarity: 'higher', cat: 'TRANSFER', hint: 'ΔE_arm / |trunk loss|' },
+    'ELI_segment_pelvis_trunk': { name: 'ELI segment 골반→몸통', unit: 'ratio', polarity: 'lower', cat: 'LEAK', hint: '1 - ETE' },
+    'ELI_segment_trunk_arm':    { name: 'ELI segment 몸통→팔', unit: 'ratio', polarity: 'lower', cat: 'LEAK', hint: '1 - ETE' },
+
+    // ── Phase D: Δknee, pelvis_decel ──
+    'knee_flexion_change_FC_to_MER': { name: '앞무릎 굴곡 변화 (FC→MER)', unit: 'deg', polarity: 'lower', cat: 'LEAK', hint: '음수=신전(좋음), 양수=무너짐' },
+    'knee_flexion_change_MER_to_BR': { name: '앞무릎 굴곡 변화 (MER→BR)', unit: 'deg', polarity: 'lower', cat: 'LEAK', hint: '음수=계속 신전' },
+    'pelvis_deceleration': { name: '골반 감속 (peak ω - ω at MER)', unit: 'deg/s', polarity: 'higher', cat: 'TRANSFER', hint: '★ 큰 감속 = 몸통 전달' },
+
+    // ════════════════════════════════════════════════════════════
+    // ★ v0.34 — NewtForce 시그니처 변수 (PDF §3 기반)
+    // ════════════════════════════════════════════════════════════
+    'time_to_peak_trail_force': { name: '뒷다리 peak 도달 시간 (KH→peak)', unit: 's', polarity: 'absolute', cat: 'OUTPUT', hint: '0.6s 적정. 빠르면 spike 패턴, 늦으면 plateau' },
+    'time_to_peak_lead_force':  { name: '앞다리 peak 도달 시간 (FC→peak)', unit: 's', polarity: 'absolute', cat: 'OUTPUT', hint: '0.14s 적정. 너무 이르면 조기 블로킹' },
+    'force_at_ball_release':    { name: 'BR 시점 앞다리 vGRF', unit: 'BW', polarity: 'higher', cat: 'TRANSFER', hint: '★ 1.0+ BW = 회전축 유지 (NewtForce: Force at Ball Release)' },
+    'x_force_instability':      { name: 'X(좌우) force 변동 SD', unit: 'BW', polarity: 'lower', cat: 'CONTROL', hint: 'NewtForce: X Force Instability — 작을수록 좌우 안정' },
+    'clawback_time':            { name: 'Clawback 시간 (BR 후 안정 복귀)', unit: 's', polarity: 'lower', cat: 'CONTROL', hint: '★ 짧을수록 브레이킹 안정 (NewtForce: Clawback)' },
+    'lead_braking_efficiency':  { name: '앞다리 브레이킹 효율 (brake/drive)', unit: 'ratio', polarity: 'higher', cat: 'TRANSFER', hint: 'NewtForce §4: Lead brake impulse / Trail propulsive impulse' },
   };
 
   // ════════════════════════════════════════════════════════════
@@ -248,7 +295,7 @@
     P1_wrist_3D_SD:       { elite: 5,  avg: 8,  poor: 12, unit: 'cm',  ref: 'Werner & Fleisig 2009 — elite ≤5 cm' },
     P2_arm_slot_SD:       { elite: 2,  avg: 5,  poor: 10, unit: 'deg', ref: 'Driveline R&D — slot variation 5° = avg' },
     P3_release_height_SD: { elite: 3,  avg: 5,  poor: 8,  unit: 'cm',  ref: 'Driveline — release height SD 3cm = elite' },
-    P4_mer_to_br_SD:      { elite: 5,  avg: 10, poor: 20, unit: 'ms',  ref: 'Theia 측정 — timing SD 10ms = 발달 평균' },
+    P4_mer_to_br_SD:      { elite: 5,  avg: 10, poor: 20, unit: 'ms',  ref: 'Theia 측정 — timing SD 10ms = 발전 평균' },
     P5_stride_SD:         { elite: 3,  avg: 6,  poor: 10, unit: 'cm',  ref: 'Davis 2009 — foot position SD 6cm = avg HS' },
     P6_trunk_tilt_SD:     { elite: 2,  avg: 5,  poor: 10, unit: 'deg', ref: 'Murray 2001 — trunk tilt SD 5° = avg' },
   };
@@ -313,21 +360,21 @@
   const VAR_DETAILS = {
     Pelvis_peak: {
       formula: 'Pelvis_Ang_Vel.Z 시계열 KH→BR 구간 max |abs|',
-      threshold: 'Elite ≥800°/s · HS Top 10% mean ~640°/s · 발달 ~500°/s',
+      threshold: 'Elite ≥800°/s · HS Top 10% mean ~640°/s · 발전 ~500°/s',
       mlb_avg: '720°/s (MLB Combine)',
       coaching: '뒷다리 push + hip rotation의 폭발력. 골반 회전 속도 부족 시 trunk·arm 출력 baseline 부족.',
       drill: 'Med ball rotational throws 3×8, Hip rotation 90/90 holds, Single-leg cable rotation',
     },
     Trunk_peak: {
       formula: 'Thorax_Ang_Vel.Z 시계열 max |abs|',
-      threshold: 'Elite ≥1100°/s · HS Top 10% ~825°/s · 발달 ~700°/s',
+      threshold: 'Elite ≥1100°/s · HS Top 10% ~825°/s · 발전 ~700°/s',
       mlb_avg: '1100°/s (Werner 2008)',
       coaching: '몸통 회전 출력 — pelvis 에너지를 증폭해서 arm으로 전달하는 핵심.',
       drill: 'Anti-rotation core (Pallof press), 메디신볼 rotational throw, Connected throw',
     },
     Arm_peak: {
       formula: 'Pitching_Shoulder_Ang_Vel.Z 시계열 max |abs| (★ 어깨 IR/ER 각속도, GH joint, ≠ humerus segment)',
-      threshold: 'Elite ≥7000°/s · HS Top 10% ~4716°/s · 발달 ~3500°/s',
+      threshold: 'Elite ≥7000°/s · HS Top 10% ~4716°/s · 발전 ~3500°/s',
       mlb_avg: '7240°/s (Fleisig 2018) — same as shoulder_ir_vel_max',
       coaching: '★ Shoulder IR vel max 동일 변수. release 직전 humerus internal rotation 가속 = 구속 결정 핵심.',
       drill: 'Plyo ball reverse throws, Sleeper stretch, Layback drill',
@@ -505,30 +552,38 @@
   //   ELI 효율 점수 = Σ wₖ × LeakScoreₖ (100점 만점, 높을수록 효율적)
   //   영역별 LeakScore = 메카닉 6축 점수 + INJURY 안전도
   // ════════════════════════════════════════════════════════════
+  // ★ v0.28 — GRF 기반 변수 신뢰도 ↑ + ETE 변수 추가 → 가중치 재조정
+  //   lower_drive 15→18 (GRF impulse 추가, 신뢰도↑)
+  //   lead_block  20→22 (braking impulse, knee_flex_change 추가)
+  //   pelvis_trunk 15→15 (ETE_pelvis_to_trunk 추가, 가중 유지)
+  //   trunk_power 20→15 (markerless 한계 반영)
+  //   arm_transfer 15→15 (ETE_trunk_to_arm 추가, 가중 유지)
+  //   load_eff 15→15 (흡수비율 추가)
+  //   합 100
   const ELI_AREAS = [
-    { id: 'lower_drive',  name: '하체 추진',          weight: 15,
-      mech_idx: 0,  // 메카닉 6축 #1
-      desc: 'drive-leg impulse, COM velocity, stride momentum',
+    { id: 'lower_drive',  name: '하체 추진',          weight: 18,
+      mech_idx: 0,
+      desc: 'drive-leg impulse, COM velocity, hip W⁺',
       leak_when_low: '전방 이동 에너지 생성 부족' },
-    { id: 'lead_block',   name: '앞다리 블로킹',      weight: 20,  // ★ 가중치 최대
+    { id: 'lead_block',   name: '앞다리 블로킹',      weight: 22,  // ★ 가중치 최대 (GRF 직접 측정)
       mech_idx: 1,
-      desc: 'braking impulse, vertical GRF, lead knee flexion change',
+      desc: 'braking impulse, vertical GRF, lead knee W⁺',
       leak_when_low: '전방 이동을 회전으로 전환 못함' },
-    { id: 'pelvis_trunk', name: '골반-몸통 연결',    weight: 15,  // ★ v0.26 — markerless 골반·Z축 회전 인식 한계 → 20→15
+    { id: 'pelvis_trunk', name: '골반-몸통 연결',    weight: 15,
       mech_idx: 2,
-      desc: 'hip-shoulder separation, pelvis-trunk delay, FC trunk rotation',
+      desc: 'ETE pelvis→trunk, pelvis decel, X-factor',
       leak_when_low: '상체 조기 회전 또는 분리 부족' },
-    { id: 'trunk_power',  name: '몸통 파워',          weight: 20,  // ★ v0.26 — FC 시 몸통 자세 중요 변수 추가 → 15→20
+    { id: 'trunk_power',  name: '몸통 파워',          weight: 15,
       mech_idx: 3,
-      desc: 'trunk angular velocity, FC trunk back-tilt, forward flexion deceleration',
+      desc: 'trunk angular velocity, forward flexion, lag·speedup',
       leak_when_low: '몸통이 에너지원·전달원 역할 못함' },
     { id: 'arm_transfer', name: '팔 전달',            weight: 15,
       mech_idx: 4,
-      desc: 'upper arm-forearm peak sequence, MER timing, ER',
+      desc: 'ETE trunk→arm, MER timing, shoulder/elbow W⁺',
       leak_when_low: '팔 속도 피크 순서 오류' },
     { id: 'load_eff',     name: '부하 대비 효율',     weight: 15,
-      from_injury: true,  // INJURY 카테고리 안전도 사용
-      desc: 'elbow valgus torque / ball speed, shoulder torque / ball speed',
+      from_injury: true,
+      desc: 'absorption ratio (|W⁻|/W⁺), valgus torque/velocity',
       leak_when_low: '팔 보상형 투구 가능성 (UCL stress↑)' },
   ];
 
@@ -549,28 +604,28 @@
   // 리크 위치별 선수 피드백 문장 (PDF 표 10 기반)
   const ELI_FEEDBACK_TEMPLATES = {
     lead_block: {
-      diagnosis: '착지 후 앞무릎이 계속 굴곡되면서 몸이 홈플레이트 방향으로 흘러갑니다. 전방 이동 에너지가 회전 에너지로 바뀌지 못하고, 골반·몸통 회전이 늦어지는 패턴이 나타납니다.',
-      training: 'lead-leg block drill, stride stabilization, deceleration control',
+      diagnosis: '앞발 착지 후 앞무릎이 계속 굽혀지면서 몸이 포수 방향으로 흘러갑니다. 앞으로 가던 힘이 회전으로 바뀌지 못하고, 골반·몸통이 늦게 돌아가는 패턴입니다.',
+      training: '앞발 받쳐주기 드릴, 스트라이드 안정화, 착지 후 멈춰주기 훈련',
     },
     pelvis_trunk: {
-      diagnosis: '앞발 착지 전에 상체가 먼저 열리면서 골반-몸통 분리가 충분히 만들어지지 않습니다. 하체에서 만든 에너지를 몸통에 저장하기 전에 팔이 먼저 나가는 경향이 있습니다.',
-      training: 'delayed trunk rotation drill, separation awareness, med-ball sequencing',
+      diagnosis: '앞발 착지 전에 상체가 먼저 열려서 골반과 상체가 충분히 분리되지 않습니다. 하체에서 만든 힘을 몸통에 저장하기 전에 팔이 먼저 나가는 경향입니다.',
+      training: '몸통 늦게 돌리기 드릴, 분리 감각 인지, 메디신볼 회전 훈련',
     },
     arm_transfer: {
-      diagnosis: '몸통 회전속도 피크 이후 팔 속도가 순차적으로 증가해야 하지만, 몸통 감속과 팔 가속의 연결이 약해 팔이 독립적으로 공을 끌고 가는 보상 패턴이 나타납니다.',
-      training: 'trunk deceleration drill, scap·arm timing, connection drill',
+      diagnosis: '몸통이 가속한 후 팔이 이어서 가속해야 하는데, 몸통 감속과 팔 가속의 연결이 약해 팔이 따로 노는 보상 패턴이 나타납니다.',
+      training: '몸통 멈춰주기 드릴, 견갑·팔 타이밍 훈련, 연결 동작 드릴',
     },
     load_eff: {
-      diagnosis: '구속에 비해 팔꿈치 또는 어깨 부하 지표가 높습니다. 하체와 몸통에서 충분히 전달되지 않은 에너지를 팔이 보상하고 있을 가능성이 있습니다.',
-      training: 'velocity cap, arm-care, lower-body·trunk efficiency before max effort',
+      diagnosis: '구속에 비해 팔꿈치·어깨에 걸리는 부담이 큽니다. 하체와 몸통에서 충분히 힘이 안 넘어와서 팔이 더 일하고 있을 가능성이 있습니다.',
+      training: '구속 제한 훈련, 팔 케어, 하체·몸통 효율 먼저 끌어올리기',
     },
     lower_drive: {
-      diagnosis: '뒷다리에서 만들어지는 추진 에너지(drive-leg impulse, COM 전진 속도)가 부족합니다. 이후 단계의 회전 체인이 약해질 수 있는 시작점입니다.',
-      training: 'sled push, single-leg vertical jump, trap bar deadlift',
+      diagnosis: '뒷다리(축발)에서 만드는 추진력이 부족합니다. 이후 회전 단계가 약해질 수 있는 시작점이 됩니다.',
+      training: '슬레드 푸시, 한 발 점프, 트랩바 데드리프트',
     },
     trunk_power: {
-      diagnosis: '몸통 회전속도와 굴곡 출력이 부족하여 trunk가 에너지원·전달원 역할을 충분히 못하고 있습니다.',
-      training: 'med-ball rotational throw, anti-rotation core, connected throw',
+      diagnosis: '몸통 회전속도와 앞으로 굽히는 출력이 부족해서, 몸통이 에너지를 만들고 전달하는 역할을 충분히 못 하고 있습니다.',
+      training: '메디신볼 회전 던지기, 안티 로테이션 코어, 연결 동작 던지기',
     },
   };
 

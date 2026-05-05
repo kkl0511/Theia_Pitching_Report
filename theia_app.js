@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.26';
+  const ALGORITHM_VERSION = 'v0.36';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -99,20 +99,24 @@
     columnIndex['TIME_abs'] = frameNumIdxs[0] != null ? frameNumIdxs[0] : columnIndex['FRAMES'] + 1;
     columnIndex['TIME_rel'] = frameNumIdxs[1] != null ? frameNumIdxs[1] : columnIndex['TIME_abs'] + 1;
 
-    // 데이터 row 6+ — kinematic (TIME_rel != null) + force-only (TIME_rel == null)
+    // ★ v0.30 — 데이터 row 분류 (col 0 ITEM 기반)
+    //   kin frame: TIME_rel(col 2) != null
+    //   force-only frame: TIME_rel == null이지만 col 0 (ITEM) != null
+    //     ※ col 1 (FRAMES) 비어있을 수 있어 ITEM (col 0)으로 검사
     const kinematic = [];
     const force_only = [];
     let firstFrame = null, lastKinTime = null;
+    const itemIdx = 0;  // col 0 = ITEM
     for (let i = 5; i < lines.length; i++) {
       const r = lines[i].split('\t');
-      if (r.length < 5) continue;
+      if (r.length < 3) continue;
       const tt = safeNum(r[columnIndex['TIME_rel']]);
+      const item = safeNum(r[itemIdx]);
       if (tt != null) {
         kinematic.push(r);
         lastKinTime = tt;
-      } else {
-        const f = safeNum(r[columnIndex['FRAMES']]);
-        if (f != null) force_only.push(r);
+      } else if (item != null) {
+        force_only.push(r);
       }
     }
 
@@ -440,63 +444,51 @@
     return best;
   }
 
-  // Force-only stream (sub-frame) 처리
+  // ★ v0.31 — Force-only sub-frame 시간 좌표 변환
+  //   force-only frame: col 1·col 2 비어있고 col 0 (ITEM)만 있음
+  //   국민대 lab: fps_force = 1200Hz (force plate sample rate)
+  //   force-only가 trial 끝부분만 cover (시작 시점 trigger 후)
+  //   ★ 핵심 가정: force-only 마지막 ITEM ↔ trial end (= lastKinTime)
+  //   T0 = lastKinTime - (N_force / fps_force)
+  //   ITEM N → t = T0 + (N - lastKinItem) / fps_force
+  //              = lastKinTime + (N - lastForceItem) / fps_force
+  const FPS_FORCE_DEFAULT = 1200;
   function forceOnlyTimes(parsed, varKey) {
     const idx = parsed.columnIndex[varKey];
     if (idx == null || parsed.force_only.length === 0) return [];
-    const fIdx = parsed.columnIndex['FRAMES'];
-    const dur = parsed.meta.duration;
-    if (!dur) return [];
+    const itemIdx = 0;
+    const tIdx = parsed.columnIndex['TIME_rel'];
+
+    const kin = parsed.kinematic;
+    if (kin.length < 2) return [];
+    const lastKinItem = safeNum(kin[kin.length - 1][itemIdx]);
+    const lastKinTime = safeNum(kin[kin.length - 1][tIdx]);
+    if (lastKinItem == null || lastKinTime == null) return [];
+    const fpsForce = FPS_FORCE_DEFAULT;
+    const N_force = parsed.force_only.length;
+    // force-only 시작 시간 T0 = lastKinTime - (N_force / fps_force)
+    const T0 = lastKinTime - (N_force / fpsForce);
+
     const rows = parsed.force_only.map(r => ({
-      f: safeNum(r[fIdx]), v: safeNum(r[idx])
-    })).filter(x => x.f != null && x.v != null).sort((a,b) => a.f - b.f);
+      item: safeNum(r[itemIdx]),
+      v: safeNum(r[idx])
+    })).filter(x => x.item != null && x.v != null).sort((a,b) => a.item - b.item);
     if (rows.length < 2) return [];
-    const first = rows[0].f, last = rows[rows.length-1].f;
-    const span = last - first;
-    if (span <= 0) return [];
-    return rows.map(({f, v}) => ({ t: (f - first) / span * dur, v }));
+    return rows.map(({item, v}) => ({ t: T0 + (item - lastKinItem) / fpsForce, v }));
   }
 
-  // ★ v0.24 — FP1/FP2 → Trail/Lead 자동 매핑
-  //   Theia c3d.txt는 FP1·FP2 헤더로 force plate 데이터 보유 (FORCE/COFP/FREEMOMENT × X/Y/Z)
-  //   Lab setup에 따라 어느 plate가 trail/lead인지 다름. 데이터 거동으로 자동 판별:
-  //   - Trail leg = 처음부터 정적 weight 받는 plate (mound 위에 먼저 디딤)
-  //   - Lead leg  = FC 후 처음 force 받는 plate (앞 발이 plate에 닿을 때 spike)
-  //   판별 기준: 처음 5% 구간 vGRF baseline >= 0.3 BW면 trail, < 0.2 BW면 lead 후보
+  // ★ v0.29 — FP1/FP2 → Lead/Trail 고정 매핑 (사용자 데이터 검증 후 확정)
+  //   FP2 = Trail leg (좌·우완 무관) — 시작부터 trail leg 위, FC 직후 떠나며 0
+  //   FP1 = Lead leg  (좌·우완 무관) — FC 전 0, FC 후 spike (블로킹)
+  //   ★ 이영하 8 trial 실측 검증: FP2가 정적 weight → push → 떠남 패턴 (= trail)
+  //   각 plate의 FC 전후 0/non-zero는 정상이며 impulse 적분에 영향 없음.
   function detectGRFPlateMapping(parsed, mass_kg) {
-    const fp1 = forceOnlyTimes(parsed, 'FP1.Z');
-    const fp2 = forceOnlyTimes(parsed, 'FP2.Z');
+    const fp1 = getForceTimeSeries(parsed, 'FP1.Z');
+    const fp2 = getForceTimeSeries(parsed, 'FP2.Z');
     const has1 = fp1.length > 0;
     const has2 = fp2.length > 0;
     if (!has1 && !has2) return { trail: null, lead: null, source: 'no_force_data' };
-    const bw = (mass_kg || 80) * 9.81;
-    const baseMean = (arr) => {
-      if (arr.length < 20) return 0;
-      const n = Math.max(20, Math.floor(arr.length * 0.05));
-      const sum = arr.slice(0, n).reduce((s, x) => s + Math.abs(x.v), 0);
-      return sum / n;
-    };
-    const fp1Base = has1 ? baseMean(fp1) : 0;
-    const fp2Base = has2 ? baseMean(fp2) : 0;
-    // Trail leg는 baseline ≥ 0.3 BW (정적 weight ≈ 0.5~1 BW)
-    // Lead leg는 baseline < 0.2 BW (FC 전엔 0)
-    const fp1IsTrail = fp1Base >= bw * 0.3;
-    const fp2IsTrail = fp2Base >= bw * 0.3;
-    const fp1IsLead  = fp1Base <  bw * 0.2;
-    const fp2IsLead  = fp2Base <  bw * 0.2;
-    if (fp1IsTrail && fp2IsLead) return { trail: 'FP1', lead: 'FP2', source: 'auto_baseline' };
-    if (fp2IsTrail && fp1IsLead) return { trail: 'FP2', lead: 'FP1', source: 'auto_baseline' };
-    // Fallback: peak 시점이 늦은 쪽이 lead (lead leg vGRF peak은 trail보다 늦음)
-    if (has1 && has2) {
-      const fp1Peak = fp1.reduce((b, x) => Math.abs(x.v) > Math.abs(b.v) ? x : b, fp1[0]);
-      const fp2Peak = fp2.reduce((b, x) => Math.abs(x.v) > Math.abs(b.v) ? x : b, fp2[0]);
-      if (fp1Peak.t > fp2Peak.t) return { trail: 'FP2', lead: 'FP1', source: 'peak_time_fallback' };
-      else                       return { trail: 'FP1', lead: 'FP2', source: 'peak_time_fallback' };
-    }
-    // 한쪽만 활성이면 그쪽을 lead로 가정 (피칭 분석에서 lead가 더 critical)
-    if (has1) return { trail: null, lead: 'FP1', source: 'single_plate_FP1' };
-    if (has2) return { trail: null, lead: 'FP2', source: 'single_plate_FP2' };
-    return { trail: null, lead: null, source: 'none' };
+    return { trail: 'FP2', lead: 'FP1', source: 'lab_convention_FP2_trail_FP1_lead' };
   }
 
   function detectFCfromGRF(parsed, mass_kg, leadKey) {
@@ -516,7 +508,7 @@
 
   function grfPeakBW(parsed, varKey, tFrom, tTo, mass_kg) {
     if (!mass_kg) return null;
-    const arr = forceOnlyTimes(parsed, varKey);
+    const arr = getForceTimeSeries(parsed, varKey);
     if (!arr.length || tFrom == null || tTo == null) return null;
     const lo = Math.min(tFrom, tTo), hi = Math.max(tFrom, tTo);
     let best = 0;
@@ -528,7 +520,7 @@
   }
 
   function grfPeakTime(parsed, varKey, tFrom, tTo) {
-    const arr = forceOnlyTimes(parsed, varKey);
+    const arr = getForceTimeSeries(parsed, varKey);
     if (!arr.length || tFrom == null || tTo == null) return null;
     const lo = Math.min(tFrom, tTo), hi = Math.max(tFrom, tTo);
     let bestAbs = -1, bestT = null;
@@ -542,7 +534,7 @@
 
   function grfImpulseBW(parsed, varKey, tFrom, tTo, mass_kg) {
     if (!mass_kg) return null;
-    const arr = forceOnlyTimes(parsed, varKey);
+    const arr = getForceTimeSeries(parsed, varKey);
     if (arr.length < 2 || tFrom == null || tTo == null) return null;
     const lo = Math.min(tFrom, tTo), hi = Math.max(tFrom, tTo);
     let total = 0;
@@ -554,6 +546,93 @@
     }
     const bw = mass_kg * 9.81;
     return total / bw;
+  }
+
+  // ★ v0.30 — kin frame + force_only frame 통합 시계열
+  //   1. kin frame에서 추출 (TIME_rel 사용)
+  //   2. force_only frame에서 추출 (col 0 ITEM 기반 시간 변환)
+  //   3. 두 시계열 합쳐서 시간순 정렬 → 하나의 단일 시계열 반환
+  //      이렇게 하면 kin frame이 0뿐이어도 force_only가 보완해줌 (lead leg case)
+  function getForceTimeSeries(parsed, varKey) {
+    const ci = parsed.columnIndex;
+    const idx = ci[varKey];
+    if (idx == null) return [];
+    const ti = ci['TIME_rel'];
+    // kin frame 시계열
+    const kinSeries = [];
+    for (const r of parsed.kinematic) {
+      if (r.length <= Math.max(idx, ti)) continue;
+      const t = safeNum(r[ti]); const v = safeNum(r[idx]);
+      if (t != null && v != null) kinSeries.push({ t, v });
+    }
+    // force_only 시계열 (ITEM 기반 시간 변환)
+    const foSeries = forceOnlyTimes(parsed, varKey);
+    // 결합: 두 시계열의 max 값 비교 — 큰 쪽 우선
+    const kinMax = kinSeries.reduce((m, x) => Math.max(m, Math.abs(x.v)), 0);
+    const foMax  = foSeries.reduce((m, x) => Math.max(m, Math.abs(x.v)), 0);
+    // 두 시계열 모두 의미있으면 합쳐서 시간순 정렬
+    if (kinMax > 50 && foMax > 50) {
+      const merged = [...kinSeries, ...foSeries].sort((a, b) => a.t - b.t);
+      return merged;
+    }
+    if (foMax > 50) return foSeries;
+    if (kinMax > 50) return kinSeries;
+    // 둘 다 거의 0이면 force_only 시계열 반환 (있는 경우)
+    return foSeries.length > 0 ? foSeries : kinSeries;
+  }
+
+  // ★ v0.28 — Phase A: signed GRF impulse (방향 보존)
+  //   propulsive (양의 AP): drive_leg_propulsive_impulse = ∫max(F_AP,0) dt / BW
+  //   braking (음의 AP):    lead_leg_braking_impulse    = ∫max(-F_AP,0) dt / BW
+  function grfSignedImpulseBW(parsed, varKey, tFrom, tTo, mass_kg, sign) {
+    if (!mass_kg) return null;
+    const arr = getForceTimeSeries(parsed, varKey);
+    if (arr.length < 2 || tFrom == null || tTo == null) return null;
+    const lo = Math.min(tFrom, tTo), hi = Math.max(tFrom, tTo);
+    let total = 0;
+    for (let i = 1; i < arr.length; i++) {
+      if (lo <= arr[i].t && arr[i].t <= hi) {
+        const dt = arr[i].t - arr[i-1].t;
+        const v = (arr[i].v + arr[i-1].v) / 2;
+        const signed = sign === 'positive' ? Math.max(v, 0) : Math.max(-v, 0);
+        total += signed * dt;
+      }
+    }
+    const bw = mass_kg * 9.81;
+    return total / bw;
+  }
+
+  // ★ v0.28 — Phase B: Joint Power 시계열 W⁺/W⁻ 적분
+  //   PDF §4 — W⁺ = ∫max(P,0) dt, W⁻ = ∫min(P,0) dt
+  //   반환: { Wpos, Wneg, absorption_ratio }
+  function jointPowerWork(parsed, key, tFrom, tTo) {
+    if (parsed.columnIndex[key] == null || tFrom == null || tTo == null) {
+      return { Wpos: null, Wneg: null, absorption: null };
+    }
+    const idx = parsed.columnIndex[key];
+    const ti = parsed.columnIndex['TIME_rel'];
+    const lo = Math.min(tFrom, tTo), hi = Math.max(tFrom, tTo);
+    const series = [];
+    for (const r of parsed.kinematic) {
+      if (r.length <= Math.max(idx, ti)) continue;
+      const t = safeNum(r[ti]); const v = safeNum(r[idx]);
+      if (t != null && v != null && lo <= t && t <= hi) series.push({ t, v });
+    }
+    if (series.length < 2) return { Wpos: null, Wneg: null, absorption: null };
+    let Wpos = 0, Wneg = 0;
+    for (let i = 1; i < series.length; i++) {
+      const dt = series[i].t - series[i-1].t;
+      const avg = (series[i].v + series[i-1].v) / 2;
+      if (avg > 0) Wpos += avg * dt;
+      else         Wneg += avg * dt;
+    }
+    const absorption = Wpos > 0 ? Math.abs(Wneg) / Wpos : null;
+    return { Wpos, Wneg, absorption };
+  }
+
+  // ★ v0.28 — Phase C: Mechanical Energy at event time
+  function meAtTime(parsed, key, t) {
+    return valAtTime(parsed, key, t);
   }
 
   // ════════════════════════════════════════════════════════════
@@ -722,6 +801,57 @@
         if (trailPeakT != null && leadPeakT != null) {
           out.trail_to_lead_vgrf_peak_s = leadPeakT - trailPeakT;
         }
+
+        // ★ v0.34 — NewtForce 시그니처 변수 추가
+        // Time to Peak Force (각 leg의 peak 도달 시간 — push/block 효율)
+        if (trailPeakT != null && ev.KH != null) {
+          out.time_to_peak_trail_force = trailPeakT - ev.KH;  // s, KH→trail peak
+        }
+        if (leadPeakT != null && ev.FC != null) {
+          out.time_to_peak_lead_force = leadPeakT - ev.FC;    // s, FC→lead peak
+        }
+
+        // Force at Ball Release (BR 시점 lead leg vertical force, BW)
+        if (ev.BR != null) {
+          const fzAtBR = valAtTime(parsed, `${leadKey}.Z`, ev.BR);
+          if (fzAtBR != null && mass_kg) {
+            out.force_at_ball_release = Math.abs(fzAtBR) / (mass_kg * 9.81);
+          }
+        }
+
+        // X Force Instability (좌우 방향 흔들림 — KH→BR 동안 |FP1.X|+|FP2.X|의 SD)
+        const trailX = getForceTimeSeries(parsed, `${trailKey}.X`);
+        const leadX  = getForceTimeSeries(parsed, `${leadKey}.X`);
+        const xInRange = (arr) => arr.filter(p => p.t >= ev.KH && p.t <= ev.BR);
+        if (mass_kg && (trailX.length || leadX.length) && ev.KH != null && ev.BR != null) {
+          const tInR = xInRange(trailX), lInR = xInRange(leadX);
+          const xSum = [...tInR, ...lInR].map(p => Math.abs(p.v));
+          if (xSum.length >= 5) {
+            const mean = xSum.reduce((s, v) => s + v, 0) / xSum.length;
+            const variance = xSum.reduce((s, v) => s + (v - mean) ** 2, 0) / xSum.length;
+            out.x_force_instability = Math.sqrt(variance) / (mass_kg * 9.81);  // BW
+          }
+        }
+
+        // Clawback Time (BR 후 lead leg force 50% baseline 도달 시간 — 안정 회복)
+        if (ev.BR != null && mass_kg) {
+          const leadZ = getForceTimeSeries(parsed, `${leadKey}.Z`);
+          const peakAtBR = Math.abs(valAtTime(parsed, `${leadKey}.Z`, ev.BR) || 0);
+          const target = peakAtBR * 0.5;
+          let recoveryT = null;
+          for (const p of leadZ) {
+            if (p.t > ev.BR && Math.abs(p.v) <= target) {
+              recoveryT = p.t - ev.BR;
+              break;
+            }
+          }
+          if (recoveryT != null) out.clawback_time = recoveryT;  // s
+        }
+
+        // Lead Braking Efficiency = brake_impulse / propulsive_impulse
+        if (out.drive_leg_propulsive_impulse > 0 && out.lead_leg_braking_impulse != null) {
+          out.lead_braking_efficiency = out.lead_leg_braking_impulse / out.drive_leg_propulsive_impulse;
+        }
       }
     }
 
@@ -823,6 +953,111 @@
     const ballSpIdx = ci['pitch_speed_kmh'];
     if (ballSpIdx != null && parsed.kinematic.length > 0) {
       out.ball_speed = safeNum(parsed.kinematic[0][ballSpIdx]);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // ★ v0.28 — PDF §4·5·7 핵심 변수 추가
+    // ════════════════════════════════════════════════════════════
+    const isLH28 = parsed.meta?.handHint === 'left';
+    const armSide28  = isLH28 ? 'L' : 'R';   // 던지는 팔
+    const trailSide28 = isLH28 ? 'L' : 'R';  // Trail leg
+    const leadSide28  = isLH28 ? 'R' : 'L';  // Lead leg
+
+    // ── Phase A: GRF impulse (PDF §7) ──
+    if (mass_kg && trailKey && leadKey && ev.KH != null && ev.FC != null && ev.BR != null) {
+      // drive-leg propulsive impulse: trail AP force 양의 방향, KH→FC
+      out.drive_leg_propulsive_impulse = grfSignedImpulseBW(parsed, `${trailKey}.X`, ev.KH, ev.FC, mass_kg, 'positive');
+      // lead-leg braking impulse: lead AP force 음의 방향, FC→BR
+      out.lead_leg_braking_impulse = grfSignedImpulseBW(parsed, `${leadKey}.X`, ev.FC, ev.BR, mass_kg, 'negative');
+      // vertical GRF impulse: 양 leg KH→BR
+      out.trail_vGRF_impulse = grfImpulseBW(parsed, `${trailKey}.Z`, ev.KH, ev.FC, mass_kg);
+      out.lead_vGRF_impulse  = grfImpulseBW(parsed, `${leadKey}.Z`,  ev.FC, ev.BR, mass_kg);
+    }
+
+    // ── Phase B: Joint W⁺/W⁻ 적분 (PDF §4) ──
+    //   8 joint × {W_pos, W_neg, absorption_ratio}
+    const jp_pairs = [
+      ['shoulder',     `${armSide28}_Shoulder_Power_Scalar`],
+      ['elbow',        `${armSide28}_Elbow_Power_Scalar`],
+      ['trail_hip',    `${trailSide28}_Hip_Power_Scalar`],
+      ['lead_hip',     `${leadSide28}_Hip_Power_Scalar`],
+      ['trail_knee',   `${trailSide28}_Knee_Power_Scalar`],
+      ['lead_knee',    `${leadSide28}_Knee_Power_Scalar`],
+    ];
+    if (ev.KH != null && ev.BR != null) {
+      jp_pairs.forEach(([name, key]) => {
+        const w = jointPowerWork(parsed, key, ev.KH, ev.BR);
+        if (w.Wpos != null) {
+          out[`${name}_W_pos`] = w.Wpos;
+          out[`${name}_W_neg`] = w.Wneg;
+          out[`${name}_absorption_ratio`] = w.absorption;
+        }
+      });
+    }
+
+    // ── Phase C: ETE — Energy Transfer Efficiency (PDF §5 핵심) ──
+    //   ETE_pelvis_to_trunk = ΔE_trunk(KH→FC) / W⁺_hip(KH→FC)
+    //   ETE_trunk_to_arm    = ΔE_arm(FC→BR)  / |ΔE_trunk_loss(FC→BR)|
+    if (ev.KH != null && ev.FC != null && ev.BR != null) {
+      const me_pelvis_KH = meAtTime(parsed, 'Pelvis_Mechanical_Energy', ev.KH);
+      const me_pelvis_FC = meAtTime(parsed, 'Pelvis_Mechanical_Energy', ev.FC);
+      const me_trunk_KH  = meAtTime(parsed, 'Trunk_Mechanical_Energy', ev.KH);
+      const me_trunk_FC  = meAtTime(parsed, 'Trunk_Mechanical_Energy', ev.FC);
+      const me_trunk_BR  = meAtTime(parsed, 'Trunk_Mechanical_Energy', ev.BR);
+      const me_arm_FC    = meAtTime(parsed, `${armSide28}_Humerus_ME`, ev.FC);
+      const me_arm_BR    = meAtTime(parsed, `${armSide28}_Humerus_ME`, ev.BR);
+
+      if (me_pelvis_KH != null && me_pelvis_FC != null) out.dE_pelvis_KH_FC = me_pelvis_FC - me_pelvis_KH;
+      if (me_trunk_KH  != null && me_trunk_FC  != null) out.dE_trunk_KH_FC  = me_trunk_FC  - me_trunk_KH;
+      if (me_trunk_FC  != null && me_trunk_BR  != null) out.dE_trunk_FC_BR  = me_trunk_BR  - me_trunk_FC;
+      if (me_arm_FC    != null && me_arm_BR    != null) out.dE_arm_FC_BR    = me_arm_BR    - me_arm_FC;
+
+      // Hip W+ KH→FC (양 hip 합)
+      const wHipR = jointPowerWork(parsed, `${trailSide28}_Hip_Power_Scalar`, ev.KH, ev.FC);
+      const wHipL = jointPowerWork(parsed, `${leadSide28}_Hip_Power_Scalar`, ev.KH, ev.FC);
+      const W_hip_pos = (wHipR.Wpos || 0) + (wHipL.Wpos || 0);
+
+      // ETE_pelvis_to_trunk = max(0, ΔE_trunk_KH_FC) / W_hip_pos
+      if (W_hip_pos > 0 && out.dE_trunk_KH_FC != null) {
+        const dE = Math.max(0, out.dE_trunk_KH_FC);
+        out.W_hip_pos_KH_FC = W_hip_pos;
+        out.ETE_pelvis_to_trunk = Math.min(2.0, dE / W_hip_pos);  // 상한 2.0 (이상값 방지)
+        out.ELI_segment_pelvis_trunk = Math.max(0, Math.min(1, 1 - out.ETE_pelvis_to_trunk));
+      }
+
+      // ETE_trunk_to_arm = ΔE_arm_FC_BR / |ΔE_trunk_loss(FC→BR)|
+      //   trunk가 잃은 에너지가 arm으로 얼마나 변환됐는지
+      if (out.dE_arm_FC_BR != null && out.dE_trunk_FC_BR != null) {
+        const trunkLoss = Math.max(0, -out.dE_trunk_FC_BR);  // 음수면 양수로 변환
+        const armGain  = Math.max(0, out.dE_arm_FC_BR);
+        if (trunkLoss > 0) {
+          out.trunk_loss_FC_BR = trunkLoss;
+          out.ETE_trunk_to_arm = Math.min(2.0, armGain / trunkLoss);
+          out.ELI_segment_trunk_arm = Math.max(0, Math.min(1, 1 - out.ETE_trunk_to_arm));
+        }
+      }
+    }
+
+    // ── Phase D: Δknee, Δω, pelvis_deceleration ──
+    //   PDF §7: knee_flexion_change_FC_to_MER, pelvis_deceleration
+    if (ev.FC != null && ev.MER != null) {
+      const knee_FC  = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.FC);
+      const knee_MER = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.MER);
+      if (knee_FC != null && knee_MER != null) {
+        out.knee_flexion_change_FC_to_MER = Math.abs(knee_MER) - Math.abs(knee_FC);  // 양수=무릎 더 굴곡(무너짐)
+      }
+    }
+    if (ev.MER != null && ev.BR != null) {
+      const knee_MER = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.MER);
+      const knee_BR  = valAtTime(parsed, 'Lead_Knee_Angle.X', ev.BR);
+      if (knee_MER != null && knee_BR != null) {
+        out.knee_flexion_change_MER_to_BR = Math.abs(knee_BR) - Math.abs(knee_MER);  // 양수=계속 굴곡, 음수=신전
+      }
+    }
+    // pelvis deceleration: peak ω - ω(MER)
+    if (ev.MER != null && out.Pelvis_peak != null) {
+      const pelvis_at_MER = Math.abs(valAtTime(parsed, 'Pelvis_Ang_Vel.Z', ev.MER) || 0);
+      out.pelvis_deceleration = out.Pelvis_peak - pelvis_at_MER;  // 양수=감속함(좋음)
     }
 
     return out;
