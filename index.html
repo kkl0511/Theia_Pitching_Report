@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko" data-theme="day">
+<html lang="ko" data-theme="night">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -283,16 +283,14 @@
       </div>
     </div>
     <div class="flex items-center gap-3">
-      <div class="mode-toggle-row">
-        <span class="text-xs" style="color: var(--text-muted);">코호트</span>
-        <button id="mode-pill-hs" class="mode-pill active" onclick="selectMode('hs_top10')">HS Top 10%</button>
-        <button id="mode-pill-pro" class="mode-pill" onclick="selectMode('pro')">Pro Reference</button>
-      </div>
       <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">
-        <span id="theme-icon">🌙</span>
-        <span id="theme-label">Night</span>
+        <span id="theme-icon">☀️</span>
+        <span id="theme-label">Day</span>
       </button>
     </div>
+    <!-- 코호트 모드 토글은 헤더에서 제거 — 수준(중·고·대·프로) 선택으로 자동 매핑 -->
+    <span id="mode-pill-hs" class="hidden"></span>
+    <span id="mode-pill-pro" class="hidden"></span>
   </div>
 </header>
 
@@ -467,14 +465,14 @@ function toggleTheme() {
   document.getElementById('theme-label').textContent = next === 'day' ? 'Night' : 'Day';
   try { localStorage.setItem('theia_theme', next); } catch (e) {}
 }
-// 초기 테마 복원
+// 초기 테마 복원 (default = night, 사용자가 day로 바꾸면 저장)
 (function () {
   try {
     const saved = localStorage.getItem('theia_theme');
-    if (saved === 'night') {
-      document.documentElement.setAttribute('data-theme', 'night');
-      document.getElementById('theme-icon').textContent = '☀️';
-      document.getElementById('theme-label').textContent = 'Day';
+    if (saved === 'day') {
+      document.documentElement.setAttribute('data-theme', 'day');
+      document.getElementById('theme-icon').textContent = '🌙';
+      document.getElementById('theme-label').textContent = 'Night';
     }
   } catch (e) {}
 })();
