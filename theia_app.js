@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.3';
+  const ALGORITHM_VERSION = 'v0.4';
   let CURRENT_MODE = 'hs_top10';  // 'hs_top10' or 'pro'
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;  // wide format xlsx에서 로드한 체력 변수 (CMJ·SJ·IMTP·Grip)
@@ -593,77 +593,560 @@
   // UI 렌더링
   // ════════════════════════════════════════════════════════════
 
+  // ════════════════════════════════════════════════════════════
+  // 리포트 — 헤더 → 4사분면 진단 → 키네틱 체인 6단계 →
+  //         에너지 흐름(키네틱 기반) → 카테고리 5 → GRF 섹션 →
+  //         Kinetics(파워) 섹션 → 결함 → 종합 평가
+  // ════════════════════════════════════════════════════════════
   function renderReport(result) {
-    const TM = window.TheiaMeta;
+    return [
+      _renderHeader(result),
+      _renderQuadrantDiagnosis(result),
+      _renderKineticChainStages(result),
+      _renderEnergyFlowKinetic(result),
+      _renderCategoryCards(result),
+      _renderGRFSection(result),
+      _renderKineticsSection(result),
+      _renderFaultsSection(result),
+      _renderSummaryNarrative(result),
+    ].join('\n');
+  }
+
+  // ── 1. Header ──
+  function _renderHeader(result) {
     const TC = window.TheiaCohort;
     const m = TC.getMode(result._mode);
-
-    // 구속 정보 (사용자 입력 또는 c3d.txt에서)
     const ballSp = result.varScores?.ball_speed?.value;
     const ballSpStr = ballSp != null ? `${ballSp.toFixed(1)} km/h` : '—';
     const ballSpScore = result.varScores?.ball_speed?.score;
     const ballSpSrc = result._ball_speed_source === 'user_input' ? '입력값' :
-                       result._ball_speed_source === 'c3d_pitch_speed_kmh' ? 'c3d.txt' : '미입력';
-    const pitchType = result._meta?.pitch_type || result.catScores?._pitch_type || 'FF';
+                      result._ball_speed_source === 'c3d_pitch_speed_kmh' ? 'c3d.txt' : '미입력';
+    const pitchType = result._meta?.pitch_type || 'FF';
     const pitchLabel = { FF: '직구', CB: '커브', SL: '슬라이더', CH: '체인지업', CT: '커터', SI: '싱커', OTHER: '기타' }[pitchType] || pitchType;
+    const level = result._meta?.level || '';
 
-    let html = `<div class="report-header">
-      <h1>Theia Pitching Report ${ALGORITHM_VERSION}</h1>
-      <div class="meta">
-        <span class="mode ${result._mode}">${m.label}</span>
-        <span>대상: ${m.target}</span>
-        <span>Reference: n=${m.n}</span>
+    return `
+    <div class="cat-card mb-6" style="background: linear-gradient(135deg, rgba(31,56,100,0.06), rgba(46,117,182,0.04)); border-left: 6px solid var(--accent, #1F3864); padding: 18px 22px;">
+      <div class="display text-2xl mb-1" style="color: var(--accent);">📋 Theia Pitching Report
+        <span class="mono text-xs ml-2" style="color: var(--text-muted);">${ALGORITHM_VERSION}</span>
       </div>
-      <div class="player-meta">
-        <strong>${result._meta.athlete || 'Unknown'}</strong>
-        ${result._meta.level ? ` <span style="background: var(--accent, #1F3864); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 4px;">${result._meta.level}</span>` : ''}
-        · Trial 수: ${result._n_trials}
-        · Mass: ${result._meta.mass_kg || '—'}kg, Height: ${result._meta.height_cm || '—'}cm
+      <div class="text-xs mb-2" style="color: var(--text-muted);">
+        <span style="background: ${result._mode === 'pro' ? 'var(--output)' : 'var(--accent-soft)'}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${m.label}</span>
+        · 대상: ${m.target} · Reference n=${m.n}
       </div>
-      <div class="player-meta" style="margin-top: 6px; font-size: 13px;">
-        <strong style="color: var(--output, #C00000);">구속 ${ballSpStr}</strong>
-        ${ballSpScore != null ? ` <span style="color: var(--text-muted, #666); font-size: 12px;">(${ballSpScore}점, 출처: ${ballSpSrc})</span>` : ` <span style="color: var(--text-muted, #666); font-size: 12px;">(${ballSpSrc})</span>`}
-        · 구질: ${pitchLabel}
+      <div class="text-base mt-2">
+        <strong>${result._meta?.athlete || '신규 선수'}</strong>
+        ${level ? `<span style="background: var(--accent); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 4px;">${level}</span>` : ''}
+        <span class="text-xs" style="color: var(--text-muted); margin-left: 6px;">
+          Trial ${result._n_trials} · ${result._meta?.mass_kg || '—'}kg · ${result._meta?.height_cm || '—'}cm
+        </span>
+      </div>
+      <div class="mt-2">
+        <strong style="color: var(--output, #C00000); font-size: 18px;">⚾ ${ballSpStr}</strong>
+        ${ballSpScore != null ? `<span class="text-xs" style="color: var(--text-muted); margin-left: 6px;">(${ballSpScore}점 · 출처: ${ballSpSrc})</span>` : `<span class="text-xs" style="color: var(--text-muted); margin-left: 6px;">(${ballSpSrc})</span>`}
+        · 구질: <strong>${pitchLabel}</strong>
       </div>
     </div>`;
+  }
 
-    // 카테고리 카드 5개
-    html += '<div class="categories">';
+  // ── 2. Output vs Transfer 4사분면 진단 (SVG scatter) ──
+  function _renderQuadrantDiagnosis(result) {
+    const outScore = result.catScores?.OUTPUT?.score;
+    const trScore  = result.catScores?.TRANSFER?.score;
+    const injScore = result.catScores?.INJURY?.score;
+    if (outScore == null || trScore == null) return `
+      <div class="cat-card mb-6" style="padding: 18px;">
+        <div class="display text-lg" style="color: var(--accent);">🎯 출력 vs 전달 진단</div>
+        <div class="text-sm mt-2" style="color: var(--text-muted);">OUTPUT/TRANSFER 카테고리 변수 산출 부족 — c3d.txt에 ball_speed·증폭률 변수가 있어야 진단 가능</div>
+      </div>`;
+
+    const injRisk = injScore != null ? (100 - injScore) : 50;  // 안전점수 → 위험%
+    const dotColor = injRisk >= 80 ? '#dc2626' : injRisk >= 50 ? '#fb923c' : '#16a34a';
+
+    // 4사분면 분류
+    let quadrant, qLabel, qColor, qPriority, qMessage;
+    if (outScore >= 50 && trScore >= 50) {
+      quadrant = 1; qLabel = '① Elite'; qColor = '#16a34a'; qPriority = '유지';
+      qMessage = '출력·전달 모두 코호트 평균 이상. 현재 메카닉 유지 + 부상 모니터링.';
+    } else if (outScore >= 50 && trScore < 50) {
+      quadrant = 2; qLabel = '② 낭비형 (Inefficient)'; qColor = '#fb923c'; qPriority = '★ 코칭 효과 가장 큼';
+      qMessage = '출력은 잘 만드는데 시퀀싱·증폭률이 낮아 손실. <strong>전달 최적화로 즉시 구속 향상 가능</strong> — 메카닉 코칭이 가장 큰 수익을 내는 유형.';
+    } else if (outScore < 50 && trScore >= 50) {
+      quadrant = 3; qLabel = '③ 효율형 (Underpowered)'; qColor = '#0070C0'; qPriority = '체력 강화';
+      qMessage = '메카닉(전달)은 좋은데 <strong>출력 자체가 부족</strong>. 체력(파워·근력)으로 출력을 끌어올리면 elite로 점프 가능.';
+    } else {
+      quadrant = 4; qLabel = '④ 발달 단계 (Foundation)'; qColor = '#94a3b8'; qPriority = '기초';
+      qMessage = '둘 다 평균 미만. 체력·시퀀싱 기초 동시 향상 — 인내심 있게 단계별 발달.';
+    }
+
+    // SVG 4사분면 (pos: outScore=x, trScore=y)
+    const W = 360, H = 320, P = 40;
+    const xs = (v) => P + (v / 100) * (W - 2 * P);
+    const ys = (v) => H - P - (v / 100) * (H - 2 * P);
+    const cx = xs(outScore), cy = ys(trScore);
+
+    const svgQuadrant = `<svg viewBox="0 0 ${W} ${H}" style="width: 100%; max-width: 480px; height: auto;">
+      <!-- 4사분면 배경 -->
+      <rect x="${xs(50)}" y="${ys(100)}" width="${xs(100)-xs(50)}" height="${ys(50)-ys(100)}" fill="#16a34a" opacity="0.08"/>
+      <rect x="${xs(50)}" y="${ys(50)}" width="${xs(100)-xs(50)}" height="${ys(0)-ys(50)}" fill="#fb923c" opacity="0.08"/>
+      <rect x="${xs(0)}" y="${ys(100)}" width="${xs(50)-xs(0)}" height="${ys(50)-ys(100)}" fill="#0070C0" opacity="0.08"/>
+      <rect x="${xs(0)}" y="${ys(50)}" width="${xs(50)-xs(0)}" height="${ys(0)-ys(50)}" fill="#94a3b8" opacity="0.08"/>
+      <!-- 격자 -->
+      <line x1="${xs(50)}" y1="${ys(0)}" x2="${xs(50)}" y2="${ys(100)}" stroke="var(--border)" stroke-dasharray="4,4"/>
+      <line x1="${xs(0)}" y1="${ys(50)}" x2="${xs(100)}" y2="${ys(50)}" stroke="var(--border)" stroke-dasharray="4,4"/>
+      <!-- 축 -->
+      <line x1="${xs(0)}" y1="${ys(0)}" x2="${xs(100)}" y2="${ys(0)}" stroke="var(--text-muted)"/>
+      <line x1="${xs(0)}" y1="${ys(0)}" x2="${xs(0)}" y2="${ys(100)}" stroke="var(--text-muted)"/>
+      <!-- 사분면 라벨 -->
+      <text x="${xs(75)}" y="${ys(85)}" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="bold">① Elite</text>
+      <text x="${xs(75)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#fb923c" font-weight="bold">② 낭비형</text>
+      <text x="${xs(25)}" y="${ys(85)}" text-anchor="middle" font-size="10" fill="#0070C0" font-weight="bold">③ 효율형</text>
+      <text x="${xs(25)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="bold">④ 발달</text>
+      <!-- 축 라벨 -->
+      <text x="${W/2}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600">출력 Output (percentile)</text>
+      <text x="14" y="${H/2}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600" transform="rotate(-90 14 ${H/2})">전달 Transfer (percentile)</text>
+      <!-- 0/50/100 눈금 -->
+      <text x="${xs(0)}" y="${ys(0)+14}" text-anchor="middle" font-size="9" fill="var(--text-muted)">0</text>
+      <text x="${xs(50)}" y="${ys(0)+14}" text-anchor="middle" font-size="9" fill="var(--text-muted)">50</text>
+      <text x="${xs(100)}" y="${ys(0)+14}" text-anchor="middle" font-size="9" fill="var(--text-muted)">100</text>
+      <text x="${xs(0)-12}" y="${ys(0)}" text-anchor="end" font-size="9" fill="var(--text-muted)">0</text>
+      <text x="${xs(0)-12}" y="${ys(50)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">50</text>
+      <text x="${xs(0)-12}" y="${ys(100)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">100</text>
+      <!-- 본 선수 점 -->
+      <circle cx="${cx}" cy="${cy}" r="9" fill="${dotColor}" stroke="white" stroke-width="2"/>
+      <circle cx="${cx}" cy="${cy}" r="14" fill="none" stroke="${dotColor}" stroke-width="1" opacity="0.5"/>
+      <text x="${cx}" y="${cy-18}" text-anchor="middle" font-size="11" font-weight="bold" fill="${dotColor}">본 선수</text>
+    </svg>`;
+
+    return `
+    <div class="cat-card mb-6" style="padding: 18px;">
+      <div class="flex justify-between items-start mb-2">
+        <div>
+          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">DIAGNOSIS · ${ALGORITHM_VERSION}</div>
+          <div class="display text-xl mt-1" style="color: var(--accent-soft);">🎯 출력 vs 전달 분리 진단</div>
+        </div>
+        <div class="text-right">
+          <div class="display text-base" style="color: ${qColor}; font-weight: 700;">${qLabel}</div>
+          <div class="text-xs mono uppercase mt-1" style="color: var(--text-muted);">우선순위: ${qPriority}</div>
+        </div>
+      </div>
+      <div class="text-sm leading-relaxed mb-3 p-3 rounded" style="background: var(--bg-elevated); border-left: 3px solid ${qColor};">
+        ${qMessage}
+      </div>
+      <div class="grid md:grid-cols-2 gap-3 items-center">
+        <div>${svgQuadrant}</div>
+        <div>
+          <table class="var-table" style="font-size: 12px;">
+            <thead><tr><th>카테고리</th><th>점수</th><th>측정</th></tr></thead>
+            <tbody>
+              <tr><td>출력 (Output)</td><td><strong style="color: ${outScore >= 50 ? '#16a34a' : '#fb923c'};">${outScore}</strong></td><td class="mono">${result.catScores.OUTPUT.measured}/${result.catScores.OUTPUT.total}</td></tr>
+              <tr><td>전달 (Transfer)</td><td><strong style="color: ${trScore >= 50 ? '#16a34a' : '#fb923c'};">${trScore}</strong></td><td class="mono">${result.catScores.TRANSFER.measured}/${result.catScores.TRANSFER.total}</td></tr>
+              <tr><td>부상 위험 (Injury 안전도)</td><td><strong style="color: ${(injScore || 0) >= 50 ? '#16a34a' : '#dc2626'};">${injScore != null ? injScore : '—'}</strong></td><td class="mono">${result.catScores.INJURY?.measured || 0}/${result.catScores.INJURY?.total || 0}</td></tr>
+            </tbody>
+          </table>
+          <div class="text-xs mt-3" style="color: var(--text-muted); line-height: 1.6;">
+            <strong>해석:</strong> X축=출력(절대 회전속도·GRF), Y축=전달(시퀀싱·증폭률). 점 색상=부상 위험 (<span style="color: #16a34a;">●</span>안전 / <span style="color: #fb923c;">●</span>주의 / <span style="color: #dc2626;">●</span>위험).
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ── 3. 키네틱 체인 6단계 ──
+  function _renderKineticChainStages(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const s = (k) => m[k]?.score;
+    const stages = [
+      { n: 1, name: '하체 드라이브 (Trail Drive)',  vars: ['Trail_leg_peak_vertical_GRF', 'Trail_leg_peak_AP_GRF', 'Trail_Hip_Power_peak'], desc: '뒷다리 추진 — 지면에서 시작되는 힘' },
+      { n: 2, name: '앞다리 블록 (Lead Block)',    vars: ['Lead_leg_peak_vertical_GRF', 'CoG_Decel', 'Lead_Knee_Power_peak'], desc: '앞다리 stiffness — 추진→회전 전환' },
+      { n: 3, name: '분리 (Hip-Trunk Separation)',  vars: ['fc_xfactor', 'peak_xfactor', 'peak_trunk_CounterRotation'], desc: 'X-factor 분리 자세 — 회전 저장' },
+      { n: 4, name: '몸통 가속 (Trunk Acceleration)', vars: ['Pelvis_peak', 'Trunk_peak', 'pelvis_to_trunk', 'pelvis_trunk_speedup'], desc: '골반→몸통 회전 가속' },
+      { n: 5, name: '상지 코킹·전달 (Arm Cocking)',  vars: ['Trunk_peak', 'Arm_peak', 'trunk_to_arm', 'arm_trunk_speedup', 'mer_shoulder_abd', 'max_shoulder_ER'], desc: '몸통→팔 전달 + ER cocking' },
+      { n: 6, name: '릴리스 가속 (Release)',         vars: ['Arm_peak', 'wrist_release_speed', 'angular_chain_amplification', 'br_shoulder_abd', 'br_lead_leg_knee_flexion'], desc: '팔 채찍 + 공 가속' },
+    ];
+
+    // 각 단계 평균 점수 + 누락 변수 비율
+    const stageBoxes = stages.map(stg => {
+      const scored = stg.vars.map(k => s(k)).filter(x => x != null);
+      const avg = scored.length ? scored.reduce((a,b)=>a+b,0) / scored.length : null;
+      const color = avg == null ? '#94a3b8' : avg >= 75 ? '#16a34a' : avg >= 50 ? '#0070C0' : avg >= 35 ? '#fb923c' : '#dc2626';
+      const sevIcon = avg == null ? '○' : avg >= 75 ? '✓' : avg >= 50 ? '◐' : avg >= 35 ? '⚠' : '🚨';
+      return `
+      <div style="background: var(--bg-elevated); border: 1px solid var(--border); border-left: 4px solid ${color}; border-radius: 6px; padding: 10px 12px;">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="mono text-xs" style="color: var(--text-muted);">단계 ${stg.n}</span>
+          <span style="color: ${color}; font-size: 14px;">${sevIcon}</span>
+          <strong class="text-sm" style="color: var(--text-primary);">${stg.name}</strong>
+          <span class="ml-auto mono text-sm" style="color: ${color}; font-weight: 700;">${avg != null ? avg.toFixed(0) : '—'}<span style="font-size:10px; color: var(--text-muted);">/100</span></span>
+        </div>
+        <div class="text-xs" style="color: var(--text-muted); line-height: 1.5;">
+          ${stg.desc} <span class="mono" style="margin-left:6px;">(${scored.length}/${stg.vars.length} 변수)</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="cat-card mb-6" style="padding: 18px;">
+      <div class="display text-xl mb-2" style="color: var(--transfer);">⚡ 키네틱 체인 6단계 진단</div>
+      <div class="text-sm mb-3" style="color: var(--text-secondary); line-height: 1.6;">
+        다리에서 시작된 힘이 골반→몸통→팔로 전달되는 흐름을 6 단계로 분리해서 진단합니다. 각 단계는 GRF·X-factor·회전속도·관절 power 등 키네틱 변수의 종합 점수입니다.
+      </div>
+      <div class="grid md:grid-cols-2 gap-3">${stageBoxes}</div>
+    </div>`;
+  }
+
+  // ── 4. 에너지 흐름 (키네틱 변수 기반) ──
+  function _renderEnergyFlowKinetic(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+
+    // 키네틱 흐름: GRF (Trail) → 골반 → 몸통 → 팔 → 손목 (release)
+    // 가능하면 Joint Power 사용, 없으면 회전 속도(°/s) → power proxy
+    const trailGRF = v('Trail_leg_peak_vertical_GRF');     // BW
+    const leadGRF  = v('Lead_leg_peak_vertical_GRF');      // BW
+    const trailHipP = v('Trail_Hip_Power_peak');           // W (kinetic)
+    const leadHipP  = v('Lead_Hip_Power_peak');            // W
+    const leadKneeP = v('Lead_Knee_Power_peak');           // W
+    const pelvisPk = v('Pelvis_peak');                     // °/s
+    const trunkPk  = v('Trunk_peak');                      // °/s
+    const armPk    = v('Arm_peak');                        // °/s
+    const shoulderP = v('Pitching_Shoulder_Power_peak');   // W (kinetic)
+    const elbowP   = v('Pitching_Elbow_Power_peak');       // W (kinetic)
+    const wristV   = v('wrist_release_speed');             // m/s
+
+    // 표시할 노드 — kinetic이 있으면 우선, 없으면 kinematic
+    const nodes = [
+      { label: 'Trail GRF', val: trailGRF, unit: 'BW', kind: 'kinetic', tag: 'Trail leg push' },
+      { label: 'Trail Hip P', val: trailHipP, unit: 'W', kind: 'kinetic', tag: '뒷다리 power' },
+      { label: 'Lead GRF', val: leadGRF, unit: 'BW', kind: 'kinetic', tag: '앞다리 block' },
+      { label: 'Lead Hip P', val: leadHipP, unit: 'W', kind: 'kinetic', tag: '앞다리 hip power' },
+      { label: 'Lead Knee P', val: leadKneeP, unit: 'W', kind: 'kinetic', tag: '앞무릎 power' },
+      { label: 'Pelvis ω', val: pelvisPk, unit: '°/s', kind: 'kinematic', tag: '골반 회전' },
+      { label: 'Trunk ω', val: trunkPk, unit: '°/s', kind: 'kinematic', tag: '몸통 회전' },
+      { label: 'Shoulder P', val: shoulderP, unit: 'W', kind: 'kinetic', tag: '어깨 power' },
+      { label: 'Elbow P', val: elbowP, unit: 'W', kind: 'kinetic', tag: '팔꿈치 power' },
+      { label: 'Arm ω', val: armPk, unit: '°/s', kind: 'kinematic', tag: '상완 IR/ER' },
+      { label: 'Wrist V', val: wristV, unit: 'm/s', kind: 'kinematic', tag: '손목 release' },
+    ];
+    const measured = nodes.filter(n => n.val != null);
+    const total = nodes.length;
+    const measuredCnt = measured.length;
+
+    // 시각화 — 노드 chain
+    const arrowsHtml = measured.length > 0 ? measured.map((n, i) => {
+      const color = n.kind === 'kinetic' ? '#7030A0' : '#0070C0';
+      const bg = n.kind === 'kinetic' ? 'rgba(112,48,160,0.08)' : 'rgba(0,112,192,0.08)';
+      const arrow = i < measured.length - 1 ? '<span style="color: var(--text-muted); margin: 0 4px;">→</span>' : '';
+      return `<span style="display: inline-block; padding: 6px 10px; background: ${bg}; border: 1px solid ${color}40; border-left: 3px solid ${color}; border-radius: 4px; margin: 3px 0; font-size: 11px;">
+        <div style="color: var(--text-muted); font-size: 9px; text-transform: uppercase;">${n.tag}</div>
+        <strong>${n.label}</strong>
+        <span class="mono" style="color: ${color}; margin-left: 4px;">${typeof n.val === 'number' ? n.val.toFixed(n.unit === 'BW' ? 2 : (Math.abs(n.val) >= 100 ? 0 : 1)) : '—'}<span style="font-size: 9px; opacity: 0.7;">${n.unit}</span></strong>
+      </span>${arrow}`;
+    }).join('') : '<div class="text-sm" style="color: var(--text-muted);">키네틱 변수 미측정 — Visual3D pipeline (inverse dynamics) 적용된 c3d.txt 필요</div>';
+
+    const kineticOnly = measured.filter(n => n.kind === 'kinetic').length;
+    const kinematicOnly = measured.filter(n => n.kind === 'kinematic').length;
+
+    return `
+    <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid var(--leak);">
+      <div class="display text-xl mb-2" style="color: var(--leak);">🔗 에너지 흐름 — 키네틱 기반</div>
+      <div class="text-sm mb-3" style="color: var(--text-secondary); line-height: 1.6;">
+        지면에서 손목까지 에너지의 흐름을 <strong>관절 Power(키네틱)</strong> + 회전 속도(키네매틱) 기반으로 시각화합니다. <span style="color: var(--leak);">●</span> 보라색=Joint Power (Tier 2 inverse dynamics), <span style="color: var(--transfer);">●</span> 파란색=각속도/속도.
+      </div>
+      <div class="text-xs mb-3 mono" style="color: var(--text-muted);">
+        측정 ${measuredCnt}/${total} 노드 · 키네틱 ${kineticOnly}, 키네매틱 ${kinematicOnly}
+      </div>
+      <div style="line-height: 2.4;">${arrowsHtml}</div>
+    </div>`;
+  }
+
+  // ── 5. 카테고리 카드 5개 ──
+  function _renderCategoryCards(result) {
+    const TM = window.TheiaMeta;
+    let html = '<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">';
     for (const catId of ['OUTPUT', 'TRANSFER', 'LEAK', 'CONTROL', 'INJURY']) {
       const c = result.catScores[catId];
       if (!c) continue;
-      const scoreColor = c.score == null ? '#888' : c.score >= 75 ? '#00B050' : c.score >= 50 ? '#FFA500' : '#C00000';
-      html += `<div class="cat-card" style="border-left: 6px solid ${c.color}">
+      const scoreColor = c.score == null ? '#888' : c.score >= 75 ? '#16a34a' : c.score >= 50 ? '#fb923c' : '#dc2626';
+      html += `<div class="cat-card ${catId}">
         <div class="cat-header">
-          <h3>${c.name}</h3>
-          <div class="cat-score" style="color:${scoreColor}">${c.score != null ? c.score : '—'}<span>/100</span></div>
+          <div class="cat-title">${c.name}</div>
+          <div class="cat-score" style="color: ${scoreColor};">${c.score != null ? c.score : '—'}<span class="total">/100</span></div>
         </div>
-        <p class="cat-desc">${c.desc}</p>
-        <div class="cat-stats">측정: ${c.measured}/${c.total} 변수</div>
-        ${c.integrationValue != null ? `<div class="cat-integration">★ 통합 지표 ${TM.getVarMeta(c.integrationVar)?.name || c.integrationVar}: <strong>${formatVal(c.integrationValue, TM.getVarMeta(c.integrationVar)?.unit)}</strong> (${c.integrationScore || '—'}점)</div>` : ''}
-        <details><summary>변수별 상세 (${c.measured}개)</summary>${renderVarDetail(result, TM.OTL_CATEGORIES[catId].variables)}</details>
+        <div class="cat-meta">${c.desc}</div>
+        <div class="cat-meta mono">측정 ${c.measured}/${c.total} 변수</div>
+        ${c.integrationValue != null ? `<div class="text-xs mt-2 p-2 rounded" style="background: var(--bg-elevated); border-left: 3px solid ${c.color};">
+          ★ ${TM.getVarMeta(c.integrationVar)?.name || c.integrationVar}: <strong>${formatVal(c.integrationValue, TM.getVarMeta(c.integrationVar)?.unit)}</strong>${c.integrationScore != null ? ` (${c.integrationScore}점)` : ''}
+        </div>` : ''}
+        <details><summary>변수별 상세 (${c.measured}개)</summary>${_renderVarDetail(result, TM.OTL_CATEGORIES[catId].variables)}</details>
       </div>`;
     }
     html += '</div>';
-
-    // KINETIC_FAULTS
-    if (result.faults.length > 0) {
-      html += '<div class="faults"><h2>⚠ 검출된 결함 — 코칭 우선순위</h2>';
-      for (const f of result.faults) {
-        const sevColor = f.severity === 'high' ? '#C00000' : f.severity === 'medium' ? '#FFA500' : '#888';
-        html += `<div class="fault-card" style="border-left: 4px solid ${sevColor}">
-          <div class="fault-header"><strong>${f.label}</strong> <span class="sev">[${f.severity}]</span></div>
-          <div class="fault-cause"><b>원인:</b> ${f.cause}</div>
-          <div class="fault-coach"><b>코칭:</b> ${f.coaching}</div>
-        </div>`;
-      }
-      html += '</div>';
-    }
-
     return html;
   }
 
-  function renderVarDetail(result, varNames) {
+  // ── 6. GRF 분석 섹션 ──
+  function _renderGRFSection(result) {
+    const m = result.varScores || {};
+    const trailV = m['Trail_leg_peak_vertical_GRF']?.value;
+    const trailVS = m['Trail_leg_peak_vertical_GRF']?.score;
+    const trailAP = m['Trail_leg_peak_AP_GRF']?.value;
+    const trailAPS = m['Trail_leg_peak_AP_GRF']?.score;
+    const leadV = m['Lead_leg_peak_vertical_GRF']?.value;
+    const leadVS = m['Lead_leg_peak_vertical_GRF']?.score;
+    const leadAP = m['Lead_leg_peak_AP_GRF']?.value;
+    const leadAPS = m['Lead_leg_peak_AP_GRF']?.score;
+    const transition = m['trail_to_lead_vgrf_peak_s']?.value;
+    const transitionS = m['trail_to_lead_vgrf_peak_s']?.score;
+    const trailImpulse = m['trail_impulse_stride']?.value;
+
+    const measured = [trailV, leadV, trailAP, leadAP, transition, trailImpulse].filter(x => x != null).length;
+    if (measured === 0) {
+      return `
+      <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid #6b7280;">
+        <div class="display text-xl mb-2" style="color: #6b7280;">🦵 GRF 분석 (지면반력)</div>
+        <div class="text-sm" style="color: var(--text-muted);">
+          지면반력 데이터 없음 — Visual3D pipeline에서 <strong>Trail_Leg_GRF / Lead_Leg_GRF</strong>로 정규화된 c3d.txt 필요. (박명균 옛 형식의 FP1/FP2 raw는 미지원)
+        </div>
+      </div>`;
+    }
+
+    // 막대 차트 — Trail vs Lead vGRF
+    const W = 340, H = 200, P = 30;
+    const maxV = Math.max(2.5, leadV || 2.0, trailV || 2.0);
+    const barW = 80;
+    const yScale = (v) => H - P - (v / maxV) * (H - 2 * P);
+
+    const grfBar = `<svg viewBox="0 0 ${W} ${H}" style="width: 100%; max-width: 380px; height: auto;">
+      <line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="var(--text-muted)"/>
+      <line x1="${P}" y1="${P}" x2="${P}" y2="${H-P}" stroke="var(--text-muted)"/>
+      ${trailV != null ? `
+        <rect x="${W*0.25 - barW/2}" y="${yScale(trailV)}" width="${barW}" height="${(H-P) - yScale(trailV)}" fill="#0070C0" opacity="0.7"/>
+        <text x="${W*0.25}" y="${yScale(trailV) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#0070C0">${trailV.toFixed(2)}</text>
+        <text x="${W*0.25}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Trail vGRF</text>
+      ` : ''}
+      ${leadV != null ? `
+        <rect x="${W*0.65 - barW/2}" y="${yScale(leadV)}" width="${barW}" height="${(H-P) - yScale(leadV)}" fill="#C00000" opacity="0.7"/>
+        <text x="${W*0.65}" y="${yScale(leadV) - 6}" text-anchor="middle" font-size="13" font-weight="bold" fill="#C00000">${leadV.toFixed(2)}</text>
+        <text x="${W*0.65}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)">Lead vGRF</text>
+      ` : ''}
+      <!-- elite reference 라인 (Trail≥1.5, Lead≥2.0 BW) -->
+      <line x1="${P}" y1="${yScale(2.0)}" x2="${W-P}" y2="${yScale(2.0)}" stroke="#16a34a" stroke-dasharray="3,3" opacity="0.6"/>
+      <text x="${W-P-2}" y="${yScale(2.0)-3}" text-anchor="end" font-size="9" fill="#16a34a">elite ≥2.0 BW</text>
+      <!-- Y축 단위 -->
+      <text x="${P-4}" y="${yScale(0)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">0</text>
+      <text x="${P-4}" y="${yScale(maxV/2)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${(maxV/2).toFixed(1)}</text>
+      <text x="${P-4}" y="${yScale(maxV)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${maxV.toFixed(1)} BW</text>
+    </svg>`;
+
+    const fmt = (v, d=2, u='') => v != null ? `${v.toFixed(d)}${u}` : '—';
+    const scoreColor = (sc) => sc == null ? '#94a3b8' : sc >= 75 ? '#16a34a' : sc >= 50 ? '#fb923c' : '#dc2626';
+
+    return `
+    <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid var(--accent-soft);">
+      <div class="display text-xl mb-2" style="color: var(--accent-soft);">🦵 GRF 분석 (지면반력)</div>
+      <div class="text-sm mb-3" style="color: var(--text-secondary);">
+        Trail leg(뒷다리) push와 Lead leg(앞다리) block의 지면반력 — 키네틱 체인 1·2 단계의 직접 측정값.
+      </div>
+      <div class="grid md:grid-cols-2 gap-4 items-center">
+        <div>${grfBar}</div>
+        <div>
+          <table class="var-table" style="font-size: 12px;">
+            <thead><tr><th>변수</th><th>값</th><th>점수</th></tr></thead>
+            <tbody>
+              <tr><td>Trail vGRF (수직)</td><td class="mono">${fmt(trailV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailVS)};">${trailVS != null ? trailVS : '—'}</strong></td></tr>
+              <tr><td>Trail AP GRF (전후)</td><td class="mono">${fmt(trailAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(trailAPS)};">${trailAPS != null ? trailAPS : '—'}</strong></td></tr>
+              <tr><td>Trail leg impulse</td><td class="mono">${fmt(trailImpulse, 3, ' BW·s')}</td><td>—</td></tr>
+              <tr><td>Lead vGRF (수직)</td><td class="mono">${fmt(leadV, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadVS)};">${leadVS != null ? leadVS : '—'}</strong></td></tr>
+              <tr><td>Lead AP GRF (전후)</td><td class="mono">${fmt(leadAP, 2, ' BW')}</td><td><strong style="color: ${scoreColor(leadAPS)};">${leadAPS != null ? leadAPS : '—'}</strong></td></tr>
+              <tr><td>Trail→Lead 전환 시간</td><td class="mono">${fmt(transition, 3, ' s')}</td><td><strong style="color: ${scoreColor(transitionS)};">${transitionS != null ? transitionS : '—'}</strong></td></tr>
+            </tbody>
+          </table>
+          <div class="text-xs mt-2" style="color: var(--text-muted); line-height: 1.5;">
+            <strong>해석:</strong> Trail vGRF≥1.5 BW (push), Lead vGRF≥2.0 BW (block, elite). 전환시간 짧을수록 sequencing 우수. AP GRF는 forward 추진력.
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ── 7. Kinetics 섹션 (Joint Power, Energy, Torque) ──
+  function _renderKineticsSection(result) {
+    const m = result.varScores || {};
+    const items = [
+      { key: 'Trail_Hip_Power_peak',     label: 'Trail Hip Power',     stage: '단계 1' },
+      { key: 'Lead_Hip_Power_peak',      label: 'Lead Hip Power',      stage: '단계 1·2' },
+      { key: 'Lead_Knee_Power_peak',     label: 'Lead Knee Power',     stage: '단계 2' },
+      { key: 'Pitching_Shoulder_Power_peak', label: '★ Shoulder Power',  stage: '단계 5' },
+      { key: 'Pitching_Elbow_Power_peak', label: '★ Elbow Power',      stage: '단계 5·6' },
+    ];
+    const measured = items.filter(it => m[it.key]?.value != null);
+    if (measured.length === 0) {
+      return `
+      <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid #6b7280;">
+        <div class="display text-xl mb-2" style="color: #6b7280;">⚙️ Kinetics (관절 Power·Energy·Torque)</div>
+        <div class="text-sm" style="color: var(--text-muted);">
+          관절 power 데이터 없음 — Visual3D pipeline의 <strong>Joint Power</strong> (Tier 2 inverse dynamics) 적용된 c3d.txt 필요.<br>
+          기대 변수: <code class="mono text-xs">Trail_Hip_Power.Z, Lead_Hip_Power.Z, Lead_Knee_Power.Z, Pitching_Shoulder_Power.Z, Pitching_Elbow_Power.Z</code>
+        </div>
+      </div>`;
+    }
+
+    // Joint Power 막대 차트
+    const W = 480, H = 240, P = 40;
+    const maxP = Math.max(...measured.map(it => Math.abs(m[it.key].value)), 100);
+    const barW = (W - 2 * P) / measured.length * 0.6;
+    const xStep = (W - 2 * P) / measured.length;
+    const yScale = (v) => H - P - (v / maxP) * (H - 2 * P);
+
+    const bars = measured.map((it, i) => {
+      const val = m[it.key].value;
+      const sc = m[it.key].score;
+      const cx = P + xStep * (i + 0.5);
+      const color = sc == null ? '#94a3b8' : sc >= 75 ? '#16a34a' : sc >= 50 ? '#fb923c' : '#dc2626';
+      return `
+        <rect x="${cx - barW/2}" y="${yScale(val)}" width="${barW}" height="${(H-P) - yScale(val)}" fill="${color}" opacity="0.75"/>
+        <text x="${cx}" y="${yScale(val) - 6}" text-anchor="middle" font-size="11" font-weight="bold" fill="${color}">${val >= 1000 ? (val/1000).toFixed(1)+'k' : val.toFixed(0)}</text>
+        <text x="${cx}" y="${H - 22}" text-anchor="middle" font-size="10" fill="var(--text-secondary)" font-weight="600">${it.label.replace('★ ', '')}</text>
+        <text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${it.stage}</text>
+      `;
+    }).join('');
+
+    const kineticBar = `<svg viewBox="0 0 ${W} ${H}" style="width: 100%; height: auto;">
+      <line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="var(--text-muted)"/>
+      <line x1="${P}" y1="${P}" x2="${P}" y2="${H-P}" stroke="var(--text-muted)"/>
+      <text x="${P-4}" y="${yScale(0)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">0</text>
+      <text x="${P-4}" y="${yScale(maxP)+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${maxP >= 1000 ? (maxP/1000).toFixed(1)+'k' : maxP.toFixed(0)}</text>
+      <text x="${P-32}" y="${H/2}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600" transform="rotate(-90 ${P-32} ${H/2})">Joint Power (W)</text>
+      ${bars}
+    </svg>`;
+
+    const fmt = (v, u='W') => v != null ? `${v >= 1000 ? (v/1000).toFixed(2)+'k' : v.toFixed(0)} ${u}` : '—';
+    const scoreColor = (sc) => sc == null ? '#94a3b8' : sc >= 75 ? '#16a34a' : sc >= 50 ? '#fb923c' : '#dc2626';
+
+    return `
+    <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid var(--leak);">
+      <div class="display text-xl mb-2" style="color: var(--leak);">⚙️ Kinetics — 관절 Power·Energy·Torque</div>
+      <div class="text-sm mb-3" style="color: var(--text-secondary); line-height: 1.6;">
+        <strong>Inverse Dynamics</strong>로 산출한 관절별 <strong>Power peak</strong> — 각 분절이 만드는 진짜 출력 (단순 회전속도가 아닌 토크×각속도).
+        에너지가 단계별로 어떻게 만들어지고 전달되는지 보여주는 <em>가장 직접적인 키네틱 지표</em>입니다.
+      </div>
+      <div>${kineticBar}</div>
+      <table class="var-table mt-3" style="font-size: 12px;">
+        <thead><tr><th>관절</th><th>단계</th><th>Peak Power</th><th>점수</th><th>역할</th></tr></thead>
+        <tbody>
+          ${measured.map(it => {
+            const val = m[it.key].value;
+            const sc = m[it.key].score;
+            const role = {
+              'Trail_Hip_Power_peak': '뒷다리 신전 → 골반 회전 추진',
+              'Lead_Hip_Power_peak': '앞다리 hip — 추진→회전 전환 hub',
+              'Lead_Knee_Power_peak': '앞무릎 ecc/iso → block stiffness',
+              'Pitching_Shoulder_Power_peak': 'GH joint → 팔 IR 가속 (★ release power)',
+              'Pitching_Elbow_Power_peak': 'elbow ext + IR transfer (UCL stress)',
+            }[it.key] || '—';
+            return `<tr>
+              <td><strong>${it.label}</strong></td>
+              <td class="mono text-xs">${it.stage}</td>
+              <td class="mono">${fmt(val)}</td>
+              <td><strong style="color: ${scoreColor(sc)};">${sc != null ? sc : '—'}</strong></td>
+              <td class="text-xs" style="color: var(--text-muted);">${role}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div class="text-xs mt-2" style="color: var(--text-muted); line-height: 1.5;">
+        <strong>해석 가이드:</strong> Shoulder Power가 가장 높은 단일 출력 (≈1500W elite). Lead Knee Power(eccentric, 음수)는 block 강도 — 절댓값이 클수록 좋음. Elbow Power 과도(>500W)는 UCL stress 신호.
+      </div>
+    </div>`;
+  }
+
+  // ── 8. 결함 진단 ──
+  function _renderFaultsSection(result) {
+    if (!result.faults || result.faults.length === 0) {
+      return `
+      <div class="cat-card mb-6" style="padding: 16px; border-left: 4px solid #16a34a; background: rgba(22,163,74,0.04);">
+        <div class="display text-lg" style="color: #16a34a;">✓ 검출된 결함 없음</div>
+        <div class="text-sm mt-1" style="color: var(--text-secondary);">코호트 평균 임계 기준으로 키네틱 결함이 검출되지 않았습니다.</div>
+      </div>`;
+    }
+    const sevColor = { high: '#dc2626', medium: '#fb923c', low: '#94a3b8' };
+    const sevLabel = { high: '⚠️ 높음', medium: '⚡ 중간', low: 'ℹ 낮음' };
+    const sevOrder = { high: 0, medium: 1, low: 2 };
+    const sorted = [...result.faults].sort((a,b) => sevOrder[a.severity] - sevOrder[b.severity]);
+    return `
+    <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid var(--bad);">
+      <div class="display text-xl mb-2" style="color: var(--bad);">🔬 결함 진단 — 코칭 우선순위</div>
+      <div class="text-sm mb-3" style="color: var(--text-secondary);">
+        ${sorted.length}개 결함 검출. 심각도 순서로 정렬했습니다.
+      </div>
+      ${sorted.map(f => {
+        const c = sevColor[f.severity] || '#888';
+        return `<div style="background: var(--bg-elevated); padding: 12px 14px; margin-bottom: 8px; border-radius: 6px; border-left: 4px solid ${c};">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <span class="mono text-xs" style="background: ${c}22; color: ${c}; padding: 2px 8px; border-radius: 3px; font-weight: 600;">${sevLabel[f.severity] || f.severity}</span>
+            <strong style="color: ${c};">${f.label}</strong>
+          </div>
+          <div class="text-xs mt-1" style="color: var(--text-secondary);"><strong>원인:</strong> ${f.cause}</div>
+          <div class="text-xs mt-1" style="color: var(--text-secondary);"><strong>코칭:</strong> ${f.coaching}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // ── 9. 종합 평가 ──
+  function _renderSummaryNarrative(result) {
+    const cats = result.catScores || {};
+    const out = cats.OUTPUT?.score, tr = cats.TRANSFER?.score, lk = cats.LEAK?.score;
+    const ctrl = cats.CONTROL?.score, inj = cats.INJURY?.score;
+    const ballSp = result.varScores?.ball_speed?.value;
+    const name = result._meta?.athlete || '신규 선수';
+    const level = result._meta?.level || '';
+
+    // 강점·약점
+    const allScores = [
+      { name: '출력', score: out, color: '#C00000' },
+      { name: '전달', score: tr, color: '#0070C0' },
+      { name: '누수', score: lk, color: '#7030A0' },
+      { name: '제구', score: ctrl, color: '#2E7D32' },
+      { name: '부상 안전도', score: inj, color: '#FF8C00' },
+    ].filter(c => c.score != null);
+    const strengths = allScores.filter(c => c.score >= 70).sort((a,b)=>b.score-a.score);
+    const weaknesses = allScores.filter(c => c.score < 50).sort((a,b)=>a.score-b.score);
+
+    let narrative = `<strong>${name}</strong>${level ? ' (' + level + ')' : ''} — `;
+    if (ballSp) narrative += `평균 구속 <strong>${ballSp.toFixed(1)} km/h</strong>. `;
+    if (strengths.length > 0) {
+      narrative += `<span style="color: #16a34a;">강점: ${strengths.map(s => `${s.name}(${s.score})`).join(', ')}</span>. `;
+    }
+    if (weaknesses.length > 0) {
+      narrative += `<span style="color: #dc2626;">우선 개선: ${weaknesses.map(s => `${s.name}(${s.score})`).join(', ')}</span>. `;
+    }
+    if (out != null && tr != null) {
+      if (out >= 50 && tr < 50) narrative += '출력은 만들어지지만 전달 효율이 낮음 — 메카닉 코칭 우선이 가장 큰 수익.';
+      else if (out < 50 && tr >= 50) narrative += '메카닉(전달)은 좋으나 출력 자체 부족 — 체력·파워 강화로 raw output 끌어올리기.';
+      else if (out >= 50 && tr >= 50) narrative += 'Elite 영역 (① 사분면). 현 상태 유지 + 부상 모니터링.';
+      else narrative += '출력·전달 모두 발달 단계 — 기초부터 단계별 향상.';
+    }
+
+    return `
+    <div class="cat-card mt-6" style="padding: 18px; background: linear-gradient(135deg, rgba(31,56,100,0.05), rgba(46,117,182,0.03)); border: 1px solid var(--border);">
+      <div class="display text-xl mb-3" style="color: var(--accent);">📋 종합 평가</div>
+      <div class="text-sm leading-relaxed" style="color: var(--text-primary);">${narrative}</div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-4">
+        ${allScores.map(c => {
+          const color = c.score >= 75 ? '#16a34a' : c.score >= 50 ? '#fb923c' : '#dc2626';
+          return `<div style="background: var(--bg-elevated); padding: 10px; border-radius: 6px; text-align: center; border-top: 3px solid ${c.color};">
+            <div class="text-xs" style="color: var(--text-muted);">${c.name}</div>
+            <div class="display text-2xl" style="color: ${color}; font-weight: 700;">${c.score}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
+  function _renderVarDetail(result, varNames) {
     const TM = window.TheiaMeta;
     let html = '<table class="var-table"><thead><tr><th>변수</th><th>값</th><th>점수</th><th>의미</th></tr></thead><tbody>';
     for (const v of varNames) {
@@ -672,7 +1155,7 @@
       if (!meta) continue;
       const valStr = vs ? formatVal(vs.value, meta.unit) : '<span class="na">—</span>';
       const scoreStr = vs ? `<span class="score-${vs.score >= 75 ? 'good' : vs.score >= 50 ? 'mid' : 'low'}">${vs.score}</span>` : '<span class="na">—</span>';
-      html += `<tr><td><strong>${meta.name}</strong></td><td>${valStr}</td><td>${scoreStr}</td><td><small>${meta.hint || ''}</small></td></tr>`;
+      html += `<tr><td><strong>${meta.name}</strong></td><td>${valStr}</td><td>${scoreStr}</td><td><small style="color: var(--text-muted);">${meta.hint || ''}</small></td></tr>`;
     }
     html += '</tbody></table>';
     return html;
