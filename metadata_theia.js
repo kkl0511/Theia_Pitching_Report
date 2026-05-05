@@ -541,7 +541,8 @@
   ];
 
   function getELIGrade(score) {
-    if (score == null) return null;
+    // ★ v0.18.1 — score null이어도 fallback 객체 반환 (.color 접근 시 에러 방지)
+    if (score == null) return { min: 0, label: '미평가', feedback: '데이터 부족', color: '#94a3b8' };
     return ELI_GRADES.find(g => score >= g.min) || ELI_GRADES[ELI_GRADES.length - 1];
   }
 

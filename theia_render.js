@@ -120,7 +120,8 @@
     const eliResult = _calculateELI(result);
     if (!eliResult) return '';
     const { eli, areas, measured, totalW } = eliResult;
-    const grade = TM.getELIGrade(eli);
+    // ★ v0.18.1 — grade null fallback (eli == null 시 getELIGrade 가 null 반환)
+    const grade = TM.getELIGrade(eli) || { color: '#94a3b8', label: '미평가', feedback: '데이터 부족 — c3d.txt 측정 변수 확인 필요' };
 
     // 가장 약한 영역 식별 (점수 기준 오름차순) → 핵심 결론 문장 생성
     const weakAreas = areas.filter(a => a.score != null && a.score < 60).sort((a, b) => a.score - b.score);
