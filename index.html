@@ -510,11 +510,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.49"></script>
-<script src="metadata_theia.js?v=0.49"></script>
-<script src="theia_app.js?v=0.49"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.49"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.49"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.51"></script>
+<script src="metadata_theia.js?v=0.51"></script>
+<script src="theia_app.js?v=0.51"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.51"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.51"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
@@ -1109,28 +1109,59 @@ function downloadHtml() {
   showAlert('📄 HTML 다운로드 시작', 'info');
 }
 
-// 오프라인 패키지 = HTML + 결과 JSON (다른 사람에게 보내기 좋음)
+// 오프라인 패키지 = 풀 리포트 HTML + 결과 JSON (다른 사람에게 보내기 좋음)
+// ★ v0.50 — JSON 덤프만 보여주던 문제 해결: 시각화된 풀 리포트 임베드
 function downloadOfflinePackage() {
   const playerName = (document.getElementById('player-name').value || 'Theia_Report').replace(/[^a-zA-Z0-9가-힣_]/g, '_');
   const date = new Date().toISOString().slice(0, 10);
   const result = window.TheiaApp.getLastResult();
+  if (!result) { showAlert('먼저 분석을 실행하세요', 'error'); return; }
+
+  const reportHtml = document.getElementById('result-area').innerHTML;
+  const inlineStyles = Array.from(document.querySelectorAll('style')).map(s => s.outerHTML).join('\n');
   const json = JSON.stringify(result, null, 2);
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Theia Offline — ${playerName}</title>
-<style>body{font-family:sans-serif;background:#0a0b0d;color:#e8e9ec;padding:20px;}pre{background:#141518;padding:12px;border-radius:6px;overflow:auto;font-size:11px;}</style>
-</head><body>
-<h1>Theia Pitching Report — ${playerName}</h1>
-<p>Generated: ${new Date().toString()} · Version: ${window.TheiaApp.ALGORITHM_VERSION}</p>
-<details open><summary>📊 결과 요약</summary>
-<pre>${json.replace(/[<>&]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[m])}</pre>
-</details>
+
+  const html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Theia Pitching Report — ${playerName}</title>
+<script src="https://cdn.tailwindcss.com"><\/script>
+${inlineStyles}
+<style>
+  body { background: var(--bg-base, #08080c); color: var(--text-primary, #e8e9ec); font-family: 'Inter', sans-serif; padding: 0; margin: 0; }
+  .offline-wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .offline-header { border-bottom: 1px solid var(--border, #1f2937); padding-bottom: 16px; margin-bottom: 24px; }
+  .offline-title { font-size: 26px; font-weight: 700; }
+  .offline-meta { color: var(--text-muted, #94a3b8); font-size: 13px; margin-top: 4px; }
+  .offline-json-wrap { margin-top: 48px; padding-top: 24px; border-top: 1px dashed var(--border, #1f2937); }
+  .offline-json-wrap summary { cursor: pointer; color: var(--text-muted, #94a3b8); font-size: 13px; padding: 6px 0; }
+  .offline-json-wrap pre { background: #141518; color: #e8e9ec; padding: 12px; border-radius: 6px; overflow: auto; font-size: 11px; line-height: 1.5; max-height: 600px; }
+</style>
+</head>
+<body>
+<div class="offline-wrap">
+  <div class="offline-header">
+    <div class="offline-title">📦 Theia Pitching Report — ${playerName}</div>
+    <div class="offline-meta">생성: ${new Date().toLocaleString('ko-KR')} · 버전 ${window.TheiaApp.ALGORITHM_VERSION} · ${result._n_trials || '?'} trial · ${result._mode === 'pro' ? '프로' : '고교 1학년 상위 10%'} 모드</div>
+  </div>
+  <div id="result-area">${reportHtml}</div>
+  <div class="offline-json-wrap">
+    <details>
+      <summary>📊 raw 결과 JSON (디버깅·재분석용 데이터 백업)</summary>
+      <pre>${json.replace(/[<>&]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[m])}</pre>
+    </details>
+  </div>
+</div>
 </body></html>`;
+
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `Theia_Offline_${playerName}_${date}.html`;
   a.click();
   URL.revokeObjectURL(url);
-  showAlert('📦 오프라인 패키지 다운로드 시작 (인터넷 없이도 열림)', 'info');
+  showAlert('📦 오프라인 패키지 다운로드 — 풀 리포트 + JSON 백업 (Tailwind CDN 인터넷 1회 로딩 필요)', 'info');
 }
 
 // ════════════════════════════════════════════════════════════
