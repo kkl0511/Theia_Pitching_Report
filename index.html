@@ -290,9 +290,9 @@
         <button id="mode-pill-pro" class="mode-pill" onclick="selectMode('pro')">프로</button>
       </div>
       <button onclick="toggleFilter()" class="theme-toggle" id="filter-btn"
-              title="자동 필터링 (Butterworth 4th, ang_vel 15Hz, 그 외 10Hz, GRF 25Hz)"
-              style="color: var(--accent-soft); border-color: var(--accent-soft);">
-        🌊 필터 <span id="filter-state">ON</span>
+              title="자동 디지털 필터 (default OFF — 대부분 데이터는 Visual3D에서 이미 필터링됨. raw 미필터링 데이터일 때만 ON)"
+              style="color: var(--text-muted); border-color: var(--border);">
+        🌊 필터 <span id="filter-state">OFF</span>
       </button>
       <button onclick="manualRecompute()" class="theme-toggle" title="저장된 모든 선수의 결과를 현재 산식으로 다시 계산"
               style="color: var(--good); border-color: var(--good);">
@@ -521,14 +521,21 @@ let selectedC3dFiles = [];
 let metaPlayerData = null;  // xlsx에서 파싱한 선수 데이터 { player_name: { mass, height, hand, ball_speed_mean, ball_speed_sd, pitch_type } }
 
 // ════════════════════════════════════════════════════════════
-// ★ v0.21 — 자동 필터링 토글 (raw vs filtered)
+// ★ v0.22 — 자동 필터링 토글 (default OFF — 이중 필터 회피)
+//   대부분 c3d.txt는 Visual3D pipeline에서 이미 좌표 필터링됨 → 추가 필터는 이중 필터링.
+//   raw 미필터링 데이터인 경우만 ON 권장.
 function toggleFilter() {
-  window._THEIA_FILTER_OFF = !window._THEIA_FILTER_OFF;
+  window._THEIA_FILTER_ON = !window._THEIA_FILTER_ON;
   const stateEl = document.getElementById('filter-state');
-  if (stateEl) stateEl.textContent = window._THEIA_FILTER_OFF ? 'OFF' : 'ON';
-  showAlert(window._THEIA_FILTER_OFF
-    ? '⚠ 자동 필터링 OFF — raw 데이터로 분석합니다 (노이즈 영향 가능)'
-    : '✓ 자동 필터링 ON — Butterworth 4th: angle/pos·power·ME 10Hz, ang_vel 15Hz, GRF 25Hz', 'info');
+  if (stateEl) stateEl.textContent = window._THEIA_FILTER_ON ? 'ON' : 'OFF';
+  const btn = document.getElementById('filter-btn');
+  if (btn) {
+    if (window._THEIA_FILTER_ON) { btn.style.color = 'var(--accent-soft)'; btn.style.borderColor = 'var(--accent-soft)'; }
+    else { btn.style.color = 'var(--text-muted)'; btn.style.borderColor = 'var(--border)'; }
+  }
+  showAlert(window._THEIA_FILTER_ON
+    ? '✓ 자동 필터링 ON — Butterworth 4th 적용 (angle/pos·power·ME 10Hz, ang_vel 15Hz, GRF 25Hz). ⚠ Visual3D pipeline에서 이미 필터링된 데이터면 이중 필터링이 되니 OFF 권장.'
+    : '✓ 자동 필터링 OFF (default) — Visual3D pipeline에서 이미 좌표 필터링된 데이터로 가정. 학생이 raw 미필터링 좌표로 산출했다면 ON 필요.', 'info');
 }
 
 // 테마 토글 (Day ↔ Night)

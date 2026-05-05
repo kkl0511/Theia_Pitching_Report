@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.21';
+  const ALGORITHM_VERSION = 'v0.22';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -179,9 +179,11 @@
       events
     };
 
-    // ★ v0.21 — 자동 디지털 필터링 (Butterworth 4th, zero-lag filtfilt)
-    //   기본 ON. window._THEIA_FILTER_OFF=true 로 비활성화 가능.
-    if (!(typeof window !== 'undefined' && window._THEIA_FILTER_OFF)) {
+    // ★ v0.22 — 자동 디지털 필터링 default OFF (이중 필터 회피)
+    //   대부분 c3d.txt는 Visual3D pipeline에서 이미 좌표 필터링(예: 20Hz Butterworth) 후
+    //   각도·각속도·파워가 derive된 데이터. 추가 필터링은 이중 필터링 = peak 깎임.
+    //   필터 안 된 raw 데이터인 경우만 UI에서 토글 ON으로 활성화.
+    if (typeof window !== 'undefined' && window._THEIA_FILTER_ON === true) {
       _applyAutoFilter(result);
     }
     return result;
