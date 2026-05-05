@@ -1,6 +1,6 @@
 {
   "meta": {
-    "version": "v0.26",
+    "version": "v0.36",
     "cohort_id": "pro",
     "cohort_label_kr": "프로 수준 reference (Theia markerless 보정)",
     "cohort_label_en": "Professional Reference (Theia markerless calibrated)",
@@ -210,6 +210,173 @@
       "unit": "s",
       "polarity": "absolute",
       "ref": "elite clawback 0.15-0.25s (Driveline R&D)"
+    },
+    "arm_trunk_speedup": {
+      "optimal": 5.0,
+      "sigma": 0.8,
+      "unit": "ratio",
+      "polarity": "higher",
+      "ref": "★ v0.27 — KBO 프로 이영하 6 trial 평균 5.00±0.32. Aguinaldo Pro ~5"
+    },
+    "pelvis_trunk_speedup": {
+      "optimal": 1.4,
+      "sigma": 0.25,
+      "unit": "ratio",
+      "polarity": "higher",
+      "ref": "★ v0.27 — 이영하 6 trial 평균 1.36±0.06. Werner Pro ~1.4"
+    },
+    "humerus_segment_peak": {
+      "optimal": 5500,
+      "sigma": 1000,
+      "unit": "deg/s",
+      "polarity": "higher",
+      "ref": "★ v0.27 — 이영하 6 trial 5284±252 (markerless). MLB marker 6500+"
+    },
+    "Pitching_Shoulder_Power_peak": {
+      "optimal": 4500,
+      "sigma": 1000,
+      "unit": "W",
+      "polarity": "higher",
+      "ref": "★ v0.27 — 이영하 6 trial 4225±860"
+    },
+    "Pitching_Elbow_Power_peak": {
+      "optimal": 5000,
+      "sigma": 1000,
+      "unit": "W",
+      "polarity": "higher",
+      "ref": "★ v0.27 — 이영하 6 trial 4944±790"
+    },
+    "Trail_Hip_Power_peak": {
+      "optimal": 1300,
+      "sigma": 400,
+      "unit": "W",
+      "polarity": "higher",
+      "ref": "★ v0.27 — 이영하 6 trial 1272±201"
+    },
+    "Lead_Knee_Power_peak": {
+      "optimal": 2500,
+      "sigma": 1000,
+      "unit": "W",
+      "polarity": "higher",
+      "ref": "★ v0.27 — 이영하 6 trial median ~2000W (outlier 14370 제외)"
+    },
+    "trunk_forward_flexion_vel_peak": {
+      "optimal": 280,
+      "sigma": 60,
+      "unit": "deg/s",
+      "polarity": "higher",
+      "ref": "★ v0.27 — 이영하 6 trial 267±8"
+    },
+    "lead_knee_ext_change_fc_to_br": {
+      "optimal": 0,
+      "sigma": 15,
+      "unit": "deg",
+      "polarity": "capped_higher",
+      "ref": "★ v0.27 — 0 이상(앞다리 버팀 유지) 만점, 음수(무릎 무너짐)만 감점. 메모리 feedback_knee_block_maintenance"
+    },
+    "drive_leg_propulsive_impulse": {
+      "optimal": 0.022, "sigma": 0.012, "unit": "BW·s", "polarity": "higher",
+      "ref": "★ v0.31 — KBO 프로 이영하 6 trial 평균 0.020±0.003 BW·s (fps=1200Hz, T0 보정)"
+    },
+    "lead_leg_braking_impulse": {
+      "optimal": 0.005, "sigma": 0.005, "unit": "BW·s", "polarity": "higher",
+      "ref": "★ v0.31 — KBO 프로 이영하 6 trial 평균 0.001±0.001 BW·s. AP 음의 방향 짧은 구간"
+    },
+    "trail_vGRF_impulse": {
+      "optimal": 0.90, "sigma": 0.20, "unit": "BW·s", "polarity": "higher",
+      "ref": "★ v0.31 — KBO 프로 이영하 6 trial 평균 0.882±0.029 BW·s (fps_force=1200Hz)"
+    },
+    "lead_vGRF_impulse": {
+      "optimal": 0.25, "sigma": 0.10, "unit": "BW·s", "polarity": "higher",
+      "ref": "★ v0.31 — KBO 프로 이영하 6 trial 평균 0.237±0.022 BW·s. FS→BR 0.2초 짧은 구간"
+    },
+    "shoulder_W_pos": {
+      "optimal": 85, "sigma": 25, "unit": "J", "polarity": "higher",
+      "ref": "★ v0.28 PDF §4 — Shoulder W⁺. 이영하 6 trial 80.6±8.2"
+    },
+    "shoulder_W_neg": {
+      "optimal": -75, "sigma": 25, "unit": "J", "polarity": "lower",
+      "ref": "★ v0.28 — Shoulder W⁻ (감속). 절대값 작을수록 좋음. 이영하 -72±13"
+    },
+    "shoulder_absorption_ratio": {
+      "optimal": 0.9, "sigma": 0.4, "unit": "ratio", "polarity": "absolute",
+      "ref": "★ v0.28 — |W⁻|/W⁺. ~1.0 정상, 너무 크면 부상 위험. 이영하 0.90±0.16"
+    },
+    "elbow_W_pos": {
+      "optimal": 60, "sigma": 25, "unit": "J", "polarity": "higher",
+      "ref": "★ v0.28 — Elbow W⁺. 이영하 49±24"
+    },
+    "elbow_W_neg": {
+      "optimal": -100, "sigma": 30, "unit": "J", "polarity": "lower",
+      "ref": "★ v0.28 — Elbow W⁻ (큰 음의 일=정상 brake). 이영하 -101±25"
+    },
+    "elbow_absorption_ratio": {
+      "optimal": 2.0, "sigma": 0.7, "unit": "ratio", "polarity": "absolute",
+      "ref": "★ v0.28 — Elbow |W⁻|/W⁺ ~2.0 정상 elite (brake 역할). 이영하 2.21±0.44"
+    },
+    "trail_hip_W_pos": {
+      "optimal": 150, "sigma": 50, "unit": "J", "polarity": "higher",
+      "ref": "★ v0.28 — Trail hip W⁺ (drive 출력). 이영하 148±54"
+    },
+    "lead_hip_W_pos": {
+      "optimal": 150, "sigma": 50, "unit": "J", "polarity": "higher",
+      "ref": "★ v0.28 — Lead hip W⁺ (block 출력). 이영하 145±41"
+    },
+    "lead_knee_W_pos": {
+      "optimal": 80, "sigma": 30, "unit": "J", "polarity": "higher",
+      "ref": "★ v0.28 — Lead knee W⁺. 이영하 83±21"
+    },
+    "ETE_pelvis_to_trunk": {
+      "optimal": 0.55, "sigma": 0.20, "unit": "ratio", "polarity": "higher",
+      "ref": "★ v0.28 PDF §5 — ETE = ΔE_trunk(KH→FC) / W⁺_hip. 이영하 0.46±0.14, elite 0.5+"
+    },
+    "ETE_trunk_to_arm": {
+      "optimal": 0.50, "sigma": 0.18, "unit": "ratio", "polarity": "higher",
+      "ref": "★ v0.28 PDF §5 — ETE = ΔE_arm(FC→BR) / |trunk_loss|. 이영하 0.41±0.04, elite 0.45+"
+    },
+    "ELI_segment_pelvis_trunk": {
+      "optimal": 0.45, "sigma": 0.20, "unit": "ratio", "polarity": "lower",
+      "ref": "★ v0.28 PDF §5 — 1 - ETE_pelvis_to_trunk. 작을수록 leak 적음"
+    },
+    "ELI_segment_trunk_arm": {
+      "optimal": 0.50, "sigma": 0.18, "unit": "ratio", "polarity": "lower",
+      "ref": "★ v0.28 PDF §5 — 1 - ETE_trunk_to_arm. 작을수록 leak 적음"
+    },
+    "knee_flexion_change_FC_to_MER": {
+      "optimal": -10, "sigma": 15, "unit": "deg", "polarity": "lower",
+      "ref": "★ v0.28 — 음수 = 신전(좋음, block), 양수 = 더 굴곡(무너짐). 이영하 -24.5±5.7 우수"
+    },
+    "knee_flexion_change_MER_to_BR": {
+      "optimal": -3, "sigma": 8, "unit": "deg", "polarity": "lower",
+      "ref": "★ v0.28+ — MER→BR 추가 신전. 음수=계속 펴짐(좋음), 양수=무너짐"
+    },
+    "time_to_peak_trail_force": {
+      "optimal": 0.60, "sigma": 0.10, "unit": "s", "polarity": "absolute",
+      "ref": "★ v0.34 NewtForce — KH→Trail vGRF peak. 이영하 평균 0.60±0.02s. 너무 빠르면 spike, 너무 늦으면 plateau"
+    },
+    "time_to_peak_lead_force": {
+      "optimal": 0.14, "sigma": 0.05, "unit": "s", "polarity": "absolute",
+      "ref": "★ v0.34 NewtForce — FC→Lead vGRF peak. 이영하 평균 0.14±0.02s. 너무 이르면 조기 블로킹"
+    },
+    "force_at_ball_release": {
+      "optimal": 1.0, "sigma": 0.6, "unit": "BW", "polarity": "higher",
+      "ref": "★ v0.34 NewtForce — BR 시점 lead leg vertical force. 1.0+ BW = 회전축 유지. 이영하 평균 0.88±0.82 BW (변동성 큼)"
+    },
+    "x_force_instability": {
+      "optimal": 0.05, "sigma": 0.02, "unit": "BW", "polarity": "lower",
+      "ref": "★ v0.34 NewtForce — KH→BR 동안 X(좌우) force SD/BW. 작을수록 좌우 흔들림 적음. 이영하 0.054±0.006"
+    },
+    "clawback_time": {
+      "optimal": 0.10, "sigma": 0.10, "unit": "s", "polarity": "lower",
+      "ref": "★ v0.34 NewtForce — BR 후 lead force 50% baseline 복귀 시간. 짧을수록 안정적 브레이킹. 이영하 0.10±0.17s"
+    },
+    "lead_braking_efficiency": {
+      "optimal": 0.50, "sigma": 0.30, "unit": "ratio", "polarity": "higher",
+      "ref": "★ v0.34 NewtForce — Lead brake impulse / Trail propulsive impulse. NewtForce §4 권장 산식. 이영하 0.05 (낮음, lead AP brake 작음)"
+    },
+    "pelvis_deceleration": {
+      "optimal": 600, "sigma": 200, "unit": "deg/s", "polarity": "higher",
+      "ref": "★ v0.28 PDF §7 — peak Pelvis ω - ω(MER). 큰 감속 = trunk로 에너지 전달. 이영하 604±63"
     }
   }
 }
