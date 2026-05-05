@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.48';
+  const ALGORITHM_VERSION = 'v0.49';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -754,9 +754,13 @@
     //   기존 코드가 Z축(회전)을 읽어 trunk_rotation_at_fc와 같은 값(예: 91°) 출력하던 버그 수정
     out.fc_trunk_forward_tilt = valAtTime(parsed, 'Trunk_Angle.X', ev.FC);
     if (ev.FC != null) {
-      const yMax = maxBetween(parsed, 'Trunk_Angle.Y', 0, ev.FC);
-      const yMin = minBetween(parsed, 'Trunk_Angle.Y', 0, ev.FC);
-      if (yMax != null && yMin != null) out.peak_trunk_CounterRotation = Math.abs(yMax - yMin);
+      // ★ v0.49 — peak_trunk_CounterRotation = Trunk_Angle.Z(axial rotation) range [0, FC]
+      //   기존 'Trunk_Angle.Y'(lateral lean) 사용 시 코호트 산출(extract_theia_scalars.py)과
+      //   축이 어긋나 박명균 8 trial 평균 14.5° (코호트 mean 39.6°와 큰 차이) 발생.
+      //   Python 산출 검증치: 박명균 trial 1 [0, FC] Z range = 49.9° (xlsx 48.04와 일치)
+      const zMax = maxBetween(parsed, 'Trunk_Angle.Z', 0, ev.FC);
+      const zMin = minBetween(parsed, 'Trunk_Angle.Z', 0, ev.FC);
+      if (zMax != null && zMin != null) out.peak_trunk_CounterRotation = Math.abs(zMax - zMin);
     }
 
     // ── 무릎 ──
