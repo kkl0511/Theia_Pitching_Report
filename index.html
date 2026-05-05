@@ -510,11 +510,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.51"></script>
-<script src="metadata_theia.js?v=0.51"></script>
-<script src="theia_app.js?v=0.51"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.51"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.51"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.52"></script>
+<script src="metadata_theia.js?v=0.52"></script>
+<script src="theia_app.js?v=0.52"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.52"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.52"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
@@ -1091,13 +1091,15 @@ function saveReportClick() {
 }
 
 // HTML 다운로드 (현재 페이지를 단일 HTML 파일로)
+// ★ v0.52 — 항상 night 테마 고정 (사용자가 day로 보고 있어도 다운로드는 night)
 function downloadHtml() {
   const playerName = (document.getElementById('player-name').value || 'Theia_Report').replace(/[^a-zA-Z0-9가-힣_]/g, '_');
   const date = new Date().toISOString().slice(0, 10);
-  const html = '<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>Theia Report — ' + playerName + '</title>' +
+  const allStyles = Array.from(document.querySelectorAll('style')).map(s => s.outerHTML).join('\n');
+  const html = '<!DOCTYPE html>\n<html lang="ko" data-theme="night">\n<head><meta charset="UTF-8"><title>Theia Report — ' + playerName + '</title>' +
     '<script src="https://cdn.tailwindcss.com"><\/script>' +
-    document.querySelector('style')?.outerHTML +
-    '</head><body><div style="max-width:1200px;margin:0 auto;padding:20px;">' +
+    allStyles +
+    '</head><body style="background:#08080c;color:#e8e9ec;"><div style="max-width:1200px;margin:0 auto;padding:20px;">' +
     document.getElementById('result-area').innerHTML +
     '</div></body></html>';
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
@@ -1122,7 +1124,7 @@ function downloadOfflinePackage() {
   const json = JSON.stringify(result, null, 2);
 
   const html = `<!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-theme="night">
 <head>
 <meta charset="UTF-8">
 <title>Theia Pitching Report — ${playerName}</title>
