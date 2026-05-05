@@ -923,6 +923,36 @@ function updateAnalyzeButton() {
   document.getElementById(id).addEventListener('input', updateAnalyzeButton);
 });
 
+// ★ v0.14 — 결과 생성 시 입력 섹션 collapse (자동 입력 박스 결과에서 숨김)
+function hideInputSections() {
+  // 결과 영역 상단에 "✏️ 입력 수정" 토글 버튼 표시
+  const view = document.getElementById('view-individual');
+  const sections = view.querySelectorAll(':scope > section.card');
+  // Step 1·2·3 + 분석 실행 button section + saved-player-selector 모두 숨김
+  sections.forEach(s => s.style.display = 'none');
+  document.getElementById('saved-player-selector')?.classList.add('hidden');
+  // 결과 영역 위에 "입력 수정" 버튼 한 줄 추가
+  let editBar = document.getElementById('edit-input-bar');
+  if (!editBar) {
+    editBar = document.createElement('div');
+    editBar.id = 'edit-input-bar';
+    editBar.style.cssText = 'margin-bottom: 16px; text-align: right;';
+    editBar.innerHTML = `<button onclick="showInputSections()" class="btn btn-secondary text-xs" style="padding: 6px 12px;">✏️ 입력 수정 / 새 분석</button>`;
+    document.getElementById('result-area').parentNode.insertBefore(editBar, document.getElementById('result-area'));
+  }
+  editBar.style.display = '';
+}
+function showInputSections() {
+  const view = document.getElementById('view-individual');
+  const sections = view.querySelectorAll(':scope > section.card');
+  sections.forEach(s => s.style.display = '');
+  refreshSavedPlayerSelector();
+  const editBar = document.getElementById('edit-input-bar');
+  if (editBar) editBar.style.display = 'none';
+  document.getElementById('result-area').innerHTML = '';
+  window.scrollTo(0, 0);
+}
+
 async function runAnalysis() {
   const mode = window.TheiaApp.getMode();
   const mass = parseFloat(document.getElementById('player-mass').value);
@@ -948,6 +978,8 @@ async function runAnalysis() {
     });
     const html = window.TheiaApp.renderReport(result);
     document.getElementById('result-area').innerHTML = `<div class="card p-6">${html}</div>`;
+    // ★ v0.14 — 결과 생성 후 입력 섹션 4개 collapse (자동 입력 정보 숨김)
+    hideInputSections();
   } catch (e) {
     console.error(e);
     document.getElementById('result-area').innerHTML = '';
@@ -1002,6 +1034,7 @@ function loadSavedPlayer(key) {
   // 결과 영역에 직접 렌더 (c3d.txt 재업로드 없이)
   const html = window.TheiaApp.renderReport(r.result);
   document.getElementById('result-area').innerHTML = `<div class="card p-6">${html}</div>`;
+  hideInputSections();
   showAlert(`✓ ${r.player?.name || '저장된 선수'} 불러옴 (${r.version})`, 'success');
 }
 

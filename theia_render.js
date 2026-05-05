@@ -724,29 +724,59 @@
       const vals = keys.map(k => m[k]?.score).filter(x => x != null);
       return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0) / vals.length) : null;
     };
-    return [
-      { label: '하체 추진',          val: _avg(['Trail_leg_peak_vertical_GRF', 'Trail_leg_peak_AP_GRF', 'Trail_Hip_Power_peak', 'Pelvis_peak']),
+    const dims = [
+      { label: '하체 추진', val: _avg(['Trail_leg_peak_vertical_GRF', 'Trail_leg_peak_AP_GRF', 'Trail_Hip_Power_peak', 'Pelvis_peak']),
         refVars: ['Trail_leg_peak_vertical_GRF', 'Trail_Hip_Power_peak', 'Pelvis_peak'],
+        faultIds: ['WeakTrailDrive'],
         desc: '뒷다리로 강하게 밀어 추진력 만들기 (KH→FC)' },
       { label: '앞다리 버팀 (Block)', val: _avg(['Lead_leg_peak_vertical_GRF', 'CoG_Decel', 'Lead_Knee_Power_peak', 'br_lead_leg_knee_flexion', 'lead_knee_ext_change_fc_to_br']),
         refVars: ['Lead_leg_peak_vertical_GRF', 'lead_knee_ext_change_fc_to_br', 'br_lead_leg_knee_flexion'],
+        faultIds: ['WeakLeadBlock', 'LeadKneeCollapse', 'PoorBlock'],
         desc: 'FC→BR 무릎 무너짐 여부 — 각도 유지가 핵심' },
-      // ★ v0.10 — 몸통 에너지 로딩에 trunk_rotation_at_fc(Flying Open) 추가
-      { label: '몸통 에너지 로딩',    val: _avg(['fc_xfactor', 'peak_xfactor', 'peak_trunk_CounterRotation', 'trunk_rotation_at_fc']),
+      { label: '몸통 에너지 로딩', val: _avg(['fc_xfactor', 'peak_xfactor', 'peak_trunk_CounterRotation', 'trunk_rotation_at_fc']),
         refVars: ['fc_xfactor', 'peak_xfactor', 'trunk_rotation_at_fc'],
+        faultIds: ['FlyingOpen'],
         desc: '꼬임·닫힘·기울기·FC 절대 회전으로 트렁크 에너지 저장' },
-      // ★ v0.10 — 몸통 에너지 발현에 trunk_forward_flexion_vel_peak 추가
-      { label: '몸통 에너지 발현',    val: _avg(['Pelvis_peak', 'Trunk_peak', 'trunk_forward_flexion_vel_peak', 'pelvis_to_trunk', 'pelvis_trunk_speedup']),
+      { label: '몸통 에너지 발현', val: _avg(['Pelvis_peak', 'Trunk_peak', 'trunk_forward_flexion_vel_peak', 'pelvis_to_trunk', 'pelvis_trunk_speedup']),
         refVars: ['Trunk_peak', 'trunk_forward_flexion_vel_peak', 'Pelvis_peak', 'pelvis_to_trunk'],
+        faultIds: ['LateTrunkRotation', 'PoorSpeedupChain', 'ExcessForwardTilt'],
         desc: '회전(Z) + 굴곡(X) 속도로 에너지 발현 (FC→MER→BR)' },
-      // ★ v0.10 — 팔 에너지에 humerus_segment_peak 추가 (Arm_peak는 shoulder IR vel)
-      { label: '팔 에너지',           val: _avg(['Arm_peak', 'humerus_segment_peak', 'trunk_to_arm', 'arm_trunk_speedup', 'mer_shoulder_abd', 'max_shoulder_ER', 'Pitching_Shoulder_Power_peak']),
+      { label: '팔 에너지', val: _avg(['Arm_peak', 'humerus_segment_peak', 'trunk_to_arm', 'arm_trunk_speedup', 'mer_shoulder_abd', 'max_shoulder_ER', 'Pitching_Shoulder_Power_peak']),
         refVars: ['Arm_peak', 'humerus_segment_peak', 'max_shoulder_ER', 'trunk_to_arm', 'Pitching_Shoulder_Power_peak'],
+        faultIds: ['MERShoulderRisk'],
         desc: '레이백·전달율·lag·어깨 IR 속도(=Arm_peak)·humerus segment 통합' },
-      { label: '릴리스',             val: _avg(['wrist_release_speed', 'angular_chain_amplification', 'br_shoulder_abd', 'Pitching_Elbow_Power_peak']),
+      { label: '릴리스', val: _avg(['wrist_release_speed', 'angular_chain_amplification', 'br_shoulder_abd', 'Pitching_Elbow_Power_peak']),
         refVars: ['angular_chain_amplification', 'Pitching_Elbow_Power_peak'],
+        faultIds: ['HighElbowValgus', 'PoorReleaseConsistency'],
         desc: '손목 릴리스·전체 증폭·UCL stress' },
     ];
+
+    // ★ v0.14 — 결함 검출 시 ELI 영역 점수에 패널티 적용 (모순 해결)
+    //   high severity = -25점, medium = -12점, low = -5점
+    //   상한선 적용: high 결함 있으면 max 60점, medium 있으면 max 75점
+    const faults = result.faults || [];
+    const sevPenalty = { high: 25, medium: 12, low: 5 };
+    const sevCap     = { high: 60, medium: 75, low: 90 };
+    return dims.map(d => {
+      if (d.val == null) return d;
+      const matchedFaults = faults.filter(f => d.faultIds && d.faultIds.includes(f.id));
+      if (matchedFaults.length === 0) return d;
+      // 가장 심각한 결함 기준
+      const worstSev = matchedFaults.reduce((w, f) => {
+        const order = { high: 3, medium: 2, low: 1 };
+        return order[f.severity] > order[w] ? f.severity : w;
+      }, 'low');
+      const totalPenalty = matchedFaults.reduce((sum, f) => sum + (sevPenalty[f.severity] || 0), 0);
+      const cap = sevCap[worstSev] || 100;
+      const penalized = Math.min(cap, Math.max(0, d.val - totalPenalty));
+      return {
+        ...d,
+        val: penalized,
+        valOriginal: d.val,
+        faultPenalty: d.val - penalized,
+        faults: matchedFaults,
+      };
+    });
   }
 
   // 제구 6축 — P1~P6 (산출 안 되는 항목은 desc에 측정 필요 컬럼 안내)
@@ -864,11 +894,23 @@
         <div class="text-sm mt-1" style="color: var(--text-secondary);">코호트 평균 임계 기준으로 키네틱 결함이 검출되지 않았습니다.</div>
       </div>`;
     }
-    const STAGE_NAMES = { 1: '하체 드라이브', 2: '앞다리 블록', 3: '분리 형성', 4: '트렁크 가속', 5: '상지 코킹·전달', 6: '릴리스 가속' };
+    // ★ v0.15 — ELI_AREAS 6영역 라벨·idx와 1:1 통일 (모순 해소)
+    const STAGE_NAMES = {
+      1: '하체 추진',         // = ELI lower_drive (mech_idx 0)
+      2: '앞다리 블로킹',     // = ELI lead_block (mech_idx 1)
+      3: '골반-몸통 연결',    // = ELI pelvis_trunk (mech_idx 2)
+      4: '몸통 파워',         // = ELI trunk_power (mech_idx 3)
+      5: '팔 전달',           // = ELI arm_transfer (mech_idx 4)
+      6: '부하 대비 효율',    // = ELI load_eff (INJURY)
+    };
     const STAGE_OF_FAULT = {
-      WeakTrailDrive: 1, WeakLeadBlock: 2, FlyingOpen: 3, LateTrunkRotation: 4,
-      PoorSpeedupChain: 4, LeadKneeCollapse: 2, ExcessForwardTilt: 5, PoorBlock: 2,
-      MERShoulderRisk: 6, HighElbowValgus: 6, PoorReleaseConsistency: 6,
+      WeakTrailDrive: 1,
+      WeakLeadBlock: 2, LeadKneeCollapse: 2, PoorBlock: 2,
+      FlyingOpen: 3,
+      LateTrunkRotation: 4, PoorSpeedupChain: 4, ExcessForwardTilt: 4,  // ★ 수정: 5→4 (트렁크)
+      MERShoulderRisk: 5,
+      HighElbowValgus: 6,  // ★ 수정: 6→6 그대로 (UCL stress = 부하)
+      PoorReleaseConsistency: 6,  // 제구 변동 — 부하 대비 효율 영역
     };
     // 단계별 결함 집계
     const stageFaults = {1:[], 2:[], 3:[], 4:[], 5:[], 6:[]};
@@ -1026,19 +1068,78 @@
         </div>`).join('')}
       </div>` : '';
 
+    // ★ v0.15 — ELI 영역 강점/약점 우선 표시 (모순 해소)
+    //   변수 단위 점수는 raw — 결함 패널티 미반영. 종합 평가에서는 ELI 영역(패널티 적용)을 우선.
+    //   변수 단위는 보조 정보로 details 안.
+    const eliResult = _calculateELI(result);
+    const TM2 = window.TheiaMeta;
+    let eliStrengths = '', eliWeaknesses = '';
+    if (eliResult && eliResult.areas) {
+      const sorted = eliResult.areas.filter(a => a.score != null);
+      const areaStrengths = sorted.filter(a => a.score >= 75).sort((a,b) => b.score - a.score);
+      const areaWeak = sorted.filter(a => a.score < 50).sort((a,b) => a.score - b.score);
+      // 결함 매핑 (영역별)
+      const stageOfFaultArea = { WeakTrailDrive: 'lower_drive', WeakLeadBlock: 'lead_block', LeadKneeCollapse: 'lead_block', PoorBlock: 'lead_block',
+        FlyingOpen: 'pelvis_trunk', LateTrunkRotation: 'trunk_power', PoorSpeedupChain: 'trunk_power', ExcessForwardTilt: 'trunk_power',
+        MERShoulderRisk: 'arm_transfer', HighElbowValgus: 'load_eff', PoorReleaseConsistency: 'load_eff' };
+      const faultsByArea = {};
+      (result.faults || []).forEach(f => {
+        const aid = stageOfFaultArea[f.id] || 'load_eff';
+        (faultsByArea[aid] = faultsByArea[aid] || []).push(f);
+      });
+      const renderArea = (a, isStrength) => {
+        const c = isStrength ? '#16a34a' : '#dc2626';
+        const fs = faultsByArea[a.id] || [];
+        const faultBadges = fs.map(f => `<span class="mono text-[9px]" style="background: rgba(220,38,38,0.15); color: #dc2626; padding: 1px 6px; border-radius: 3px; margin-left: 4px;">${f.severity === 'high' ? '🚨' : '⚠'} ${f.label.replace(/\([^)]*\)/g, '').trim()}</span>`).join(' ');
+        return `<div style="background: var(--bg-card); padding: 8px 12px; border-left: 3px solid ${c}; border-radius: 3px; margin-bottom: 6px;">
+          <div class="flex justify-between items-baseline">
+            <strong style="font-size: 13px;">${a.name}${a.weight >= 20 ? ' ★' : ''} <span class="text-[10px] mono" style="color: var(--text-muted);">w=${a.weight}</span></strong>
+            <strong style="color: ${c}; font-size: 14px;">${a.score}점</strong>
+          </div>
+          ${fs.length > 0 ? `<div class="mt-1">${faultBadges}</div>` : ''}
+          <div class="text-[10px] mt-1" style="color: var(--text-muted);">${a.desc}</div>
+        </div>`;
+      };
+      eliStrengths = areaStrengths.length > 0 ? areaStrengths.map(a => renderArea(a, true)).join('')
+                                              : `<div class="text-xs" style="color: var(--text-muted); font-style: italic;">75점 이상 영역 없음</div>`;
+      eliWeaknesses = areaWeak.length > 0 ? areaWeak.map(a => renderArea(a, false)).join('')
+                                          : `<div class="text-xs" style="color: var(--text-muted); font-style: italic;">50점 미만 영역 없음</div>`;
+    }
+
     return `
     <div class="cat-card mt-6" style="padding: 22px;">
       <div class="display text-2xl mb-4">📋 종합 평가 (선수·코치용 해설)</div>
-      <div class="grid md:grid-cols-2 gap-4">
+      <!-- ELI 영역별 강점/약점 (1차) — 결함 패널티 반영 -->
+      <div class="text-xs mb-2 mono uppercase" style="color: var(--text-muted); letter-spacing: 0.05em;">★ Integrated ELI 영역별 강점·약점 (결함 패널티 적용)</div>
+      <div class="grid md:grid-cols-2 gap-4 mb-4">
         <div class="p-4" style="background: var(--bg-elevated); border-left: 4px solid #16a34a; border-radius: 6px;">
-          <div class="display text-base mb-3" style="color: #16a34a;">⭐ 강점 (75점 이상, 영역별)</div>
-          ${renderList(strengths, true)}
+          <div class="display text-base mb-3" style="color: #16a34a;">⭐ 강점 영역 (≥75점)</div>
+          ${eliStrengths}
         </div>
         <div class="p-4" style="background: var(--bg-elevated); border-left: 4px solid #dc2626; border-radius: 6px;">
-          <div class="display text-base mb-3" style="color: #dc2626;">🔧 약점 (35점 이하, 영역별)</div>
-          ${renderList(weaknesses, false)}
+          <div class="display text-base mb-3" style="color: #dc2626;">🔧 약점 영역 (<50점)</div>
+          ${eliWeaknesses}
         </div>
       </div>
+
+      <!-- 변수 단위 (2차, 보조 정보) — 변수별 raw 점수 -->
+      <details class="mb-4" style="background: var(--bg-elevated); border-radius: 6px; padding: 12px;">
+        <summary class="cursor-pointer text-sm" style="color: var(--text-muted);">📊 변수 단위 강점·약점 (보조 — raw 점수, 결함 패널티 미반영)</summary>
+        <div class="text-xs mt-2 mb-2" style="color: var(--text-muted); font-style: italic;">
+          ※ 변수 단위 점수는 cohort 비교 raw 점수입니다. 결함 검출 시 ELI 영역에 패널티가 적용되므로,
+          변수 점수가 높아도 결함이 있으면 ELI 영역 점수는 낮아질 수 있습니다 (예: BR 시점 앞무릎 굴곡 95점이지만 LeadKneeCollapse 결함 → 앞다리 블로킹 영역 60점).
+        </div>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs mb-2" style="color: #16a34a; font-weight: 600;">⭐ 변수 강점 (≥75점)</div>
+            ${renderList(strengths, true)}
+          </div>
+          <div>
+            <div class="text-xs mb-2" style="color: #dc2626; font-weight: 600;">🔧 변수 약점 (≤35점)</div>
+            ${renderList(weaknesses, false)}
+          </div>
+        </div>
+      </details>
       ${trainingHtml}
     </div>`;
   }
