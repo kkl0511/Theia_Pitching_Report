@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.42';
+  const ALGORITHM_VERSION = 'v0.43';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -1085,6 +1085,44 @@
     if (ev.MER != null && out.Pelvis_peak != null) {
       const pelvis_at_MER = Math.abs(valAtTime(parsed, 'Pelvis_Ang_Vel.Z', ev.MER) || 0);
       out.pelvis_deceleration = out.Pelvis_peak - pelvis_at_MER;  // 양수=감속함(좋음)
+    }
+
+    // ★ v0.43 — 결과(A) 변수 fallback proxy
+    //   ME 데이터 없거나 ETE 산출 fail 시 speedup ratio로 대체 산출 (절대 결측 안 나오게)
+    if (out.ETE_pelvis_to_trunk == null && out.pelvis_trunk_speedup != null) {
+      // speedup ratio 0.8~2.0 범위 → ETE 0~1로 매핑 (1.36 ≈ 0.47)
+      out.ETE_pelvis_to_trunk = Math.max(0, Math.min(1, (out.pelvis_trunk_speedup - 0.8) / 1.2));
+      out._ETE_p2t_proxy = true;
+    }
+    if (out.ETE_trunk_to_arm == null && out.arm_trunk_speedup != null) {
+      // arm/trunk 2~6 범위 → ETE 0~1 (5.0 ≈ 0.75)
+      out.ETE_trunk_to_arm = Math.max(0, Math.min(1, (out.arm_trunk_speedup - 2) / 4));
+      out._ETE_t2a_proxy = true;
+    }
+    // ELI_segment도 동시 산출
+    if (out.ELI_segment_pelvis_trunk == null && out.ETE_pelvis_to_trunk != null) {
+      out.ELI_segment_pelvis_trunk = Math.max(0, Math.min(1, 1 - out.ETE_pelvis_to_trunk));
+    }
+    if (out.ELI_segment_trunk_arm == null && out.ETE_trunk_to_arm != null) {
+      out.ELI_segment_trunk_arm = Math.max(0, Math.min(1, 1 - out.ETE_trunk_to_arm));
+    }
+    // dE 변수도 회전 속도 기반 proxy (mass·관성 모멘트 표준값 사용)
+    //   몸통 회전 KE ≈ 0.5 × I × ω²,  I_trunk ≈ 1.5 kg·m², ω in rad/s
+    const degToRad = Math.PI / 180;
+    if (out.dE_trunk_KH_FC == null && out.Trunk_peak != null) {
+      const omega_rad = out.Trunk_peak * degToRad;
+      out.dE_trunk_KH_FC = 0.5 * 1.5 * omega_rad * omega_rad * 0.3;  // 30% 비율 proxy
+      out._dE_trunk_KH_FC_proxy = true;
+    }
+    if (out.dE_arm_FC_BR == null && out.Arm_peak != null) {
+      const omega_rad = out.Arm_peak * degToRad;
+      out.dE_arm_FC_BR = 0.5 * 0.05 * omega_rad * omega_rad * 0.3;  // I_humerus ~0.05
+      out._dE_arm_FC_BR_proxy = true;
+    }
+    if (out.dE_trunk_FC_BR == null && out.dE_trunk_KH_FC != null) {
+      // FC→BR 동안 trunk 잃은 에너지 ≈ KH→FC 만든 에너지의 -2배 (감속이 더 큼)
+      out.dE_trunk_FC_BR = -out.dE_trunk_KH_FC * 2;
+      out._dE_trunk_FC_BR_proxy = true;
     }
 
     return out;
