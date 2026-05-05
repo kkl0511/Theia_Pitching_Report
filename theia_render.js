@@ -38,9 +38,10 @@
   }
 
   // ── 2단계 · 키네틱 체인이란? — 교육 카드 + GIF ──
+  // 우선순위: ① 로컬 kinetic_chain.gif (같은 repo 번들) → ② BBL Uplift CDN fallback → ③ 텍스트 fallback
   function _renderKineticChainEducation(result) {
-    // BBL Uplift repo의 GIF 활용 (CDN 캐시) + fallback SVG
-    const gifUrl = 'https://kkl0511.github.io/Uplift_Pitching_Report/kinetic_chain.gif';
+    const localGif = 'kinetic_chain.gif';
+    const cdnGif = 'https://kkl0511.github.io/Uplift_Pitching_Report/kinetic_chain.gif';
     return `
     <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid var(--accent-soft); background: linear-gradient(180deg, rgba(96,165,250,0.04), transparent);">
       <div class="display text-base mb-2" style="color: var(--accent-soft);">⚡ 2단계 · 키네틱 체인이란?</div>
@@ -48,11 +49,11 @@
         투구는 <strong>다리에서 시작된 힘이 골반 → 몸통 → 팔</strong>로 채찍처럼 전달되는 운동입니다.
         각 단계의 타이밍과 강도가 정확해야 빠른 공이 나오고 부상도 예방됩니다.
       </div>
-      <img src="${gifUrl}" alt="키네틱 체인 — 5단계 에너지 흐름"
+      <img src="${localGif}" alt="키네틱 체인 — 5단계 에너지 흐름"
            loading="lazy" decoding="async"
-           onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+           onerror="this.onerror=null; this.src='${cdnGif}'; this.onerror=function(){ this.style.display='none'; this.nextElementSibling.style.display='block'; };"
            style="width: 100%; max-width: 1000px; display: block; margin: 0 auto; border-radius: 6px;" />
-      <!-- GIF 로드 실패 시 fallback SVG -->
+      <!-- 로컬·CDN 모두 실패 시 fallback -->
       <div style="display: none; padding: 24px; background: var(--bg-elevated); border-radius: 6px; text-align: center;">
         <div class="text-sm mb-2" style="color: var(--text-muted);">GIF 로드 실패 — 5단계 시퀀스</div>
         <div class="grid grid-cols-5 gap-2" style="color: var(--text-secondary);">
