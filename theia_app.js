@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.18.1';
+  const ALGORITHM_VERSION = 'v0.21';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -78,7 +78,15 @@
       const c = (component[dataCol] || '').trim();
       const dt = (dtype[dataCol] || '').trim();
       if (!h || h === 'FRAMES' || h === 'TIME' || dt === 'FRAME_NUMBERS') continue;
-      const key = c && c !== '0' ? `${h}.${c}` : h;
+      // ★ v0.18.2/v0.19 — 다음 두 케이스에서 component 무시하고 헤더 이름만 등록:
+      //   1) EVENT_LABEL/EVENT_TIME (이벤트 시점 라벨)
+      //   2) 헤더가 _Scalar/_Energy/_ME/_Mechanical_Energy로 끝남 (단일 scalar 변수)
+      //      예: R_Shoulder_Power_Scalar (component='X'이지만 단일 변수)
+      const isEventLabel = dt === 'EVENT_LABEL' || dt === 'EVENT_TIME';
+      const isScalarVar = /(_Scalar|_Energy|_ME|_Mechanical_Energy)$/.test(h);
+      const key = (isEventLabel || isScalarVar)
+        ? h
+        : (c && c !== '0' ? `${h}.${c}` : h);
       if (columnIndex[key] == null) columnIndex[key] = dataCol;
     }
 
@@ -122,12 +130,13 @@
     if (kinematic.length > 0) {
       const r0 = kinematic[0];
       // 각 이벤트별로 시도할 컬럼명 후보 리스트 (앞 우선)
+      // ★ v0.18.2 — leeyoungha 형식 'MaxShoulderVel' 추가 (MER 시점 후보)
       const evCandidates = {
-        'KH': ['MaxKneeHeight'],
-        'FS': ['Footstrike', 'FootStrike', 'FootContact'],
-        'MER': ['Max_External_Rotation', 'Max_Shoulder_Int_Rot', 'MER'],
+        'KH': ['MaxKneeHeight', 'KneeHeight'],
+        'FS': ['Footstrike', 'FootStrike', 'FootContact', 'FC'],
+        'MER': ['MaxShoulderVel', 'Max_External_Rotation', 'Max_Shoulder_Int_Rot', 'MER', 'MaxShoulderEr', 'MaxShoulderER'],
         'BR': ['Ball_Release', 'Release', 'BR'],
-        'BR100ms': ['Ball_Release_Plus_100ms', 'Release100msAfter', 'BR100ms'],
+        'BR100ms': ['Ball_Release_Plus_100ms', 'Release100msAfter', 'BR100ms', 'ReleasePlus100ms'],
       };
       for (const [k, cands] of Object.entries(evCandidates)) {
         for (const h of cands) {
@@ -138,14 +147,219 @@
           }
         }
       }
+      // ★ v0.20 — events sanity check (비정상 trial 자동 제외)
+      //   조건: KH > 0.3s · FS > KH+0.1 · MER > FS+0.05 · BR > MER 또는 |MER−BR|<0.05 · BR < 30s
+      //   부적합 시 events 무효화 → 시점 기반 변수 NULL → aggregateTrials에서 자동 제외
+      const KH = events.KH, FS = events.FS, MER = events.MER, BR = events.BR;
+      let sane = true;
+      const reasons = [];
+      if (KH != null && KH < 0.3) { sane = false; reasons.push('KH<0.3s'); }
+      if (BR != null && BR < 0.3) { sane = false; reasons.push('BR<0.3s'); }
+      if (BR != null && BR > 60) { sane = false; reasons.push('BR>60s'); }
+      if (KH != null && BR != null && BR <= KH) { sane = false; reasons.push('BR<=KH'); }
+      if (KH != null && FS != null && FS < KH + 0.1) { sane = false; reasons.push('FS<KH+0.1'); }
+      if (FS != null && MER != null && MER < FS + 0.05) { sane = false; reasons.push('MER<FS+0.05'); }
+      if (MER != null && BR != null && (BR < MER - 0.05 || BR > MER + 0.5)) { sane = false; reasons.push('BR-MER 비정상'); }
+      if (!sane) {
+        events._invalid = true;
+        events._invalid_reasons = reasons;
+        // events 무효화 → 시점 기반 변수가 산출되지 않도록
+        delete events.KH;
+        delete events.FS;
+        delete events.MER;
+        delete events.BR;
+        delete events.BR100ms;
+      }
     }
 
-    return {
+    const result = {
       meta: { filePath, athlete, trialName, handHint, fps, duration: lastKinTime },
       header, dtype, component, columnIndex,
       kinematic, force_only,
       events
     };
+
+    // ★ v0.21 — 자동 디지털 필터링 (Butterworth 4th, zero-lag filtfilt)
+    //   기본 ON. window._THEIA_FILTER_OFF=true 로 비활성화 가능.
+    if (!(typeof window !== 'undefined' && window._THEIA_FILTER_OFF)) {
+      _applyAutoFilter(result);
+    }
+    return result;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // v0.21 — Butterworth 4th order low-pass + zero-lag filtfilt
+  //   RBJ cookbook biquad design (cascade 2 biquads = 4th order)
+  // ════════════════════════════════════════════════════════════
+  function _butter4LowpassSOS(fps, fc) {
+    // 4차 Butterworth = 2 biquads cascade. Q_k = 1/(2cos(θ_k)), θ_k = π(2k-1)/(2N), N=4.
+    const sos = [];
+    const w0 = 2 * Math.PI * fc / fps;
+    const cw = Math.cos(w0), sw = Math.sin(w0);
+    for (let k = 1; k <= 2; k++) {
+      const Q = 1 / (2 * Math.cos(Math.PI * (2*k - 1) / 8));
+      const alpha = sw / (2 * Q);
+      const a0 = 1 + alpha;
+      sos.push([
+        (1 - cw) / 2 / a0,    // b0
+        (1 - cw) / a0,         // b1
+        (1 - cw) / 2 / a0,     // b2
+        1.0,                    // a0 (normalized)
+        -2 * cw / a0,           // a1
+        (1 - alpha) / a0,       // a2
+      ]);
+    }
+    return sos;
+  }
+
+  function _sosFilterForward(sos, x) {
+    let y = x.slice();
+    for (const [b0, b1, b2, , a1, a2] of sos) {
+      const out = new Array(y.length);
+      let z1 = 0, z2 = 0;
+      for (let n = 0; n < y.length; n++) {
+        const v = y[n] - a1 * z1 - a2 * z2;
+        out[n] = b0 * v + b1 * z1 + b2 * z2;
+        z2 = z1; z1 = v;
+      }
+      y = out;
+    }
+    return y;
+  }
+
+  function _filtfilt(sos, x) {
+    if (x.length < 12) return x;
+    // odd-extension padding (Octave 방식)
+    const npad = Math.min(3 * sos.length * 3, Math.floor(x.length / 3));
+    const front = new Array(npad), back = new Array(npad);
+    for (let i = 0; i < npad; i++) front[i] = 2 * x[0] - x[npad - i];
+    for (let i = 0; i < npad; i++) back[i] = 2 * x[x.length - 1] - x[x.length - 2 - i];
+    const padded = front.concat(x, back);
+    // Forward
+    const fwd = _sosFilterForward(sos, padded);
+    // Reverse → forward → reverse (filtfilt)
+    fwd.reverse();
+    const bwd = _sosFilterForward(sos, fwd);
+    bwd.reverse();
+    return bwd.slice(npad, npad + x.length);
+  }
+
+  // 컬럼 카테고리 분류 → 컷오프 결정
+  function _columnCutoff(headerName, dt) {
+    if (dt === 'FORCE' || dt === 'MOMENT' || dt === 'FREEMOMENT' || dt === 'COP') return 25;
+    if (/_Ang_Vel$/.test(headerName)) return 15;
+    if (/(_Scalar|_Energy|_ME|_Mechanical_Energy)$/.test(headerName)) return 10;
+    return 10;  // angle, position, etc.
+  }
+
+  // 자동 필터 — 모든 numeric 컬럼에 카테고리별 컷오프 적용
+  function _applyAutoFilter(parsed) {
+    const { columnIndex, header, dtype, kinematic, force_only, meta } = parsed;
+    const fps = meta.fps;
+    if (!fps || fps < 50 || fps > 2000) return;  // 비정상 fps
+    const tRelIdx = columnIndex['TIME_rel'];
+
+    // SOS 캐시 (컷오프별)
+    const sosCache = {};
+    function getSOS(cutoff) {
+      if (!sosCache[cutoff]) sosCache[cutoff] = _butter4LowpassSOS(fps, cutoff);
+      return sosCache[cutoff];
+    }
+
+    // 컬럼별 분류
+    const colsByCutoff = {};  // {10: [colIdx,...], 15: [...], 25: [...]}
+    const skipCols = new Set();
+    for (const [key, idx] of Object.entries(columnIndex)) {
+      // 시간·이벤트는 필터 제외
+      if (idx == null || idx < 0) continue;
+      // 헤더 검색 (key는 'Pelvis_Ang_Vel.Z' 형태이고 columnIndex의 키)
+      // dtype과 헤더 이름 추출
+      const baseName = key.replace(/\.[XYZ]$/, '');
+      const dt = (dtype[idx] || '').trim();
+      if (dt === 'FRAME_NUMBERS' || dt === 'EVENT_LABEL' || dt === 'EVENT_TIME') continue;
+      if (key === 'FRAMES' || key === 'TIME_abs' || key === 'TIME_rel') continue;
+      const cut = _columnCutoff(baseName, dt);
+      (colsByCutoff[cut] = colsByCutoff[cut] || []).push(idx);
+    }
+
+    // kinematic frame 시계열 필터 (kinematic 변수)
+    let nFiltered = 0;
+    for (const [cut, cols] of Object.entries(colsByCutoff)) {
+      if (parseInt(cut) === 25) continue;  // GRF는 force_only도 포함하니 별도 처리
+      const sos = getSOS(parseInt(cut));
+      for (const colIdx of cols) {
+        const sig = new Array(kinematic.length);
+        let allNaN = true;
+        for (let i = 0; i < kinematic.length; i++) {
+          const v = parseFloat(kinematic[i][colIdx]);
+          if (isFinite(v)) { sig[i] = v; allNaN = false; }
+          else sig[i] = NaN;
+        }
+        if (allNaN) continue;
+        // NaN 보간
+        let firstValid = -1;
+        for (let i = 0; i < sig.length; i++) if (!isNaN(sig[i])) { firstValid = i; break; }
+        let lastValid = -1;
+        for (let i = sig.length - 1; i >= 0; i--) if (!isNaN(sig[i])) { lastValid = i; break; }
+        if (firstValid < 0 || lastValid - firstValid < 10) continue;
+        for (let i = firstValid; i <= lastValid; i++) {
+          if (isNaN(sig[i])) {
+            // linear interp from previous & next valid
+            let pPrev = i - 1, pNext = i + 1;
+            while (pPrev >= firstValid && isNaN(sig[pPrev])) pPrev--;
+            while (pNext <= lastValid && isNaN(sig[pNext])) pNext++;
+            if (pPrev >= 0 && pNext <= lastValid) {
+              sig[i] = sig[pPrev] + (sig[pNext] - sig[pPrev]) * (i - pPrev) / (pNext - pPrev);
+            } else if (pPrev >= 0) sig[i] = sig[pPrev];
+            else if (pNext <= lastValid) sig[i] = sig[pNext];
+          }
+        }
+        // 필터 적용 (valid 구간만)
+        try {
+          const validSig = sig.slice(firstValid, lastValid + 1);
+          const filtered = _filtfilt(sos, validSig);
+          // 결과 다시 row에 기록
+          for (let i = 0; i < filtered.length; i++) {
+            kinematic[firstValid + i][colIdx] = filtered[i].toFixed(5);
+          }
+          nFiltered++;
+        } catch (e) { /* 필터 실패 — raw 유지 */ }
+      }
+    }
+
+    // GRF 필터 (kinematic + force_only frame 모두)
+    const grfCols = colsByCutoff[25] || [];
+    if (grfCols.length > 0) {
+      const sosGRF = getSOS(25);
+      // 모든 frame을 시간 순서로 결합
+      const allFrames = [...kinematic, ...force_only];
+      // absolute time으로 정렬 (TIME_abs는 항상 있음)
+      const tAbsIdx = columnIndex['TIME_abs'];
+      if (tAbsIdx != null) {
+        allFrames.sort((a, b) => (parseFloat(a[tAbsIdx]) || 0) - (parseFloat(b[tAbsIdx]) || 0));
+      }
+      for (const colIdx of grfCols) {
+        const sig = allFrames.map(r => parseFloat(r[colIdx]));
+        let firstValid = -1, lastValid = -1;
+        for (let i = 0; i < sig.length; i++) if (isFinite(sig[i])) { firstValid = i; break; }
+        for (let i = sig.length - 1; i >= 0; i--) if (isFinite(sig[i])) { lastValid = i; break; }
+        if (firstValid < 0 || lastValid - firstValid < 10) continue;
+        const validSig = [];
+        for (let i = firstValid; i <= lastValid; i++) {
+          validSig.push(isFinite(sig[i]) ? sig[i] : (validSig.length ? validSig[validSig.length-1] : 0));
+        }
+        try {
+          const filtered = _filtfilt(sosGRF, validSig);
+          for (let i = 0; i < filtered.length; i++) {
+            allFrames[firstValid + i][colIdx] = filtered[i].toFixed(5);
+          }
+          nFiltered++;
+        } catch (e) {}
+      }
+    }
+    parsed.meta._filtered = true;
+    parsed.meta._filter_n_cols = nFiltered;
+    parsed.meta._filter_info = { fps, cutoffs: { angle_pos: 10, ang_vel: 15, power_me: 10, grf: 25 }, order: 4, type: 'Butterworth lowpass · zero-lag filtfilt' };
   }
 
   // ════════════════════════════════════════════════════════════
@@ -444,17 +658,45 @@
       }
     }
 
-    // ── Joint Power (Tier 2) ──
-    for (const [outKey, varKey] of [
-      ['Pitching_Shoulder_Power_peak', 'Pitching_Shoulder_Power'],
-      ['Pitching_Elbow_Power_peak', 'Pitching_Elbow_Power'],
-      ['Lead_Hip_Power_peak', 'Lead_Hip_Power'],
-      ['Trail_Hip_Power_peak', 'Trail_Hip_Power'],
-      ['Lead_Knee_Power_peak', 'Lead_Knee_Power'],
-    ]) {
-      if (ci[varKey] != null) {
-        const v = maxAbsBetween(parsed, varKey, winFrom, winTo);
-        if (v != null) out[outKey] = Math.abs(v);
+    // ── Joint Power (Tier 2) — 두 형식 호환 ──
+    //   1차: 표준 키 (Pitching_Shoulder_Power 등) — Visual3D pipeline 표준
+    //   2차: leeyoungha 새 형식 fallback (R_Shoulder_Power_Scalar / L_Knee_Power_Scalar 등)
+    //   좌·우투 기반 매핑: 우투 → 던지는 팔 = R, Lead leg = L, Trail leg = R
+    const isLeftHanded = (parsed.meta?.handHint === 'left');
+    const armSide  = isLeftHanded ? 'L' : 'R';   // 던지는 팔 (LH 좌투 / RH 우투)
+    const trailSide = isLeftHanded ? 'L' : 'R';  // Trail leg = 던지는 팔 같은 쪽
+    const leadSide  = isLeftHanded ? 'R' : 'L';  // Lead leg = 반대쪽
+
+    const jointPowerMap = [
+      // [out 변수, 표준 키, 새 형식 fallback 키들...]
+      ['Pitching_Shoulder_Power_peak', 'Pitching_Shoulder_Power', `${armSide}_Shoulder_Power_Scalar`, `${armSide}_Shoulder_Power`],
+      ['Pitching_Elbow_Power_peak',    'Pitching_Elbow_Power',    `${armSide}_Elbow_Power_Scalar`,    `${armSide}_Elbow_Power`],
+      ['Trail_Hip_Power_peak',         'Trail_Hip_Power',         `${trailSide}_Hip_Power_Scalar`,    `${trailSide}_Hip_Power`],
+      ['Lead_Hip_Power_peak',          'Lead_Hip_Power',          `${leadSide}_Hip_Power_Scalar`,     `${leadSide}_Hip_Power`],
+      ['Lead_Knee_Power_peak',         'Lead_Knee_Power',         `${leadSide}_Knee_Power_Scalar`,    `${leadSide}_Knee_Power`],
+    ];
+    for (const [outKey, ...candidates] of jointPowerMap) {
+      for (const varKey of candidates) {
+        if (ci[varKey] != null) {
+          const v = maxAbsBetween(parsed, varKey, winFrom, winTo);
+          if (v != null) { out[outKey] = Math.abs(v); break; }
+        }
+      }
+    }
+
+    // ── 분절 Mechanical Energy (J) — leeyoungha 새 형식에 직접 측정값 있음 ──
+    //   PDF §4 권장: KE 추정(0.5·I·ω²) 대신 직접 측정 ME 사용
+    const meMap = [
+      ['Pelvis_ME_peak',  'Pelvis_Mechanical_Energy',  'Pelvis_ME'],
+      ['Trunk_ME_peak',   'Trunk_Mechanical_Energy',   'Trunk_ME'],
+      ['Arm_ME_peak',     `${armSide}_Humerus_Mechanical_Energy`, `${armSide}_Humerus_ME`],
+    ];
+    for (const [outKey, ...candidates] of meMap) {
+      for (const varKey of candidates) {
+        if (ci[varKey] != null) {
+          const v = maxBetween(parsed, varKey, winFrom, winTo);
+          if (v != null) { out[outKey] = v; break; }
+        }
       }
     }
 

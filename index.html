@@ -289,6 +289,11 @@
         <button id="mode-pill-hs" class="mode-pill active" onclick="selectMode('hs_top10')">고교</button>
         <button id="mode-pill-pro" class="mode-pill" onclick="selectMode('pro')">프로</button>
       </div>
+      <button onclick="toggleFilter()" class="theme-toggle" id="filter-btn"
+              title="자동 필터링 (Butterworth 4th, ang_vel 15Hz, 그 외 10Hz, GRF 25Hz)"
+              style="color: var(--accent-soft); border-color: var(--accent-soft);">
+        🌊 필터 <span id="filter-state">ON</span>
+      </button>
       <button onclick="manualRecompute()" class="theme-toggle" title="저장된 모든 선수의 결과를 현재 산식으로 다시 계산"
               style="color: var(--good); border-color: var(--good);">
         🔄 재계산
@@ -516,6 +521,16 @@ let selectedC3dFiles = [];
 let metaPlayerData = null;  // xlsx에서 파싱한 선수 데이터 { player_name: { mass, height, hand, ball_speed_mean, ball_speed_sd, pitch_type } }
 
 // ════════════════════════════════════════════════════════════
+// ★ v0.21 — 자동 필터링 토글 (raw vs filtered)
+function toggleFilter() {
+  window._THEIA_FILTER_OFF = !window._THEIA_FILTER_OFF;
+  const stateEl = document.getElementById('filter-state');
+  if (stateEl) stateEl.textContent = window._THEIA_FILTER_OFF ? 'OFF' : 'ON';
+  showAlert(window._THEIA_FILTER_OFF
+    ? '⚠ 자동 필터링 OFF — raw 데이터로 분석합니다 (노이즈 영향 가능)'
+    : '✓ 자동 필터링 ON — Butterworth 4th: angle/pos·power·ME 10Hz, ang_vel 15Hz, GRF 25Hz', 'info');
+}
+
 // 테마 토글 (Day ↔ Night)
 // ════════════════════════════════════════════════════════════
 function toggleTheme() {
