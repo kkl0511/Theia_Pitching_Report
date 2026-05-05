@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.8';
+  const ALGORITHM_VERSION = 'v0.9';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -665,6 +665,89 @@
   function getFitnessData() { return CURRENT_FITNESS; }
   function getFitnessMeta() { return CURRENT_FITNESS_META; }
 
+  // ════════════════════════════════════════════════════════════
+  // localStorage 기반 선수 저장 / 불러오기 / 재계산
+  // ════════════════════════════════════════════════════════════
+  const STORAGE_KEY = 'theia_saved_players_v0';
+
+  function _readStorage() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function _writeStorage(obj) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); return true; }
+    catch (e) { console.warn('localStorage 쓰기 실패', e); return false; }
+  }
+
+  // 현재 결과를 저장 — 비교용 (input + result + fitness 함께)
+  function saveCurrentReport(label) {
+    if (!LAST_RESULT) return false;
+    const all = _readStorage();
+    const name = LAST_RESULT._meta?.athlete || CURRENT_PLAYER.name || '신규 선수';
+    const key = label || (name + '__' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, ''));
+    all[key] = {
+      label: key,
+      saved_at: new Date().toISOString(),
+      version: ALGORITHM_VERSION,
+      player: { ...CURRENT_PLAYER },
+      mode: CURRENT_MODE,
+      fitness: CURRENT_FITNESS,
+      fitness_meta: CURRENT_FITNESS_META,
+      result: LAST_RESULT,
+    };
+    return _writeStorage(all);
+  }
+
+  function listSavedPlayers() {
+    const all = _readStorage();
+    return Object.values(all).map(r => ({
+      key: r.label, name: r.player?.name || r.result?._meta?.athlete || '?',
+      saved_at: r.saved_at, version: r.version, level: r.player?.level,
+    })).sort((a, b) => (b.saved_at || '').localeCompare(a.saved_at || ''));
+  }
+
+  function loadSavedPlayer(key) {
+    const all = _readStorage();
+    return all[key] || null;
+  }
+
+  function deleteSavedPlayer(key) {
+    const all = _readStorage();
+    if (all[key]) {
+      delete all[key];
+      _writeStorage(all);
+      return true;
+    }
+    return false;
+  }
+
+  // 저장된 모든 선수 결과를 현재 산식으로 재계산 (스칼라값은 보존, 점수만 재산출)
+  // 실제 c3d.txt가 없으므로 mass·height만으로는 재산출 불가. agg 데이터가 있으면 calculateScores 다시.
+  function recomputeAllSaved() {
+    const all = _readStorage();
+    let updated = 0;
+    for (const key of Object.keys(all)) {
+      const r = all[key];
+      if (!r.result?.varScores) continue;
+      // varScores → agg 재구성 (raw value)
+      const agg = { _n_trials: r.result._n_trials, _meta: r.result._meta };
+      for (const [k, vs] of Object.entries(r.result.varScores)) {
+        if (vs.value != null) agg[k] = vs.value;
+      }
+      try {
+        const newResult = calculateScores(agg, r.mode);
+        all[key].result = newResult;
+        all[key].version = ALGORITHM_VERSION;
+        all[key].recomputed_at = new Date().toISOString();
+        updated++;
+      } catch (e) { console.warn('재계산 실패:', key, e); }
+    }
+    _writeStorage(all);
+    return updated;
+  }
+
   // 렌더링 위임 — theia_render.js가 로드되면 renderReport를 덮어씀
   function renderReport(result) {
     if (window.TheiaRender && window.TheiaRender.renderReport && window.TheiaRender.renderReport !== renderReport) {
@@ -679,5 +762,6 @@
     processFiles, renderReport,
     setMode, getMode, setPlayer, getPlayer, getLastResult,
     setFitnessData, getFitnessData, getFitnessMeta,
+    saveCurrentReport, listSavedPlayers, loadSavedPlayer, deleteSavedPlayer, recomputeAllSaved,
   };
 })();

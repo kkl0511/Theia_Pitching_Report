@@ -282,19 +282,54 @@
         Theia + Qualisys + 지면반력 마운드 · HS Top 10% (n=41) · Wood-Smith·Werner·ASMI·Driveline
       </div>
     </div>
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-3 flex-wrap">
+      <!-- 코호트 모드 토글 (상단 우측 복원) -->
+      <div class="mode-toggle-row">
+        <span class="text-xs" style="color: var(--text-muted);">코호트</span>
+        <button id="mode-pill-hs" class="mode-pill active" onclick="selectMode('hs_top10')">고교</button>
+        <button id="mode-pill-pro" class="mode-pill" onclick="selectMode('pro')">프로</button>
+      </div>
+      <button onclick="manualRecompute()" class="theme-toggle" title="저장된 모든 선수의 결과를 현재 산식으로 다시 계산"
+              style="color: var(--good); border-color: var(--good);">
+        🔄 재계산
+      </button>
       <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">
         <span id="theme-icon">☀️</span>
         <span id="theme-label">Day</span>
       </button>
     </div>
-    <!-- 코호트 모드 토글은 헤더에서 제거 — 수준(중·고·대·프로) 선택으로 자동 매핑 -->
-    <span id="mode-pill-hs" class="hidden"></span>
-    <span id="mode-pill-pro" class="hidden"></span>
   </div>
+
+  <!-- ═══════════ 상단 네비 탭 ═══════════ -->
+  <div class="max-w-7xl mx-auto">
+    <nav style="display: flex; gap: 2px; background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 0 24px;">
+      <button class="nav-tab active" data-view="individual" onclick="switchView('individual')" style="padding: 12px 18px; font-size: 13px; color: var(--text-muted); border: none; background: transparent; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.15s; font-weight: 500;">📋 개별 선수</button>
+      <button class="nav-tab" data-view="h1h2" onclick="switchView('h1h2')" style="padding: 12px 18px; font-size: 13px; color: var(--text-muted); border: none; background: transparent; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.15s; font-weight: 500;">🔄 1차 ↔ 2차 비교</button>
+      <button class="nav-tab" data-view="vs" onclick="switchView('vs')" style="padding: 12px 18px; font-size: 13px; color: var(--text-muted); border: none; background: transparent; border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.15s; font-weight: 500;">⚔️ 선수간 비교</button>
+    </nav>
+  </div>
+  <style>
+    .nav-tab.active { color: var(--accent) !important; border-bottom-color: var(--accent) !important; }
+    .nav-tab:hover { color: var(--text-primary); }
+    .view-content.hidden { display: none !important; }
+  </style>
 </header>
 
 <main class="max-w-7xl mx-auto px-6 py-6">
+
+  <!-- ═══════════ View: 개별 선수 (기본) ═══════════ -->
+  <div id="view-individual" class="view-content">
+
+  <!-- 저장된 선수 빠른 선택 (자동 저장된 선수 있으면 노출) -->
+  <div id="saved-player-selector" class="hidden mb-4 p-3 rounded" style="background: rgba(96,165,250,0.05); border-left: 3px solid var(--accent-soft);">
+    <label class="text-xs block mb-1" style="color: var(--text-muted);">📋 이전에 분석한 선수 — 선택해서 데이터 불러오기</label>
+    <div class="flex gap-2 items-center">
+      <select id="saved-player-select" class="input-field" style="flex: 1;" onchange="loadSavedPlayer(this.value)">
+        <option value="">— 선택 안 함 (새로 입력) —</option>
+      </select>
+      <button class="btn btn-secondary text-xs" onclick="deleteSelectedSavedPlayer()" title="선택한 선수 삭제">🗑</button>
+    </div>
+  </div>
 
   <!-- ═══════════ Step 1: 선수 정보 ═══════════ -->
   <section class="card p-6 mb-6">
@@ -438,6 +473,30 @@
 
   <!-- ═══════════ 결과 영역 ═══════════ -->
   <div id="result-area"></div>
+
+  </div><!-- /view-individual -->
+
+  <!-- ═══════════ View: 1차 ↔ 2차 비교 ═══════════ -->
+  <div id="view-h1h2" class="view-content hidden">
+    <div class="card p-6 mb-6">
+      <div class="display text-xl mb-2" style="color: var(--accent-soft);">🔄 1차 ↔ 2차 비교</div>
+      <div class="text-sm mb-4" style="color: var(--text-muted);">
+        같은 선수의 두 시점(예: H1 봄 ↔ H2 가을) 측정을 비교합니다. 먼저 <strong>개별 선수</strong> 탭에서 각 시점 리포트를 만들고 <strong>💾 저장</strong>한 뒤 여기로 돌아오세요.
+      </div>
+      <div id="h1h2-content"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ View: 선수간 비교 ═══════════ -->
+  <div id="view-vs" class="view-content hidden">
+    <div class="card p-6 mb-6">
+      <div class="display text-xl mb-2" style="color: var(--accent-soft);">⚔️ 선수간 비교</div>
+      <div class="text-sm mb-4" style="color: var(--text-muted);">
+        서로 다른 두 선수의 리포트를 나란히 비교합니다. 먼저 <strong>개별 선수</strong> 탭에서 각 선수 리포트를 저장한 뒤 여기로 돌아오세요.
+      </div>
+      <div id="vs-content"></div>
+    </div>
+  </div>
 
 </main>
 
@@ -898,6 +957,216 @@ async function runAnalysis() {
   }
 }
 
+// ════════════════════════════════════════════════════════════
+// View 전환 (개별 / 1차2차 / 선수간)
+// ════════════════════════════════════════════════════════════
+function switchView(view) {
+  document.querySelectorAll('.view-content').forEach(el => el.classList.add('hidden'));
+  document.getElementById('view-' + view).classList.remove('hidden');
+  document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.nav-tab[data-view="${view}"]`).classList.add('active');
+  if (view === 'h1h2') renderH1H2View();
+  if (view === 'vs') renderVsView();
+}
+
+// ════════════════════════════════════════════════════════════
+// 선수 저장 / 불러오기 / 재계산
+// ════════════════════════════════════════════════════════════
+function refreshSavedPlayerSelector() {
+  const saved = window.TheiaApp.listSavedPlayers();
+  const sel = document.getElementById('saved-player-select');
+  const wrap = document.getElementById('saved-player-selector');
+  if (!saved || saved.length === 0) {
+    wrap.classList.add('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden');
+  sel.innerHTML = '<option value="">— 선택 안 함 (새로 입력) —</option>' +
+    saved.map(p => `<option value="${p.key}">${p.name} ${p.level ? '['+p.level+']' : ''} · ${(p.saved_at||'').slice(0,16)} · ${p.version}</option>`).join('');
+}
+
+function loadSavedPlayer(key) {
+  if (!key) return;
+  const r = window.TheiaApp.loadSavedPlayer(key);
+  if (!r) return;
+  // Step 1 자동 입력
+  if (r.player) {
+    document.getElementById('player-name').value = r.player.name || '';
+    if (r.player.mass_kg) document.getElementById('player-mass').value = r.player.mass_kg;
+    if (r.player.height_cm) document.getElementById('player-height').value = r.player.height_cm;
+    if (r.player.handedness) selectHand(r.player.handedness);
+    if (r.player.level) selectLevel(r.player.level);
+  }
+  if (r.fitness) window.TheiaApp.setFitnessData(r.fitness, r.fitness_meta);
+  if (r.mode) selectMode(r.mode);
+  // 결과 영역에 직접 렌더 (c3d.txt 재업로드 없이)
+  const html = window.TheiaApp.renderReport(r.result);
+  document.getElementById('result-area').innerHTML = `<div class="card p-6">${html}</div>`;
+  showAlert(`✓ ${r.player?.name || '저장된 선수'} 불러옴 (${r.version})`, 'success');
+}
+
+function deleteSelectedSavedPlayer() {
+  const sel = document.getElementById('saved-player-select');
+  const key = sel.value;
+  if (!key) return;
+  if (!confirm(`'${sel.options[sel.selectedIndex].text}' 삭제할까요?`)) return;
+  window.TheiaApp.deleteSavedPlayer(key);
+  refreshSavedPlayerSelector();
+  showAlert('삭제됨', 'info');
+}
+
+function manualRecompute() {
+  const n = window.TheiaApp.recomputeAllSaved();
+  refreshSavedPlayerSelector();
+  showAlert(`✓ 저장된 ${n}명 선수의 결과를 ${window.TheiaApp.ALGORITHM_VERSION} 산식으로 재계산했습니다.`, 'success');
+}
+
+function saveReportClick() {
+  const ok = window.TheiaApp.saveCurrentReport();
+  if (ok) {
+    refreshSavedPlayerSelector();
+    showAlert('💾 저장되었습니다 — 1차↔2차·선수간 비교 탭에서 선택할 수 있습니다.', 'success');
+  } else {
+    showAlert('저장 실패 — 먼저 분석을 실행하세요.', 'error');
+  }
+}
+
+// HTML 다운로드 (현재 페이지를 단일 HTML 파일로)
+function downloadHtml() {
+  const playerName = (document.getElementById('player-name').value || 'Theia_Report').replace(/[^a-zA-Z0-9가-힣_]/g, '_');
+  const date = new Date().toISOString().slice(0, 10);
+  const html = '<!DOCTYPE html>\n<html>\n<head><meta charset="UTF-8"><title>Theia Report — ' + playerName + '</title>' +
+    '<script src="https://cdn.tailwindcss.com"><\/script>' +
+    document.querySelector('style')?.outerHTML +
+    '</head><body><div style="max-width:1200px;margin:0 auto;padding:20px;">' +
+    document.getElementById('result-area').innerHTML +
+    '</div></body></html>';
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `Theia_Report_${playerName}_${date}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showAlert('📄 HTML 다운로드 시작', 'info');
+}
+
+// 오프라인 패키지 = HTML + 결과 JSON (다른 사람에게 보내기 좋음)
+function downloadOfflinePackage() {
+  const playerName = (document.getElementById('player-name').value || 'Theia_Report').replace(/[^a-zA-Z0-9가-힣_]/g, '_');
+  const date = new Date().toISOString().slice(0, 10);
+  const result = window.TheiaApp.getLastResult();
+  const json = JSON.stringify(result, null, 2);
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Theia Offline — ${playerName}</title>
+<style>body{font-family:sans-serif;background:#0a0b0d;color:#e8e9ec;padding:20px;}pre{background:#141518;padding:12px;border-radius:6px;overflow:auto;font-size:11px;}</style>
+</head><body>
+<h1>Theia Pitching Report — ${playerName}</h1>
+<p>Generated: ${new Date().toString()} · Version: ${window.TheiaApp.ALGORITHM_VERSION}</p>
+<details open><summary>📊 결과 요약</summary>
+<pre>${json.replace(/[<>&]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[m])}</pre>
+</details>
+</body></html>`;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `Theia_Offline_${playerName}_${date}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showAlert('📦 오프라인 패키지 다운로드 시작 (인터넷 없이도 열림)', 'info');
+}
+
+// ════════════════════════════════════════════════════════════
+// 1차↔2차 비교 / 선수간 비교 (저장된 리포트 기반)
+// ════════════════════════════════════════════════════════════
+function renderH1H2View() {
+  const saved = window.TheiaApp.listSavedPlayers();
+  const target = document.getElementById('h1h2-content');
+  if (saved.length < 2) {
+    target.innerHTML = `<div class="text-sm" style="color: var(--text-muted);">저장된 리포트가 ${saved.length}건 — 비교를 위해 최소 2건 필요. 개별 선수 탭에서 두 시점의 리포트를 저장하세요.</div>`;
+    return;
+  }
+  // 같은 선수 이름 중심으로 그룹핑
+  const byName = {};
+  saved.forEach(s => { if (!byName[s.name]) byName[s.name] = []; byName[s.name].push(s); });
+  const multi = Object.entries(byName).filter(([_, arr]) => arr.length >= 2);
+  if (multi.length === 0) {
+    target.innerHTML = `<div class="text-sm" style="color: var(--text-muted);">같은 선수 이름의 리포트가 2건 이상 저장되어야 비교 가능합니다.</div>`;
+    return;
+  }
+  target.innerHTML = multi.map(([name, arr]) => {
+    const sorted = arr.sort((a, b) => (a.saved_at || '').localeCompare(b.saved_at || ''));
+    const first = sorted[0], second = sorted[sorted.length - 1];
+    return _renderComparisonRow(name, first, second, '1차', '2차');
+  }).join('');
+}
+
+function renderVsView() {
+  const saved = window.TheiaApp.listSavedPlayers();
+  const target = document.getElementById('vs-content');
+  if (saved.length < 2) {
+    target.innerHTML = `<div class="text-sm" style="color: var(--text-muted);">저장된 리포트가 ${saved.length}건 — 비교를 위해 최소 2건 필요.</div>`;
+    return;
+  }
+  // 두 명 선택 dropdown
+  const opts = saved.map(s => `<option value="${s.key}">${s.name} · ${(s.saved_at||'').slice(0,16)}</option>`).join('');
+  target.innerHTML = `
+    <div class="grid md:grid-cols-2 gap-3 mb-4">
+      <div><label class="text-xs" style="color: var(--text-muted);">선수 A</label>
+        <select id="vs-player-a" class="input-field" onchange="renderVsCompare()">${opts}</select></div>
+      <div><label class="text-xs" style="color: var(--text-muted);">선수 B</label>
+        <select id="vs-player-b" class="input-field" onchange="renderVsCompare()">${opts}</select></div>
+    </div>
+    <div id="vs-result"></div>`;
+  if (saved.length >= 2) {
+    document.getElementById('vs-player-a').value = saved[0].key;
+    document.getElementById('vs-player-b').value = saved[1].key;
+    renderVsCompare();
+  }
+}
+
+function renderVsCompare() {
+  const a = window.TheiaApp.loadSavedPlayer(document.getElementById('vs-player-a').value);
+  const b = window.TheiaApp.loadSavedPlayer(document.getElementById('vs-player-b').value);
+  if (!a || !b) return;
+  document.getElementById('vs-result').innerHTML = _renderComparisonRow(
+    `${a.player?.name || 'A'} vs ${b.player?.name || 'B'}`, a, b,
+    a.player?.name || 'A', b.player?.name || 'B'
+  );
+}
+
+function _renderComparisonRow(title, A, B, labelA, labelB) {
+  const cats = ['OUTPUT', 'TRANSFER', 'LEAK', 'CONTROL', 'INJURY'];
+  const catNames = { OUTPUT: '출력', TRANSFER: '전달', LEAK: '누수', CONTROL: '제구', INJURY: '부상안전' };
+  const rows = cats.map(c => {
+    const sA = A.result?.catScores?.[c]?.score;
+    const sB = B.result?.catScores?.[c]?.score;
+    const delta = (sA != null && sB != null) ? sB - sA : null;
+    const dColor = delta == null ? 'var(--text-muted)' : delta > 0 ? '#16a34a' : delta < 0 ? '#dc2626' : 'var(--text-muted)';
+    return `<tr style="border-bottom: 1px solid var(--border);">
+      <td style="padding: 8px;">${catNames[c]}</td>
+      <td class="mono" style="text-align: right; padding: 8px;">${sA ?? '—'}</td>
+      <td class="mono" style="text-align: right; padding: 8px;">${sB ?? '—'}</td>
+      <td class="mono" style="text-align: right; padding: 8px; color: ${dColor}; font-weight: 700;">${delta != null ? (delta > 0 ? '+' : '') + delta : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="card p-4 mb-4">
+      <div class="display text-base mb-2">${title}</div>
+      <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+        <thead><tr style="background: var(--bg-elevated);">
+          <th style="text-align: left; padding: 8px;">카테고리</th>
+          <th style="text-align: right; padding: 8px;">${labelA}</th>
+          <th style="text-align: right; padding: 8px;">${labelB}</th>
+          <th style="text-align: right; padding: 8px;">Δ</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="text-xs mt-2" style="color: var(--text-muted);">
+        ${labelA}: ${A.saved_at?.slice(0,16) || '—'} (${A.version || '—'})
+        · ${labelB}: ${B.saved_at?.slice(0,16) || '—'} (${B.version || '—'})
+      </div>
+    </div>`;
+}
+
 function showAlert(msg, type='info') {
   const div = document.createElement('div');
   div.className = `alert ${type}`;
@@ -919,6 +1188,8 @@ function showAlert(msg, type='info') {
   }
   // 기본 수준 = 고교
   selectLevel('고교');
+  // 저장된 선수 dropdown
+  refreshSavedPlayerSelector();
 })();
 </script>
 

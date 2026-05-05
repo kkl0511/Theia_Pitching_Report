@@ -23,6 +23,7 @@
     const html = [
       _renderHeader(result),
       _render3ColumnRadars(result),
+      _renderKineticChainEducation(result),  // ★ v0.9 — 2단계 · 키네틱 체인이란? + GIF
       _renderQuadrantDiagnosis(result),
       _renderMannequinUplift(result),       // ★ v0.6 — BBL Uplift dynamic SVG + GRF·Power·Torque 통합
       _renderKinematicBellUplift(result),    // ★ v0.6 — BBL Uplift dynamic 종형 곡선
@@ -30,9 +31,59 @@
       _renderGRFSection(result),
       _renderFaultsWithDrills(result),
       _renderSummaryWithTraining(result),
+      _renderActionButtons(result),         // ★ v0.9 — 저장·다운로드·HTML·인쇄 버튼
     ].join('\n');
     setTimeout(() => _initRadarCharts(result), 100);
     return html;
+  }
+
+  // ── 2단계 · 키네틱 체인이란? — 교육 카드 + GIF ──
+  function _renderKineticChainEducation(result) {
+    // BBL Uplift repo의 GIF 활용 (CDN 캐시) + fallback SVG
+    const gifUrl = 'https://kkl0511.github.io/Uplift_Pitching_Report/kinetic_chain.gif';
+    return `
+    <div class="cat-card mb-6" style="padding: 18px; border-left: 4px solid var(--accent-soft); background: linear-gradient(180deg, rgba(96,165,250,0.04), transparent);">
+      <div class="display text-base mb-2" style="color: var(--accent-soft);">⚡ 2단계 · 키네틱 체인이란?</div>
+      <div class="text-sm mb-3" style="color: var(--text-secondary); line-height: 1.6;">
+        투구는 <strong>다리에서 시작된 힘이 골반 → 몸통 → 팔</strong>로 채찍처럼 전달되는 운동입니다.
+        각 단계의 타이밍과 강도가 정확해야 빠른 공이 나오고 부상도 예방됩니다.
+      </div>
+      <img src="${gifUrl}" alt="키네틱 체인 — 5단계 에너지 흐름"
+           loading="lazy" decoding="async"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+           style="width: 100%; max-width: 1000px; display: block; margin: 0 auto; border-radius: 6px;" />
+      <!-- GIF 로드 실패 시 fallback SVG -->
+      <div style="display: none; padding: 24px; background: var(--bg-elevated); border-radius: 6px; text-align: center;">
+        <div class="text-sm mb-2" style="color: var(--text-muted);">GIF 로드 실패 — 5단계 시퀀스</div>
+        <div class="grid grid-cols-5 gap-2" style="color: var(--text-secondary);">
+          <div><strong>① Ground & leg</strong><br><span class="text-xs">하체 추진</span></div>
+          <div><strong>② Torso energy</strong><br><span class="text-xs">몸통 에너지</span></div>
+          <div><strong>③ Shoulder</strong><br><span class="text-xs">어깨 augment</span></div>
+          <div><strong>④ Elbow</strong><br><span class="text-xs">팔꿈치 집중</span></div>
+          <div><strong>⑤ Release</strong><br><span class="text-xs">릴리스</span></div>
+        </div>
+      </div>
+      <div class="text-xs text-center mt-2" style="color: var(--text-muted); font-style: italic;">The Kinetic chain in pitch mechanics</div>
+    </div>`;
+  }
+
+  // ── 액션 버튼 (저장 / 오프라인 패키지 / HTML 다운로드 / 인쇄) ──
+  function _renderActionButtons(result) {
+    return `
+    <div class="text-center mt-6 mb-4">
+      <button class="btn" onclick="saveReportClick()" style="background: var(--output, #C00000); color: white; padding: 10px 18px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; margin: 4px;">
+        💾 이 리포트 저장 (비교용)
+      </button>
+      <button class="btn" onclick="downloadOfflinePackage()" style="background: var(--good, #16a34a); color: white; padding: 10px 18px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; margin: 4px;">
+        📦 오프라인 패키지 다운로드 (선수 전송용)
+      </button>
+      <button class="btn btn-secondary" onclick="downloadHtml()" style="padding: 10px 18px; margin: 4px;">
+        📄 HTML 다운로드 (가벼움·인터넷 필요)
+      </button>
+      <button class="btn btn-secondary" onclick="window.print()" style="padding: 10px 18px; margin: 4px;">
+        🖨 인쇄/PDF
+      </button>
+    </div>`;
   }
 
   // ── 잠재 구속 예측 ──
