@@ -195,6 +195,30 @@
       </select>
     </label>
   </div>
+  <div class="form-row" style="margin-top: 12px;">
+    <label>
+      구속 평균 (km/h)
+      <input type="number" id="player-ball-speed" placeholder="예: 145" step="0.1">
+      <small style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">★ Radar gun 평균. c3d.txt에 없을 때 이 값 사용</small>
+    </label>
+    <label>
+      구속 SD (km/h, 선택)
+      <input type="number" id="player-ball-speed-sd" placeholder="예: 1.5" step="0.1">
+      <small style="color: var(--text-muted); font-size: 11px; margin-top: 2px;">Trial 간 변동성 (없으면 비워두기)</small>
+    </label>
+    <label>
+      구질
+      <select id="player-pitch-type" style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;">
+        <option value="FF">Fastball (직구)</option>
+        <option value="CB">Curveball (커브)</option>
+        <option value="SL">Slider (슬라이더)</option>
+        <option value="CH">Changeup (체인지업)</option>
+        <option value="CT">Cutter (커터)</option>
+        <option value="SI">Sinker (싱커)</option>
+        <option value="OTHER">기타</option>
+      </select>
+    </label>
+  </div>
 
   <h2>3. c3d.txt 파일 업로드</h2>
   <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
@@ -259,6 +283,9 @@ window.runAnalysis = async function() {
   const height = parseFloat(document.getElementById('player-height').value);
   const name = document.getElementById('player-name').value;
   const hand = document.getElementById('player-hand').value;
+  const ballSpeed = parseFloat(document.getElementById('player-ball-speed').value);
+  const ballSpeedSD = parseFloat(document.getElementById('player-ball-speed-sd').value);
+  const pitchType = document.getElementById('player-pitch-type').value;
 
   if (!mass || !height) {
     showAlert('체중과 키를 입력해주세요.', 'error');
@@ -275,7 +302,10 @@ window.runAnalysis = async function() {
   try {
     window.TheiaApp.setPlayer({ mass_kg: mass, height_cm: height, name, handedness: hand });
     const result = await window.TheiaApp.processFiles(selectedFiles, {
-      mode, mass_kg: mass, height_cm: height
+      mode, mass_kg: mass, height_cm: height,
+      ball_speed: ballSpeed,
+      ball_speed_sd: ballSpeedSD,
+      pitch_type: pitchType,
     });
     const html = window.TheiaApp.renderReport(result);
     document.getElementById('result-area').innerHTML = `<div class="panel">${html}</div>`;

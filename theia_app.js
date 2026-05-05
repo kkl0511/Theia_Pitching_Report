@@ -571,6 +571,15 @@
     const TC = window.TheiaCohort;
     const m = TC.getMode(result._mode);
 
+    // 구속 정보 (사용자 입력 또는 c3d.txt에서)
+    const ballSp = result.varScores?.ball_speed?.value;
+    const ballSpStr = ballSp != null ? `${ballSp.toFixed(1)} km/h` : '—';
+    const ballSpScore = result.varScores?.ball_speed?.score;
+    const ballSpSrc = result._ball_speed_source === 'user_input' ? '입력값' :
+                       result._ball_speed_source === 'c3d_pitch_speed_kmh' ? 'c3d.txt' : '미입력';
+    const pitchType = result._meta?.pitch_type || result.catScores?._pitch_type || 'FF';
+    const pitchLabel = { FF: '직구', CB: '커브', SL: '슬라이더', CH: '체인지업', CT: '커터', SI: '싱커', OTHER: '기타' }[pitchType] || pitchType;
+
     let html = `<div class="report-header">
       <h1>Theia Pitching Report ${ALGORITHM_VERSION}</h1>
       <div class="meta">
@@ -582,6 +591,11 @@
         <strong>${result._meta.athlete || 'Unknown'}</strong> ·
         Trial 수: ${result._n_trials} ·
         Mass: ${result._meta.mass_kg || '—'}kg, Height: ${result._meta.height_cm || '—'}cm
+      </div>
+      <div class="player-meta" style="margin-top: 6px; font-size: 13px;">
+        <strong style="color: var(--output, #C00000);">구속 ${ballSpStr}</strong>
+        ${ballSpScore != null ? ` <span style="color: var(--text-muted, #666); font-size: 12px;">(${ballSpScore}점, 출처: ${ballSpSrc})</span>` : ` <span style="color: var(--text-muted, #666); font-size: 12px;">(${ballSpSrc})</span>`}
+        · 구질: ${pitchLabel}
       </div>
     </div>`;
 
@@ -654,6 +668,9 @@
     const mode = opts.mode || CURRENT_MODE;
     const mass_kg = opts.mass_kg || CURRENT_PLAYER.mass_kg;
     const height_cm = opts.height_cm || CURRENT_PLAYER.height_cm;
+    const userBallSpeed = opts.ball_speed != null && !isNaN(opts.ball_speed) ? opts.ball_speed : null;
+    const userBallSpeedSD = opts.ball_speed_sd != null && !isNaN(opts.ball_speed_sd) ? opts.ball_speed_sd : null;
+    const pitchType = opts.pitch_type || 'FF';
 
     if (!files || files.length === 0) throw new Error('파일이 없습니다');
     if (!mass_kg || !height_cm) throw new Error('Mass·Height 입력 필수');
@@ -664,6 +681,13 @@
       try {
         const parsed = parseC3dTxt(text);
         const scalars = extractScalars(parsed, mass_kg, height_cm);
+        // c3d.txt에 ball_speed 없으면 사용자 입력값 사용
+        if (scalars.ball_speed == null && userBallSpeed != null) {
+          scalars.ball_speed = userBallSpeed;
+          scalars._ball_speed_source = 'user_input';
+        } else if (scalars.ball_speed != null) {
+          scalars._ball_speed_source = 'c3d_pitch_speed_kmh';
+        }
         trials.push(scalars);
       } catch (e) {
         console.warn(`파싱 실패: ${file.name}`, e);
@@ -673,7 +697,16 @@
     if (trials.length === 0) throw new Error('성공한 trial이 없습니다');
 
     const agg = aggregateTrials(trials);
+    // ball_speed 평균이 산출 안 됐으면(c3d.txt 부재 + 사용자 미입력) null. 사용자 입력만 있으면 그 값 사용.
+    if (agg.ball_speed == null && userBallSpeed != null) {
+      agg.ball_speed = userBallSpeed;
+    }
+    if (userBallSpeedSD != null) agg.ball_speed_SD = userBallSpeedSD;
+    agg._pitch_type = pitchType;
+
     const result = calculateScores(agg, mode);
+    result._ball_speed_source = trials[0]?._ball_speed_source || (userBallSpeed != null ? 'user_input' : 'none');
+    if (result._meta) result._meta.pitch_type = pitchType;
     LAST_RESULT = result;
     return result;
   }
