@@ -246,8 +246,8 @@
         ['LateTrunkRotation', 'PoorSpeedupChain', 'ExcessForwardTilt'],
         ['MERShoulderRisk'],
       ];
-      const sevPenalty = { high: 25, medium: 12, low: 5 };
-      const sevCap     = { high: 60, medium: 75, low: 90 };
+      const sevPenalty = { high: 35, medium: 18, low: 8 };
+      const sevCap     = { high: 50, medium: 65, low: 80 };
       const flts = result.faults || [];
       const dims = dimsRaw.map((rawScore, i) => {
         if (rawScore == null) return null;
@@ -284,15 +284,20 @@
 
       // 마네킹 SVG 안 6영역 라벨 박스 (분절 위치별)
       // 위치: 좌상단·우상단·좌중·우중·좌하·우하 (마네킹 분절 위치에 매칭)
-      // ★ v0.14 — 박스 위치 마네킹과 겹치지 않도록 가장자리로 재배치
-      // 마네킹 분절 영역: x=290~660, y=80~480. 박스는 x=10~140 (좌) 또는 x=660~790 (우).
+      // ★ v0.18 — 박스를 분절 keypoint 가까이 배치 + 화살표 line 추가
+      // 박스 좌표 = 분절 옆 빈 공간. anchorPoint = 분절 keypoint (화살표 끝점).
+      // 박스 크기 150×46, 폰트 12px(name)/20px(score)로 확대
+      // Mannequin keypoints (참고): rAnkle [620,412] / lAnkle [332,472] / rKnee [556,358] / lKnee [370,384]
+      //   pelvisR/L/C [506/446/476, 280] / lShoulder [438,158] / rShoulder [520,162]
+      //   rElbow [572,108] / rWrist [612,72]
       const labelPositions = [
-        { id: 'lower_drive',  x: 10,  y: 425, anchor: 'start', desc: 'Trail 발 (하체 추진)' },
-        { id: 'lead_block',   x: 660, y: 425, anchor: 'start', desc: 'Lead 발 (앞다리)' },
-        { id: 'pelvis_trunk', x: 10,  y: 320, anchor: 'start', desc: '골반-몸통' },
-        { id: 'trunk_power',  x: 10,  y: 220, anchor: 'start', desc: '몸통' },
-        { id: 'arm_transfer', x: 660, y: 220, anchor: 'start', desc: '팔' },
-        { id: 'load_eff',     x: 660, y: 320, anchor: 'start', desc: '팔꿈치 (부하)' },
+        // [boxX, boxY] = 박스 위치, [anchorX, anchorY] = 분절 keypoint (화살표 끝)
+        { id: 'lower_drive',  boxX: 595, boxY: 455, anchorX: 620, anchorY: 410 },  // Trail 발 (오른쪽 아래)
+        { id: 'lead_block',   boxX: 175, boxY: 480, anchorX: 332, anchorY: 472 },  // Lead 발 (왼쪽 아래)
+        { id: 'pelvis_trunk', boxX: 290, boxY: 280, anchorX: 446, anchorY: 280 },  // 골반 (왼쪽)
+        { id: 'trunk_power',  boxX: 290, boxY: 200, anchorX: 446, anchorY: 220 },  // 몸통 (왼쪽)
+        { id: 'arm_transfer', boxX: 590, boxY: 50,  anchorX: 572, anchorY: 108 },  // 팔꿈치 위
+        { id: 'load_eff',     boxX: 645, boxY: 195, anchorX: 612, anchorY: 72 },   // 손목/팔꿈치
       ];
       eliAreaLabels = eliAreas.map((a, i) => {
         const pos = labelPositions[i];
@@ -300,13 +305,25 @@
         const sc = a.score;
         const c = sc == null ? '#64748b' : sc >= 80 ? '#16a34a' : sc >= 60 ? '#22d3ee' : sc >= 40 ? '#fb923c' : '#dc2626';
         const isStarred = a.weight >= 20 ? ' ★' : '';
-        const w = 130, h = 38;
-        const xRect = pos.anchor === 'end' ? pos.x - w : pos.anchor === 'middle' ? pos.x - w/2 : pos.x;
-        const yRect = pos.y;
+        const W = 150, H = 46;
+        // 화살표 line — 박스 중앙에서 분절 keypoint로
+        const lineX1 = pos.boxX + W / 2;
+        const lineY1 = pos.boxY + H / 2;
         return `<g>
-          <rect x="${xRect}" y="${yRect}" width="${w}" height="${h}" rx="4" fill="#0b1220" stroke="${c}" stroke-width="1.5" opacity="0.92"/>
-          <text x="${pos.anchor === 'end' ? pos.x - 6 : pos.anchor === 'middle' ? pos.x : pos.x + 6}" y="${yRect + 14}" font-size="9" fill="${c}" font-weight="700" text-anchor="${pos.anchor}" letter-spacing="0.5">${a.name}${isStarred}</text>
-          <text x="${pos.anchor === 'end' ? pos.x - 6 : pos.anchor === 'middle' ? pos.x : pos.x + 6}" y="${yRect + 30}" font-size="14" fill="#e2e8f0" font-weight="700" font-family="JetBrains Mono" text-anchor="${pos.anchor}">${sc != null ? sc + '점' : '—'}<tspan font-size="9" fill="var(--text-muted, #64748b)" font-family="Inter"> w=${a.weight}</tspan></text>
+          <!-- 화살표 line: 박스 중앙 → 분절 -->
+          <line x1="${lineX1}" y1="${lineY1}" x2="${pos.anchorX}" y2="${pos.anchorY}"
+                stroke="${c}" stroke-width="1" stroke-dasharray="2 3" opacity="0.55"/>
+          <!-- 분절 끝 점 -->
+          <circle cx="${pos.anchorX}" cy="${pos.anchorY}" r="4" fill="${c}" opacity="0.7"/>
+          <!-- 박스 -->
+          <rect x="${pos.boxX}" y="${pos.boxY}" width="${W}" height="${H}" rx="5"
+                fill="#0b1220" stroke="${c}" stroke-width="1.8" opacity="0.95"/>
+          <!-- 영역 이름 -->
+          <text x="${pos.boxX + 8}" y="${pos.boxY + 16}" font-size="12" fill="${c}"
+                font-weight="700" letter-spacing="0.3">${a.name}${isStarred}</text>
+          <!-- 점수 (큰 폰트) -->
+          <text x="${pos.boxX + 8}" y="${pos.boxY + 38}" font-size="20" fill="#e2e8f0"
+                font-weight="700" font-family="JetBrains Mono">${sc != null ? sc + '점' : '—'}<tspan font-size="11" fill="var(--text-muted, #64748b)" font-family="Inter" font-weight="500"> w=${a.weight}</tspan></text>
         </g>`;
       }).join('');
     }

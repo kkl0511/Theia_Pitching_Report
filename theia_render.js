@@ -45,16 +45,68 @@
   //   PDF baseball_pitching_energy_leak_index.pdf 프레임워크
   //   Σ wₖ × LeakScoreₖ (100점, 높을수록 효율적)
   // ════════════════════════════════════════════════════════════
+  // ★ v0.16 — _calculateELI 확장: 변수별 산정 근거 정보까지 반환
+  // 영역별 변수 매핑 (산정 근거 expand에 사용)
+  const ELI_AREA_VARS = {
+    lower_drive:  { vars: ['Trail_leg_peak_vertical_GRF','Trail_leg_peak_AP_GRF','Trail_Hip_Power_peak','Pelvis_peak'],
+                    faultIds: ['WeakTrailDrive'] },
+    lead_block:   { vars: ['Lead_leg_peak_vertical_GRF','CoG_Decel','Lead_Knee_Power_peak','br_lead_leg_knee_flexion','lead_knee_ext_change_fc_to_br'],
+                    faultIds: ['WeakLeadBlock','LeadKneeCollapse','PoorBlock'] },
+    pelvis_trunk: { vars: ['fc_xfactor','peak_xfactor','peak_trunk_CounterRotation','trunk_rotation_at_fc'],
+                    faultIds: ['FlyingOpen'] },
+    trunk_power:  { vars: ['Pelvis_peak','Trunk_peak','trunk_forward_flexion_vel_peak','pelvis_to_trunk','pelvis_trunk_speedup'],
+                    faultIds: ['LateTrunkRotation','PoorSpeedupChain','ExcessForwardTilt'] },
+    arm_transfer: { vars: ['Arm_peak','humerus_segment_peak','trunk_to_arm','arm_trunk_speedup','mer_shoulder_abd','max_shoulder_ER','Pitching_Shoulder_Power_peak'],
+                    faultIds: ['MERShoulderRisk'] },
+    load_eff:     { from_injury: true, vars: [], faultIds: ['HighElbowValgus','PoorReleaseConsistency'] },
+  };
+
   function _calculateELI(result) {
     const TM = window.TheiaMeta;
     if (!TM?.ELI_AREAS) return null;
-    const dims = _compute6axisMech(result);
+    const sevPenalty = { high: 35, medium: 18, low: 8 };
+    const sevCap     = { high: 50, medium: 65, low: 80 };
+    const m = result.varScores || {};
+    const flts = result.faults || [];
     const inj = result.catScores?.INJURY?.score;
+
     const areas = TM.ELI_AREAS.map(a => {
-      let score = null;
-      if (a.from_injury) score = inj;
-      else if (a.mech_idx != null) score = dims[a.mech_idx]?.val;
-      return { ...a, score };
+      const meta = ELI_AREA_VARS[a.id] || {};
+      const varList = (meta.vars || []).map(k => ({
+        key: k,
+        name: TM.getVarMeta(k)?.name || k,
+        unit: TM.getVarMeta(k)?.unit || '',
+        value: m[k]?.value ?? null,
+        score: m[k]?.score ?? null,
+        measured: m[k]?.score != null,
+      }));
+      const measuredVars = varList.filter(v => v.measured);
+      let rawScore;
+      if (a.from_injury) {
+        rawScore = inj;
+      } else if (measuredVars.length > 0) {
+        rawScore = Math.round(measuredVars.reduce((s, v) => s + v.score, 0) / measuredVars.length);
+      } else {
+        rawScore = null;
+      }
+      const matchedFaults = flts.filter(f => (meta.faultIds || []).includes(f.id));
+      let penalty = 0, worstSev = 'low', cap = 100;
+      if (matchedFaults.length > 0) {
+        matchedFaults.forEach(f => {
+          penalty += sevPenalty[f.severity] || 0;
+          if ({high:3,medium:2,low:1}[f.severity] > {high:3,medium:2,low:1}[worstSev]) worstSev = f.severity;
+        });
+        cap = sevCap[worstSev] || 100;
+      }
+      const finalScore = rawScore != null && matchedFaults.length > 0
+        ? Math.min(cap, Math.max(0, rawScore - penalty))
+        : rawScore;
+      return {
+        ...a, score: finalScore,
+        rawScore, penalty, worstSev, cap, hasFaults: matchedFaults.length > 0,
+        vars: varList, measuredCount: measuredVars.length,
+        matchedFaults: matchedFaults.map(f => ({ id: f.id, label: f.label, severity: f.severity, penalty: sevPenalty[f.severity] || 0 })),
+      };
     });
     const measured = areas.filter(a => a.score != null);
     const totalW = measured.reduce((s, a) => s + a.weight, 0);
@@ -75,26 +127,90 @@
     const topWeak = weakAreas[0];
     const feedbackTpl = topWeak ? TM.ELI_FEEDBACK_TEMPLATES[topWeak.id] : null;
 
-    // 영역별 막대 (BBL/MLB 평균 = 50, elite ≥ 80)
+    // ★ v0.16 — 영역별 막대 + ▸ 산정 근거 expand
     const areaBars = areas.map(a => {
       const sc = a.score;
       const c = sc == null ? '#94a3b8' : sc >= 80 ? '#16a34a' : sc >= 60 ? '#22d3ee' : sc >= 40 ? '#fb923c' : '#dc2626';
       const barWidth = sc == null ? 0 : Math.min(100, sc);
-      return `<div style="margin-bottom: 8px;">
-        <div class="flex justify-between items-baseline mb-1 flex-wrap gap-2">
-          <div style="font-size: 13px;">
-            <strong>${a.name}</strong>
-            <span class="mono text-xs" style="color: var(--text-muted); margin-left: 6px;">w=${a.weight}</span>
+
+      // ── 산정 근거 expand 콘텐츠 ──
+      let breakdownHtml = '';
+      if (a.from_injury) {
+        // load_eff: INJURY 카테고리 점수 그대로
+        breakdownHtml = `
+          <div class="text-xs" style="color: var(--text-secondary); line-height: 1.6;">
+            <strong>산식</strong>: 부하 대비 효율 = INJURY 카테고리 안전도 점수 (UCL stress·knee stress 변수 평균)
+            <br>
+            <strong>점수</strong>: <span class="mono" style="color: ${c};">${sc != null ? sc + '점' : '미측정'}</span> (높을수록 안전)
+            ${a.matchedFaults?.length > 0 ? `<br><strong style="color: #dc2626;">검출 결함</strong>: ${a.matchedFaults.map(f => `[${f.severity}] ${f.label}`).join(', ')}` : ''}
+          </div>`;
+      } else {
+        // 일반 영역: 변수별 점수 + 평균 + 패널티
+        const varRows = a.vars.map(v => {
+          const vc = v.score == null ? '#94a3b8' : v.score >= 75 ? '#16a34a' : v.score >= 50 ? '#22d3ee' : v.score >= 35 ? '#fb923c' : '#dc2626';
+          return `<tr style="border-bottom: 1px dashed var(--border);">
+            <td style="padding: 4px 6px; color: ${v.measured ? 'var(--text-primary)' : 'var(--text-muted)'};">${v.measured ? '✓' : '○'} ${v.name}</td>
+            <td class="mono text-[10px]" style="padding: 4px 6px; color: var(--text-muted); text-align: right;">${v.measured ? v.value.toFixed(2) + (v.unit ? ' ' + v.unit : '') : '미측정'}</td>
+            <td class="mono" style="padding: 4px 6px; color: ${vc}; text-align: right; font-weight: 600;">${v.measured ? v.score + '점' : '—'}</td>
+          </tr>`;
+        }).join('');
+
+        const faultsHtml = a.matchedFaults?.length > 0
+          ? `<div class="mt-2 p-2 rounded" style="background: rgba(220,38,38,0.1); border-left: 2px solid #dc2626;">
+              <div class="text-[11px] mb-1" style="color: #dc2626; font-weight: 600;">⚠ 검출된 결함 → 영역 점수 패널티</div>
+              ${a.matchedFaults.map(f => `<div class="text-[10px] mono" style="color: var(--text-secondary);">
+                [${f.severity}] ${f.label} <span style="color: #dc2626;">−${f.penalty}점</span>
+              </div>`).join('')}
+              <div class="text-[10px] mono mt-1" style="color: var(--text-muted);">총 패널티: <strong style="color: #dc2626;">−${a.penalty}점</strong> · ${a.worstSev} 등급 cap = ${a.cap}점</div>
+            </div>` : '';
+
+        breakdownHtml = `
+          <div class="text-xs" style="color: var(--text-secondary); line-height: 1.5;">
+            <strong>산식 1단계 — 변수 평균</strong> (${a.measuredCount}/${a.vars.length} 측정):
+            <table class="mt-1" style="width: 100%; font-size: 11px; border-collapse: collapse;">
+              <thead><tr style="background: var(--bg-elevated); border-bottom: 1px solid var(--border);">
+                <th style="text-align: left; padding: 4px 6px;">변수</th>
+                <th style="text-align: right; padding: 4px 6px;">측정값</th>
+                <th style="text-align: right; padding: 4px 6px;">점수</th>
+              </tr></thead>
+              <tbody>${varRows}</tbody>
+            </table>
+            <div class="mt-2 mono text-[11px]" style="color: var(--text-secondary);">
+              raw 평균 = (측정 변수 점수 합) / ${a.measuredCount} = <strong style="color: var(--text-primary);">${a.rawScore != null ? a.rawScore + '점' : '—'}</strong>
+            </div>
+            ${faultsHtml}
+            <div class="mt-2 p-2 rounded" style="background: rgba(34,211,238,0.08);">
+              <div class="text-[11px] mono" style="color: var(--text-secondary);">
+                <strong>산식 2단계 — 최종 점수</strong>:
+                ${a.hasFaults
+                  ? `min(cap=${a.cap}, max(0, raw ${a.rawScore} − 패널티 ${a.penalty})) = <strong style="color: ${c}; font-size: 13px;">${sc}점</strong>`
+                  : `결함 없음 → raw 평균 그대로 = <strong style="color: ${c}; font-size: 13px;">${sc != null ? sc : '—'}점</strong>`}
+              </div>
+            </div>
+          </div>`;
+      }
+
+      return `<details style="margin-bottom: 8px; background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 4px; border-left: 3px solid ${c};">
+        <summary class="cursor-pointer" style="list-style: none;">
+          <div class="flex justify-between items-baseline mb-1 flex-wrap gap-2">
+            <div style="font-size: 13px;">
+              <strong>▸ ${a.name}</strong>
+              <span class="mono text-xs" style="color: var(--text-muted); margin-left: 6px;">w=${a.weight}${a.weight >= 20 ? ' ★' : ''}</span>
+            </div>
+            <span class="mono" style="color: ${c}; font-weight: 700; font-size: 14px;">${sc != null ? sc + '점' : '미측정'}</span>
           </div>
-          <span class="mono" style="color: ${c}; font-weight: 700; font-size: 14px;">${sc != null ? sc + '점' : '미측정'}</span>
+          <div style="background: var(--bg-elevated); border-radius: 3px; height: 8px; overflow: hidden;">
+            <div style="width: ${barWidth}%; height: 100%; background: ${c}; transition: width 0.4s;"></div>
+          </div>
+          <div class="text-[10px] mt-1" style="color: var(--text-muted); line-height: 1.4;">
+            ${a.desc} · <em style="color: ${sc != null && sc < 50 ? '#dc2626' : 'var(--text-muted)'};">${a.leak_when_low}</em>
+            ${a.hasFaults ? ` <span style="color: #dc2626; font-weight: 600;">· ⚠ ${a.matchedFaults.length}건 패널티</span>` : ''}
+          </div>
+        </summary>
+        <div class="mt-3 pt-3" style="border-top: 1px dashed var(--border);">
+          ${breakdownHtml}
         </div>
-        <div style="background: var(--bg-elevated); border-radius: 3px; height: 8px; overflow: hidden;">
-          <div style="width: ${barWidth}%; height: 100%; background: ${c}; transition: width 0.4s;"></div>
-        </div>
-        <div class="text-[10px] mt-1" style="color: var(--text-muted); line-height: 1.4;">
-          ${a.desc} · <em style="color: ${sc != null && sc < 50 ? '#dc2626' : 'var(--text-muted)'};">${a.leak_when_low}</em>
-        </div>
-      </div>`;
+      </details>`;
     }).join('');
 
     // 핵심 결론 문장 (PDF 표 10 형식)
@@ -218,22 +334,49 @@
     </div>`;
   }
 
-  // ── 액션 버튼 (저장 / 오프라인 패키지 / HTML 다운로드 / 인쇄) ──
+  // ── ★ v0.18 — 액션 버튼 카드로 강조 (저장 / 다운로드 / 인쇄) ──
   function _renderActionButtons(result) {
     return `
-    <div class="text-center mt-6 mb-4">
-      <button class="btn" onclick="saveReportClick()" style="background: var(--output, #C00000); color: white; padding: 10px 18px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; margin: 4px;">
-        💾 이 리포트 저장 (비교용)
-      </button>
-      <button class="btn" onclick="downloadOfflinePackage()" style="background: var(--good, #16a34a); color: white; padding: 10px 18px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; margin: 4px;">
-        📦 오프라인 패키지 다운로드 (선수 전송용)
-      </button>
-      <button class="btn btn-secondary" onclick="downloadHtml()" style="padding: 10px 18px; margin: 4px;">
-        📄 HTML 다운로드 (가벼움·인터넷 필요)
-      </button>
-      <button class="btn btn-secondary" onclick="window.print()" style="padding: 10px 18px; margin: 4px;">
-        🖨 인쇄/PDF
-      </button>
+    <div class="cat-card mt-6" style="padding: 22px; border: 2px solid var(--accent-soft, #2E75B6); background: linear-gradient(135deg, rgba(46,117,182,0.08), rgba(22,163,74,0.05));">
+      <div class="display text-xl mb-2" style="color: var(--accent-soft);">💾 리포트 저장 / 공유</div>
+      <div class="text-sm mb-4" style="color: var(--text-secondary);">
+        분석 결과를 저장하면 <strong>1차↔2차 비교</strong>·<strong>선수간 비교</strong> 탭에서 활용할 수 있고, 다운로드한 HTML은 인터넷 없이도 선수에게 전달 가능합니다.
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- 1. 저장 (가장 강조) -->
+        <button onclick="saveReportClick()"
+                style="background: var(--output, #C00000); color: white; padding: 14px 18px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer; font-weight: 700; box-shadow: 0 2px 8px rgba(192,0,0,0.3); transition: all 0.15s;"
+                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(192,0,0,0.4)'"
+                onmouseout="this.style.transform=''; this.style.boxShadow='0 2px 8px rgba(192,0,0,0.3)'">
+          💾 이 리포트 저장<br><span style="font-size: 11px; font-weight: 400; opacity: 0.9;">(비교 탭에서 사용)</span>
+        </button>
+        <!-- 2. 오프라인 패키지 -->
+        <button onclick="downloadOfflinePackage()"
+                style="background: var(--good, #16a34a); color: white; padding: 14px 18px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer; font-weight: 700; box-shadow: 0 2px 8px rgba(22,163,74,0.3); transition: all 0.15s;"
+                onmouseover="this.style.transform='translateY(-2px)'"
+                onmouseout="this.style.transform=''">
+          📦 오프라인 패키지<br><span style="font-size: 11px; font-weight: 400; opacity: 0.9;">(인터넷 불필요)</span>
+        </button>
+        <!-- 3. HTML 다운로드 -->
+        <button onclick="downloadHtml()"
+                style="background: var(--accent-soft, #2E75B6); color: white; padding: 14px 18px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer; font-weight: 700; box-shadow: 0 2px 8px rgba(46,117,182,0.3); transition: all 0.15s;"
+                onmouseover="this.style.transform='translateY(-2px)'"
+                onmouseout="this.style.transform=''">
+          📄 HTML 다운로드<br><span style="font-size: 11px; font-weight: 400; opacity: 0.9;">(가벼움·인터넷 필요)</span>
+        </button>
+        <!-- 4. 인쇄/PDF -->
+        <button onclick="window.print()"
+                style="background: var(--bg-elevated); color: var(--text-primary); padding: 14px 18px; border-radius: 8px; border: 2px solid var(--border); font-size: 14px; cursor: pointer; font-weight: 700; transition: all 0.15s;"
+                onmouseover="this.style.borderColor='var(--accent)'; this.style.transform='translateY(-2px)'"
+                onmouseout="this.style.borderColor='var(--border)'; this.style.transform=''">
+          🖨 인쇄 / PDF<br><span style="font-size: 11px; font-weight: 400; opacity: 0.7;">(브라우저 인쇄)</span>
+        </button>
+      </div>
+      <div class="text-[11px] mt-3" style="color: var(--text-muted); font-style: italic; line-height: 1.5;">
+        ※ <strong>저장</strong>: 브라우저 localStorage에 저장됩니다 (브라우저 캐시 삭제 시 사라짐 — 영구 보관은 HTML 다운로드 권장).
+        <br>※ <strong>오프라인 패키지</strong>: 결과 JSON을 포함한 단일 HTML — 다른 PC·태블릿에서도 인터넷 없이 열림.
+        <br>※ <strong>HTML 다운로드</strong>: 현재 페이지 그대로 저장 — Tailwind CDN 사용 (인터넷 필요).
+      </div>
     </div>`;
   }
 
@@ -755,8 +898,8 @@
     //   high severity = -25점, medium = -12점, low = -5점
     //   상한선 적용: high 결함 있으면 max 60점, medium 있으면 max 75점
     const faults = result.faults || [];
-    const sevPenalty = { high: 25, medium: 12, low: 5 };
-    const sevCap     = { high: 60, medium: 75, low: 90 };
+    const sevPenalty = { high: 35, medium: 18, low: 8 };
+    const sevCap     = { high: 50, medium: 65, low: 80 };
     return dims.map(d => {
       if (d.val == null) return d;
       const matchedFaults = faults.filter(f => d.faultIds && d.faultIds.includes(f.id));
@@ -925,20 +1068,53 @@
     const sevIcon  = { high: '⚠⚠', medium: '⚠', low: 'ℹ', ok: '✓' };
     const sevText  = { high: '에너지 누출', medium: '주의', low: '경미', ok: '정상' };
 
-    // 단계별 요약 박스
-    const stageRows = [1,2,3,4,5,6].map(s => {
+    // ★ v0.17 — ELI 점수 기반 단계 정렬 + 점수 표시 (ELI ↔ 결함 일관성)
+    const eliResult = _calculateELI(result);
+    const stageELI = {};  // 단계 → ELI 점수
+    if (eliResult?.areas) {
+      eliResult.areas.forEach((a, i) => { stageELI[i + 1] = a.score; });
+    }
+    // 단계 1~6을 ELI 점수 오름차순으로 정렬 (가장 약한 단계 위로)
+    const sortedStages = [1,2,3,4,5,6].sort((a, b) => {
+      const sa = stageELI[a] ?? 100;
+      const sb = stageELI[b] ?? 100;
+      return sa - sb;
+    });
+    const stageRows = sortedStages.map(s => {
       const sev = stageMaxSev[s];
       const c = sevColor[sev];
       const fs = stageFaults[s];
+      const eliScore = stageELI[s];
       const desc = fs.length > 0 ? fs.map(f => f.label.replace(/\([^)]*\)/, '').trim()).join(', ') : '결함 없음';
-      return `<div class="flex items-center gap-2 py-1.5" style="border-bottom: 1px dashed var(--border);">
+      // ELI 점수 기반 추가 평가 (결함 없어도 ELI 낮으면 약함 표시)
+      const eliColor = eliScore == null ? '#94a3b8' : eliScore >= 75 ? '#16a34a' : eliScore >= 60 ? '#22d3ee' : eliScore >= 40 ? '#fb923c' : '#dc2626';
+      return `<div class="flex items-center gap-2 py-1.5 flex-wrap" style="border-bottom: 1px dashed var(--border);">
         <span style="width: 22px; text-align: center; font-size: 13px; color: ${c};">${sevIcon[sev]}</span>
         <span class="mono text-xs" style="width: 36px; color: var(--text-muted);">단계 ${s}</span>
         <strong class="text-sm" style="width: 130px; color: ${c};">${STAGE_NAMES[s]}</strong>
+        <span class="mono text-xs" style="width: 70px; color: ${eliColor}; font-weight: 700;">ELI ${eliScore != null ? eliScore : '—'}점</span>
         <span class="text-xs" style="color: ${c}; font-weight: 600; width: 80px;">${sevText[sev]}</span>
         <span class="text-xs" style="color: var(--text-secondary); flex: 1;">${desc}</span>
       </div>`;
     }).join('');
+
+    // ★ v0.17 — ELI 우선순위 박스 (가장 약한 영역 강조 — 결함 진단 우선순위 통일)
+    const weakAreas = (eliResult?.areas || []).filter(a => a.score != null && a.score < 60).sort((a, b) => a.score - b.score);
+    const priorityHtml = weakAreas.length > 0 ? `
+      <div class="mb-3 p-3 rounded" style="background: rgba(220,38,38,0.08); border-left: 3px solid #dc2626;">
+        <div class="text-xs font-semibold mb-2" style="color: #dc2626;">📌 ELI 점수 기반 우선순위 — 다음 영역부터 보강하세요</div>
+        <ol class="list-decimal pl-5" style="font-size: 12px; color: var(--text-secondary);">
+          ${weakAreas.slice(0, 3).map((a, i) => `
+            <li class="mb-1">
+              <strong style="color: ${a.score < 40 ? '#dc2626' : '#fb923c'};">${a.name}</strong>
+              <span class="mono" style="color: ${a.score < 40 ? '#dc2626' : '#fb923c'}; margin-left: 6px;">${a.score}점</span>
+              ${a.weight >= 20 ? '<span style="color: #fbbf24; font-size: 11px;"> (★ 가중치 20)</span>' : ''}
+              ${a.matchedFaults?.length > 0
+                ? ` — 결함 ${a.matchedFaults.length}건 (${a.matchedFaults.map(f => f.label.replace(/\\([^)]*\\)/g, '').trim()).join(', ')})`
+                : ' — 결함 없으나 출력 부족'}
+            </li>`).join('')}
+        </ol>
+      </div>` : '';
 
     const totalLeak = result.faults.length;
     const highLeak = result.faults.filter(f => f.severity === 'high').length;
@@ -972,9 +1148,12 @@
       <div class="display text-xl mb-2" style="color: ${summaryColor};">🔬 결함 진단 + 코칭 처방</div>
       <div class="text-sm mb-3" style="color: ${summaryColor}; font-weight: 600;">${summaryMsg}</div>
 
-      <!-- 단계별 요약 (이전 3단계) -->
+      <!-- ★ v0.17 — ELI 우선순위 박스 (가장 약한 영역 강조) -->
+      ${priorityHtml}
+
+      <!-- 단계별 요약 (ELI 점수 오름차순 정렬, 가장 약한 단계 위로) -->
       <div class="mb-4">
-        <div class="text-xs mb-2 mono uppercase" style="color: var(--text-muted); letter-spacing: 0.05em;">단계별 진단</div>
+        <div class="text-xs mb-2 mono uppercase" style="color: var(--text-muted); letter-spacing: 0.05em;">단계별 진단 (ELI 약한 순)</div>
         ${stageRows}
       </div>
 
@@ -1106,41 +1285,14 @@
                                           : `<div class="text-xs" style="color: var(--text-muted); font-style: italic;">50점 미만 영역 없음</div>`;
     }
 
+    // ★ v0.17 — 강점/약점 영역 제거 (결함 진단 카드와 중복) → 훈련 추천만 유지
     return `
     <div class="cat-card mt-6" style="padding: 22px;">
-      <div class="display text-2xl mb-4">📋 종합 평가 (선수·코치용 해설)</div>
-      <!-- ELI 영역별 강점/약점 (1차) — 결함 패널티 반영 -->
-      <div class="text-xs mb-2 mono uppercase" style="color: var(--text-muted); letter-spacing: 0.05em;">★ Integrated ELI 영역별 강점·약점 (결함 패널티 적용)</div>
-      <div class="grid md:grid-cols-2 gap-4 mb-4">
-        <div class="p-4" style="background: var(--bg-elevated); border-left: 4px solid #16a34a; border-radius: 6px;">
-          <div class="display text-base mb-3" style="color: #16a34a;">⭐ 강점 영역 (≥75점)</div>
-          ${eliStrengths}
-        </div>
-        <div class="p-4" style="background: var(--bg-elevated); border-left: 4px solid #dc2626; border-radius: 6px;">
-          <div class="display text-base mb-3" style="color: #dc2626;">🔧 약점 영역 (<50점)</div>
-          ${eliWeaknesses}
-        </div>
+      <div class="display text-2xl mb-3">📋 종합 평가 — 다음 단계 훈련 우선순위</div>
+      <div class="text-sm mb-4" style="color: var(--text-muted);">
+        결함 진단·ELI 영역 평가는 위 섹션에서 확인하세요. 본 카드는 훈련 처방에 집중합니다.
       </div>
-
-      <!-- 변수 단위 (2차, 보조 정보) — 변수별 raw 점수 -->
-      <details class="mb-4" style="background: var(--bg-elevated); border-radius: 6px; padding: 12px;">
-        <summary class="cursor-pointer text-sm" style="color: var(--text-muted);">📊 변수 단위 강점·약점 (보조 — raw 점수, 결함 패널티 미반영)</summary>
-        <div class="text-xs mt-2 mb-2" style="color: var(--text-muted); font-style: italic;">
-          ※ 변수 단위 점수는 cohort 비교 raw 점수입니다. 결함 검출 시 ELI 영역에 패널티가 적용되므로,
-          변수 점수가 높아도 결함이 있으면 ELI 영역 점수는 낮아질 수 있습니다 (예: BR 시점 앞무릎 굴곡 95점이지만 LeadKneeCollapse 결함 → 앞다리 블로킹 영역 60점).
-        </div>
-        <div class="grid md:grid-cols-2 gap-4">
-          <div>
-            <div class="text-xs mb-2" style="color: #16a34a; font-weight: 600;">⭐ 변수 강점 (≥75점)</div>
-            ${renderList(strengths, true)}
-          </div>
-          <div>
-            <div class="text-xs mb-2" style="color: #dc2626; font-weight: 600;">🔧 변수 약점 (≤35점)</div>
-            ${renderList(weaknesses, false)}
-          </div>
-        </div>
-      </details>
-      ${trainingHtml}
+      ${trainingHtml || '<div class="text-sm" style="color: var(--text-muted);">결함 없음 — 현재 메카닉 유지 + 부상 모니터링 권장</div>'}
     </div>`;
   }
 
