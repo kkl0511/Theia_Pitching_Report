@@ -48,21 +48,44 @@
     const handHint = trialName && /\bLH\b|Left/i.test(trialName) ? 'left' :
                       trialName && /\bRH\b|Right/i.test(trialName) ? 'right' : null;
 
-    // 컬럼 인덱스 매핑 — header[i] + component[i] → col index
-    // 같은 header가 X·Y·Z 3컬럼이면 각각 별도 인덱스
-    const columnIndex = {};
-    for (let i = 0; i < header.length; i++) {
-      const h = (header[i] || '').trim();
-      const c = (component[i] || '').trim();
-      if (!h || h === 'FRAMES' || h === 'TIME') continue;
-      const key = c && c !== '0' ? `${h}.${c}` : h;
-      if (!columnIndex[key]) columnIndex[key] = i;
+    // ★ 헤더와 데이터 row의 시작 위치 차이 자동 검출 (offset)
+    //   dtype row 'FRAME_NUMBERS' 첫 위치 = data col 시간 컬럼 위치 (가장 신뢰)
+    //   header sparse — 'TIME' 한 번이지만 데이터엔 두 시간 컬럼 (capture abs + trial rel)
+    //   - 박명균 (46컬럼): dtype col 1='FRAME_NUMBERS', header col 2='FRAMES' → offset=1
+    //   - 새 샘플 (87컬럼): dtype col 1='FRAME_NUMBERS', header col 1='FRAMES' → offset=0
+    const frameHeaderIdx = header.findIndex(h => (h || '').trim() === 'FRAMES');
+    let dataStart = 0;
+    for (let i = 0; i < dtype.length; i++) {
+      if ((dtype[i] || '').trim() === 'FRAME_NUMBERS') { dataStart = i; break; }
     }
-    // FRAMES, TIME 특수 매핑
-    columnIndex['FRAMES'] = header.findIndex(h => h === 'FRAMES');
-    columnIndex['TIME_abs'] = header.findIndex((h, i) => h === 'TIME' && i === columnIndex['FRAMES'] + 1);
-    columnIndex['TIME_rel'] = header.findIndex((h, i) => h === 'TIME' && i > columnIndex['TIME_abs']);
-    if (columnIndex['TIME_rel'] === -1) columnIndex['TIME_rel'] = columnIndex['TIME_abs'] + 1;
+    const offset = frameHeaderIdx >= 0 ? frameHeaderIdx - dataStart : 0;
+
+    // 컬럼 인덱스 매핑 — header[i] (propagated) ↔ dtype·component·data col (i - offset)
+    // ★ 박명균: header sparse(col 4='Pelvis_Ang_Vel') ↔ component col 3='Z' → 'Pelvis_Ang_Vel.Z'=col 3
+    // ★ 새 샘플: header dense(col 4='Pelvis_Ang_Vel') ↔ component col 4='Z' → 'Pelvis_Ang_Vel.Z'=col 4
+    const columnIndex = {};
+    let lastH = '';
+    for (let i = 0; i < header.length; i++) {
+      const rawH = (header[i] || '').trim();
+      if (rawH) lastH = rawH;
+      const h = lastH;
+      const dataCol = i - offset;
+      if (dataCol < 0 || dataCol >= dtype.length) continue;
+      const c = (component[dataCol] || '').trim();
+      const dt = (dtype[dataCol] || '').trim();
+      if (!h || h === 'FRAMES' || h === 'TIME' || dt === 'FRAME_NUMBERS') continue;
+      const key = c && c !== '0' ? `${h}.${c}` : h;
+      if (columnIndex[key] == null) columnIndex[key] = dataCol;
+    }
+
+    // FRAMES, TIME — dtype 'FRAME_NUMBERS' 위치 기반
+    const frameNumIdxs = [];
+    for (let i = 0; i < dtype.length; i++) {
+      if ((dtype[i] || '').trim() === 'FRAME_NUMBERS') frameNumIdxs.push(i - offset);
+    }
+    columnIndex['FRAMES'] = frameHeaderIdx >= 0 ? frameHeaderIdx - offset : (frameNumIdxs[0] != null ? frameNumIdxs[0] - 1 : 0);
+    columnIndex['TIME_abs'] = frameNumIdxs[0] != null ? frameNumIdxs[0] : columnIndex['FRAMES'] + 1;
+    columnIndex['TIME_rel'] = frameNumIdxs[1] != null ? frameNumIdxs[1] : columnIndex['TIME_abs'] + 1;
 
     // 데이터 row 6+ — kinematic (TIME_rel != null) + force-only (TIME_rel == null)
     const kinematic = [];
@@ -90,25 +113,27 @@
       if (dt > 0) fps = Math.round(1 / dt);
     }
 
-    // 이벤트 시간 (row 0의 EVENT_LABEL 컬럼들)
+    // 이벤트 시간 (row 0의 EVENT_LABEL 컬럼들) — 새 형식·박명균 옛 형식 모두 지원
     const events = {};
     if (kinematic.length > 0) {
       const r0 = kinematic[0];
-      const evNames = {
-        'KH': 'MaxKneeHeight',
-        'FS': 'Footstrike',
-        'MER': 'Max_External_Rotation',
-        'MER_alt': 'Max_Shoulder_Int_Rot',  // 옛 명칭 호환
-        'BR': 'Ball_Release',
-        'BR100ms': 'Ball_Release_Plus_100ms',
+      // 각 이벤트별로 시도할 컬럼명 후보 리스트 (앞 우선)
+      const evCandidates = {
+        'KH': ['MaxKneeHeight'],
+        'FS': ['Footstrike', 'FootStrike', 'FootContact'],
+        'MER': ['Max_External_Rotation', 'Max_Shoulder_Int_Rot', 'MER'],
+        'BR': ['Ball_Release', 'Release', 'BR'],
+        'BR100ms': ['Ball_Release_Plus_100ms', 'Release100msAfter', 'BR100ms'],
       };
-      for (const [k, h] of Object.entries(evNames)) {
-        const idx = columnIndex[h];
-        if (idx != null) events[k] = safeNum(r0[idx]);
+      for (const [k, cands] of Object.entries(evCandidates)) {
+        for (const h of cands) {
+          const idx = columnIndex[h];
+          if (idx != null) {
+            const v = safeNum(r0[idx]);
+            if (v != null) { events[k] = v; break; }
+          }
+        }
       }
-      // MER 명칭 호환 — 정정된 이름 우선, fallback to 옛 이름
-      if (events.MER == null && events.MER_alt != null) events.MER = events.MER_alt;
-      delete events.MER_alt;
     }
 
     return {
