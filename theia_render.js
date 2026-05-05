@@ -198,27 +198,27 @@
     const injScore = result.catScores?.INJURY?.score;
     if (outScore == null || trScore == null) return `
       <div class="cat-card mb-6" style="padding: 18px;">
-        <div class="display text-lg" style="color: var(--accent);">🎯 출력 vs 전달 진단</div>
+        <div class="display text-lg" style="color: var(--accent);">🎯 출력 vs 에너지 효율</div>
         <div class="text-sm mt-2" style="color: var(--text-muted);">OUTPUT/TRANSFER 카테고리 변수 산출 부족 — c3d.txt에 ball_speed·증폭률 변수가 있어야 진단 가능</div>
       </div>`;
 
-    const injRisk = injScore != null ? (100 - injScore) : 50;  // 안전점수 → 위험%
+    const injRisk = injScore != null ? (100 - injScore) : 50;
     const dotColor = injRisk >= 80 ? '#dc2626' : injRisk >= 50 ? '#fb923c' : '#16a34a';
 
-    // 4사분면 분류
+    // 4사분면 분류 — Elite 상대 용어 (아마 = Amateur)
     let quadrant, qLabel, qColor, qPriority, qMessage;
     if (outScore >= 50 && trScore >= 50) {
       quadrant = 1; qLabel = '① Elite'; qColor = '#16a34a'; qPriority = '유지';
-      qMessage = '출력·전달 모두 코호트 평균 이상. 현재 메카닉 유지 + 부상 모니터링.';
+      qMessage = '출력·에너지 효율 모두 코호트 평균 이상. 현재 메카닉 유지 + 부상 모니터링.';
     } else if (outScore >= 50 && trScore < 50) {
       quadrant = 2; qLabel = '② 낭비형 (Inefficient)'; qColor = '#fb923c'; qPriority = '★ 코칭 효과 가장 큼';
-      qMessage = '출력은 잘 만드는데 시퀀싱·증폭률이 낮아 손실. <strong>전달 최적화로 즉시 구속 향상 가능</strong> — 메카닉 코칭이 가장 큰 수익을 내는 유형.';
+      qMessage = '출력은 잘 만드는데 에너지 효율이 낮아 손실. <strong>시퀀싱·증폭 최적화로 즉시 구속 향상 가능</strong> — 메카닉 코칭이 가장 큰 수익을 내는 유형.';
     } else if (outScore < 50 && trScore >= 50) {
       quadrant = 3; qLabel = '③ 효율형 (Underpowered)'; qColor = '#0070C0'; qPriority = '체력 강화';
-      qMessage = '메카닉(전달)은 좋은데 <strong>출력 자체가 부족</strong>. 체력(파워·근력)으로 출력을 끌어올리면 elite로 점프 가능.';
+      qMessage = '메카닉 효율은 좋은데 <strong>출력 자체가 부족</strong>. 체력(파워·근력)으로 출력을 끌어올리면 elite로 점프 가능.';
     } else {
-      quadrant = 4; qLabel = '④ 발달 단계 (Foundation)'; qColor = '#94a3b8'; qPriority = '기초';
-      qMessage = '둘 다 평균 미만. 체력·시퀀싱 기초 동시 향상 — 인내심 있게 단계별 발달.';
+      quadrant = 4; qLabel = '④ 아마 (Amateur)'; qColor = '#94a3b8'; qPriority = '기초';
+      qMessage = '둘 다 평균 미만 — Amateur 수준. 체력·시퀀싱 기초 동시 향상 — 인내심 있게 단계별 발달.';
     }
 
     // SVG 4사분면 (pos: outScore=x, trScore=y)
@@ -243,10 +243,10 @@
       <text x="${xs(75)}" y="${ys(85)}" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="bold">① Elite</text>
       <text x="${xs(75)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#fb923c" font-weight="bold">② 낭비형</text>
       <text x="${xs(25)}" y="${ys(85)}" text-anchor="middle" font-size="10" fill="#0070C0" font-weight="bold">③ 효율형</text>
-      <text x="${xs(25)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="bold">④ 발달</text>
-      <!-- 축 라벨 -->
-      <text x="${W/2}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600">출력 Output (percentile)</text>
-      <text x="14" y="${H/2}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600" transform="rotate(-90 14 ${H/2})">전달 Transfer (percentile)</text>
+      <text x="${xs(25)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="bold">④ 아마</text>
+      <!-- 축 라벨 — % 표시 -->
+      <text x="${W/2}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600">출력 Output (%)</text>
+      <text x="14" y="${H/2}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600" transform="rotate(-90 14 ${H/2})">에너지 효율 Energy Efficiency (%)</text>
       <!-- 0/50/100 눈금 -->
       <text x="${xs(0)}" y="${ys(0)+14}" text-anchor="middle" font-size="9" fill="var(--text-muted)">0</text>
       <text x="${xs(50)}" y="${ys(0)+14}" text-anchor="middle" font-size="9" fill="var(--text-muted)">50</text>
@@ -260,12 +260,36 @@
       <text x="${cx}" y="${cy-18}" text-anchor="middle" font-size="11" font-weight="bold" fill="${dotColor}">본 선수</text>
     </svg>`;
 
+    // ★ v0.11 — 캡쳐 이미지 형식 expand 카드 (출력 / 전달 / 부상 위험)
+    const TM = window.TheiaMeta;
+    const _expandCard = (label, engLabel, score, color, catId, intVarKey, intUnit) => {
+      const cat = result.catScores[catId];
+      const intVal = cat?.integrationValue;
+      const intName = TM?.getVarMeta?.(intVarKey)?.name || intVarKey;
+      return `<details class="mb-2" style="background: var(--bg-elevated); border-radius: 6px; border-left: 4px solid ${color}; padding: 10px 14px;">
+        <summary class="cursor-pointer" style="list-style: none;">
+          <div class="flex items-baseline flex-wrap gap-2">
+            <strong style="color: ${color}; font-size: 16px;">▸ ${label}</strong>
+            <span style="color: var(--text-muted); font-size: 12px;">(${engLabel})</span>
+            <span class="mono text-xs ml-2" style="color: var(--text-muted);">${cat?.total || 0}변수</span>
+            <span class="ml-auto" style="font-size: 14px; color: var(--text-muted);">종합 <strong class="mono" style="color: ${color}; font-size: 16px;">${score != null ? score + 'pt' : '—'}</strong>
+              <span class="text-xs" style="color: var(--text-muted);"> (${cat?.measured || 0}/${cat?.total || 0}변수)</span></span>
+          </div>
+          <div class="text-xs mt-1" style="color: var(--text-muted);">${cat?.desc || ''}</div>
+          ${intVal != null ? `<div class="text-xs mt-1" style="color: var(--text-secondary);">통합 지표: <strong style="color: ${color};">★ ${intName}</strong> = <span class="mono">${typeof intVal === 'number' ? intVal.toFixed(2) : intVal}${intUnit || ''}</span></div>` : ''}
+        </summary>
+        <div class="mt-3 pt-3" style="border-top: 1px dashed var(--border);">
+          ${_renderVarDetail(result, TM.OTL_CATEGORIES[catId].variables)}
+        </div>
+      </details>`;
+    };
+
     return `
     <div class="cat-card mb-6" style="padding: 18px;">
       <div class="flex justify-between items-start mb-2">
         <div>
           <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">DIAGNOSIS · ${ALGORITHM_VERSION}</div>
-          <div class="display text-xl mt-1" style="color: var(--accent-soft);">🎯 출력 vs 전달 분리 진단</div>
+          <div class="display text-xl mt-1" style="color: var(--accent-soft);">🎯 출력 vs 에너지 효율</div>
         </div>
         <div class="text-right">
           <div class="display text-base" style="color: ${qColor}; font-weight: 700;">${qLabel}</div>
@@ -275,54 +299,45 @@
       <div class="text-sm leading-relaxed mb-3 p-3 rounded" style="background: var(--bg-elevated); border-left: 3px solid ${qColor};">
         ${qMessage}
       </div>
-      <div class="grid md:grid-cols-2 gap-3 items-center">
+      <div class="grid md:grid-cols-2 gap-3 items-center mb-4">
         <div>${svgQuadrant}</div>
-        <div>
-          <table class="var-table" style="font-size: 12px;">
-            <thead><tr><th>카테고리</th><th>점수</th><th>측정</th></tr></thead>
-            <tbody>
-              <tr><td>출력 (Output)</td><td><strong style="color: ${outScore >= 50 ? '#16a34a' : '#fb923c'};">${outScore}</strong></td><td class="mono">${result.catScores.OUTPUT.measured}/${result.catScores.OUTPUT.total}</td></tr>
-              <tr><td>전달 (Transfer)</td><td><strong style="color: ${trScore >= 50 ? '#16a34a' : '#fb923c'};">${trScore}</strong></td><td class="mono">${result.catScores.TRANSFER.measured}/${result.catScores.TRANSFER.total}</td></tr>
-              <tr><td>부상 위험 (Injury 안전도)</td><td><strong style="color: ${(injScore || 0) >= 50 ? '#16a34a' : '#dc2626'};">${injScore != null ? injScore : '—'}</strong></td><td class="mono">${result.catScores.INJURY?.measured || 0}/${result.catScores.INJURY?.total || 0}</td></tr>
-            </tbody>
-          </table>
-          <div class="text-xs mt-3" style="color: var(--text-muted); line-height: 1.6;">
-            <strong>해석:</strong> X축=출력(절대 회전속도·GRF), Y축=전달(시퀀싱·증폭률). 점 색상=부상 위험 (<span style="color: #16a34a;">●</span>안전 / <span style="color: #fb923c;">●</span>주의 / <span style="color: #dc2626;">●</span>위험).
-          </div>
+        <div class="text-xs" style="color: var(--text-muted); line-height: 1.6;">
+          <strong>해석:</strong><br>
+          • X축 = 출력 (Output) % — 절대 회전 속도·선형 출력의 percentile<br>
+          • Y축 = 에너지 효율 (Energy Efficiency) % — 시퀀싱·증폭률·전달 효율<br>
+          • 점 색상 = 부상 위험 등급 (<span style="color: #16a34a;">●</span>안전 / <span style="color: #fb923c;">●</span>주의 / <span style="color: #dc2626;">●</span>위험)<br>
+          • Elite 사분면 (①) = 출력·효율 모두 ≥50% (코호트 중앙값 이상)
         </div>
       </div>
+      <!-- ▸ expand 카드 형식 -->
+      ${_expandCard('출력 (Power Generation)', '각 분절(하체→몸통→팔)이 만들어내는 절대 회전·선형 출력', outScore, '#16a34a', 'OUTPUT', 'wrist_release_speed', ' m/s')}
+      ${_expandCard('에너지 효율 (Energy Transfer / Sequencing)', '분절 간 에너지가 효율적으로 흐르는가 — 타이밍·증폭률·저장방출', trScore, '#fb923c', 'TRANSFER', 'angular_chain_amplification', ' x')}
+      ${_expandCard('부상 위험 (Injury Risk)', '출력의 비용 — UCL stress (팔꿈치) + knee stress (drive 다리)', injScore, '#f87171', 'INJURY', 'max_shoulder_ER', ' °')}
     </div>`;
   }
 
+  // ★ v0.11 — 메카닉 세션(_compute6axisMech) 6축과 동일한 변수 매핑 사용 (일관성)
   function _renderKineticChainStages(result) {
-    const m = result.varScores || {};
-    const v = (k) => m[k]?.value;
-    const s = (k) => m[k]?.score;
-    const stages = [
-      { n: 1, name: '하체 드라이브 (Trail Drive)',  vars: ['Trail_leg_peak_vertical_GRF', 'Trail_leg_peak_AP_GRF', 'Trail_Hip_Power_peak'], desc: '뒷다리 추진 — 지면에서 시작되는 힘' },
-      { n: 2, name: '앞다리 블록 (Lead Block)',    vars: ['Lead_leg_peak_vertical_GRF', 'CoG_Decel', 'Lead_Knee_Power_peak'], desc: '앞다리 stiffness — 추진→회전 전환' },
-      { n: 3, name: '분리 (Hip-Trunk Separation)',  vars: ['fc_xfactor', 'peak_xfactor', 'peak_trunk_CounterRotation'], desc: 'X-factor 분리 자세 — 회전 저장' },
-      { n: 4, name: '몸통 가속 (Trunk Acceleration)', vars: ['Pelvis_peak', 'Trunk_peak', 'pelvis_to_trunk', 'pelvis_trunk_speedup'], desc: '골반→몸통 회전 가속' },
-      { n: 5, name: '상지 코킹·전달 (Arm Cocking)',  vars: ['Trunk_peak', 'Arm_peak', 'trunk_to_arm', 'arm_trunk_speedup', 'mer_shoulder_abd', 'max_shoulder_ER'], desc: '몸통→팔 전달 + ER cocking' },
-      { n: 6, name: '릴리스 가속 (Release)',         vars: ['Arm_peak', 'wrist_release_speed', 'angular_chain_amplification', 'br_shoulder_abd', 'br_lead_leg_knee_flexion'], desc: '팔 채찍 + 공 가속' },
-    ];
-
-    // 각 단계 평균 점수 + 누락 변수 비율
-    const stageBoxes = stages.map(stg => {
-      const scored = stg.vars.map(k => s(k)).filter(x => x != null);
-      const avg = scored.length ? scored.reduce((a,b)=>a+b,0) / scored.length : null;
+    // 메카닉 세션과 동일한 6단계 정의를 _compute6axisMech에서 가져옴
+    const dims = _compute6axisMech(result);
+    const stageBoxes = dims.map((d, i) => {
+      const avg = d.val;  // 메카닉 세션과 동일한 점수
       const color = avg == null ? '#94a3b8' : avg >= 75 ? '#16a34a' : avg >= 50 ? '#0070C0' : avg >= 35 ? '#fb923c' : '#dc2626';
       const sevIcon = avg == null ? '○' : avg >= 75 ? '✓' : avg >= 50 ? '◐' : avg >= 35 ? '⚠' : '🚨';
+      const refVarsHtml = (d.refVars || []).slice(0, 3).map(rv => `<code class="mono text-[9px]" style="background: var(--bg-card); padding: 1px 4px; border-radius: 2px; margin-right: 3px;">${rv}</code>`).join('');
       return `
       <div style="background: var(--bg-elevated); border: 1px solid var(--border); border-left: 4px solid ${color}; border-radius: 6px; padding: 10px 12px;">
         <div class="flex items-center gap-2 mb-1">
-          <span class="mono text-xs" style="color: var(--text-muted);">단계 ${stg.n}</span>
+          <span class="mono text-xs" style="color: var(--text-muted);">단계 ${i+1}</span>
           <span style="color: ${color}; font-size: 14px;">${sevIcon}</span>
-          <strong class="text-sm" style="color: var(--text-primary);">${stg.name}</strong>
+          <strong class="text-sm" style="color: var(--text-primary);">${d.label}</strong>
           <span class="ml-auto mono text-sm" style="color: ${color}; font-weight: 700;">${avg != null ? avg.toFixed(0) : '—'}<span style="font-size:10px; color: var(--text-muted);">/100</span></span>
         </div>
         <div class="text-xs" style="color: var(--text-muted); line-height: 1.5;">
-          ${stg.desc} <span class="mono" style="margin-left:6px;">(${scored.length}/${stg.vars.length} 변수)</span>
+          ${d.desc || ''}
+        </div>
+        <div class="text-[10px] mt-1" style="color: var(--text-muted);">
+          ${refVarsHtml}
         </div>
       </div>`;
     }).join('');
@@ -331,7 +346,8 @@
     <div class="cat-card mb-6" style="padding: 18px;">
       <div class="display text-xl mb-2" style="color: var(--transfer);">⚡ 키네틱 체인 6단계 진단</div>
       <div class="text-sm mb-3" style="color: var(--text-secondary); line-height: 1.6;">
-        다리에서 시작된 힘이 골반→몸통→팔로 전달되는 흐름을 6 단계로 분리해서 진단합니다. 각 단계는 GRF·X-factor·회전속도·관절 power 등 키네틱 변수의 종합 점수입니다.
+        다리→골반→몸통→팔→릴리스 6 단계 — <strong>메카닉 세션 라디아 차트와 동일한 변수·점수</strong>로 진단합니다.
+        각 단계 카드 우상단 점수 = 라디아 차트 정점 점수.
       </div>
       <div class="grid md:grid-cols-2 gap-3">${stageBoxes}</div>
     </div>`;

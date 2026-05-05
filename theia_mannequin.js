@@ -116,29 +116,80 @@
       { stage: 'Elbow',     val: elbowP, unit: 'W', x: 596, y: 128 },
     ];
 
-    // ── 에너지 흐름 판정 (Power Transfer Ratio 기반) ──
-    // 단계별 transfer ratio = downstream / upstream. 1.0 미만 시 손실, 1.0 이상 시 증폭.
-    // 측정 가능한 인접 단계만 비교 (kinematic ω 또는 kinetic Power)
-    const flowEvidences = [];
-    function tr(label, up_label, up_val, dn_label, dn_val, idealMin, idealMax, unit) {
-      if (up_val == null || dn_val == null) return;
-      const ratio = dn_val / up_val;
-      const ok = ratio >= idealMin && ratio <= idealMax;
-      flowEvidences.push({
-        label, up_label, up_val, dn_label, dn_val, ratio,
-        idealMin, idealMax, ok, unit,
-        loss: ratio < idealMin, surplus: ratio > idealMax,
-      });
-    }
-    // Trail Hip P → Pelvis ω: 보통 power → angular velocity 변환이라 직접 ratio 의미 없음
-    //   대신 Trail vGRF → Trail Hip P transfer (GRF가 hip power 만들어냄)
+    // ── ★ v0.11 — Kinetic Energy 기반 에너지 흐름 직접 계산 ──
+    // 각 segment의 KE = 0.5 × I × ω²
+    //   I = 관성모멘트 (Body Segment Parameter, Winter 4th ed. Anthropometry)
+    //   I_pelvis  ≈ 0.0148 × m × h²  (vertical axis)
+    //   I_trunk   ≈ 0.0150 × m × h²
+    //   I_humerus ≈ 0.0019 × m × h²
+    // 단계별 KE 값을 직접 비교하면 진짜 에너지 손실량(Joule) 산출 가능 — 단순 ratio 대신 절대값.
+    const mass_kg = result._meta?.mass_kg || 75;
+    const height_m = (result._meta?.height_cm || 175) / 100;
+    const I_pelvis  = 0.0148 * mass_kg * height_m * height_m;
+    const I_trunk   = 0.0150 * mass_kg * height_m * height_m;
+    const I_humerus = 0.0019 * mass_kg * height_m * height_m;
+    const D2R = Math.PI / 180;
+    const KE = (I, omega_dps) => omega_dps != null ? 0.5 * I * (omega_dps * D2R) ** 2 : null;
+
     const pelvisPk = v('Pelvis_peak'), trunkPk = v('Trunk_peak'), armPk = v('Arm_peak');
     const wristV = v('wrist_release_speed');
-    if (trailVGRF != null && trailHipP != null) tr('① 발→고관절 power', 'Trail vGRF', trailVGRF, 'Trail Hip P', trailHipP/100, 4, 12, 'BW→W/100');
-    if (pelvisPk != null && trunkPk != null) tr('② 골반→몸통 ω', 'Pelvis ω', pelvisPk, 'Trunk ω', trunkPk, 1.15, 1.45, '°/s');
-    if (trunkPk != null && armPk != null) tr('③ 몸통→상완 ω (sequencing)', 'Trunk ω', trunkPk, 'Arm ω', armPk, 4.5, 7.0, '°/s');
-    if (shoulderP != null && elbowP != null) tr('④ 어깨→팔꿈치 power', 'Shoulder P', shoulderP, 'Elbow P', elbowP, 0.15, 0.40, 'W');
-    if (armPk != null && wristV != null) tr('⑤ 상완→손목 (release)', 'Arm ω', armPk, 'Wrist V × 1000', wristV * 1000, 2.0, 3.5, '°/s→m/s');
+    const KE_pelvis  = KE(I_pelvis,  pelvisPk);
+    const KE_trunk   = KE(I_trunk,   trunkPk);
+    const KE_arm     = KE(I_humerus, armPk);
+
+    // ── 단계별 KE 흐름 분석 (J 단위) ──
+    // 정상 ratio 범위 (Joule transfer):
+    //   Pelvis → Trunk:  1.4~2.2 (trunk가 pelvis의 ~1.7배 KE 흡수·증폭)
+    //   Trunk → Arm:     3.0~5.5 (humerus가 trunk보다 ~4배 KE)
+    // 손실(loss)이 있을 때: ratio < min → 운동 사슬 단절·전달 비효율
+    const flowEvidences = [];
+    function trKE(label, up_label, up_J, dn_label, dn_J, idealMin, idealMax) {
+      if (up_J == null || dn_J == null) return;
+      const ratio = dn_J / up_J;
+      const ok = ratio >= idealMin && ratio <= idealMax;
+      const lossJ = up_J - dn_J;  // 음수 = 증폭, 양수 = 손실
+      flowEvidences.push({
+        label, up_label, up_val: up_J.toFixed(1) + ' J', dn_label, dn_val: dn_J.toFixed(1) + ' J',
+        ratio, idealMin, idealMax, ok, unit: 'J',
+        loss: ratio < idealMin, surplus: ratio > idealMax,
+        // 추가 KE 정보
+        ke_loss_J: lossJ, ke_loss_label: lossJ > 0 ? `손실 ${lossJ.toFixed(1)} J` : `증폭 +${(-lossJ).toFixed(1)} J`,
+      });
+    }
+
+    // Trail GRF → Pelvis KE (GRF에서 발생한 push가 pelvis 운동에너지로 변환되는 효율)
+    if (trailVGRF != null && KE_pelvis != null) {
+      const grfJ = trailVGRF * mass_kg * 9.81 * 0.05;  // Approx. impulse-energy proxy (BW × 0.05s)
+      trKE('① 발 GRF → 골반 KE', 'GRF impulse', grfJ, 'Pelvis KE', KE_pelvis, 0.6, 1.8);
+    }
+    // Pelvis KE → Trunk KE (직접 KE 비율)
+    if (KE_pelvis != null && KE_trunk != null) {
+      trKE('② 골반 KE → 몸통 KE', 'Pelvis KE', KE_pelvis, 'Trunk KE', KE_trunk, 1.3, 2.4);
+    }
+    // Trunk KE → Arm KE (humerus segment KE)
+    if (KE_trunk != null && KE_arm != null) {
+      trKE('③ 몸통 KE → 상완 KE', 'Trunk KE', KE_trunk, 'Arm KE', KE_arm, 2.5, 5.5);
+    }
+    // Shoulder Power → Elbow Power (joint power 직접 비교, 측정된 경우)
+    if (shoulderP != null && elbowP != null) {
+      // power ratio (W/W) — 서브 흐름 (joint torque 흐름)
+      const pratio = elbowP / shoulderP;
+      flowEvidences.push({
+        label: '④ 어깨 P → 팔꿈치 P', up_label: 'Shoulder P', up_val: shoulderP.toFixed(0) + ' W',
+        dn_label: 'Elbow P', dn_val: elbowP.toFixed(0) + ' W',
+        ratio: pratio, idealMin: 0.15, idealMax: 0.40, unit: 'W',
+        ok: pratio >= 0.15 && pratio <= 0.40,
+        loss: pratio < 0.15, surplus: pratio > 0.40,
+        ke_loss_J: shoulderP - elbowP, ke_loss_label: pratio > 0.4 ? '⚠ 팔꿈치 의존 (UCL 위험)' : pratio < 0.15 ? '전달 부족' : '정상 분배',
+      });
+    }
+    // Arm KE → Wrist KE (release momentum)
+    if (KE_arm != null && wristV != null) {
+      // wrist KE proxy: 0.5 × m_hand × v² (m_hand ≈ 0.006 × mass)
+      const m_hand = 0.006 * mass_kg;
+      const KE_wrist = 0.5 * m_hand * wristV * wristV;
+      trKE('⑤ 상완 KE → 손목 KE (release)', 'Arm KE', KE_arm, 'Wrist KE', KE_wrist, 0.05, 0.30);
+    }
 
     // 종합 판정
     const lossCnt = flowEvidences.filter(e => e.loss).length;
@@ -155,13 +206,14 @@
       const c = e.loss ? '#dc2626' : e.surplus ? '#fb923c' : '#16a34a';
       const icon = e.loss ? '⚠' : e.surplus ? '△' : '✓';
       return `<div style="background: var(--bg-elevated, #1c1d21); padding: 8px 10px; margin-bottom: 4px; border-radius: 4px; border-left: 3px solid ${c}; font-size: 11px;">
-        <div class="flex justify-between items-baseline">
+        <div class="flex justify-between items-baseline flex-wrap">
           <strong style="color: ${c};">${icon} ${e.label}</strong>
           <span class="mono" style="color: ${c}; font-weight: 700;">ratio ${e.ratio.toFixed(2)}</span>
         </div>
         <div class="mono text-[10px] mt-1" style="color: var(--text-muted, #64748b);">
-          ${e.up_label} ${typeof e.up_val === 'number' ? e.up_val.toFixed(2) : e.up_val} → ${e.dn_label} ${typeof e.dn_val === 'number' ? e.dn_val.toFixed(2) : e.dn_val} · 이상 ${e.idealMin.toFixed(2)}~${e.idealMax.toFixed(2)} (${e.unit})
+          ${e.up_label} ${e.up_val} → ${e.dn_label} ${e.dn_val} · 이상 ${e.idealMin.toFixed(2)}~${e.idealMax.toFixed(2)} (${e.unit})
         </div>
+        ${e.ke_loss_label ? `<div class="text-[10px] mt-1" style="color: ${c};">⚡ ${e.ke_loss_label}</div>` : ''}
       </div>`;
     }).join('');
 
@@ -169,18 +221,20 @@
     <div class="cat-card mb-6" style="padding: 16px; background: #0b1220; border: 1px solid #1e293b;">
       <div class="display text-xl mb-1" style="color: #fb923c;">⚡ 키네틱 체인 — 에너지 흐름 (파워 기반)</div>
       <div class="text-xs mb-2" style="color: #64748b;">
-        Trail GRF → Trail Hip P → Pelvis ω → Trunk ω → Shoulder P → Elbow P → 공
-        — 색상은 분절별 코호트 percentile 점수, 라벨은 절대값 (W·BW·°/s).
+        ★ <strong>Kinetic Energy 기반</strong> 직접 계산 — Pelvis KE → Trunk KE → Arm KE → Wrist KE (Joule 단위 흐름).
+        분절별 KE = 0.5 × I × ω² (Winter BSP). 단순 ratio가 아닌 실제 에너지 손실량(J)으로 누수 진단.
       </div>
 
-      <!-- 에너지 흐름 판정 + 근거 -->
+      <!-- 에너지 흐름 판정 + 근거 (KE 기반) -->
       <div class="mb-3 p-3 rounded" style="background: ${overallColor}15; border: 1px solid ${overallColor}; border-left: 3px solid ${overallColor};">
         <div class="display text-base mb-1" style="color: ${overallColor};">📊 에너지 흐름 판정 — ${overall}</div>
         <div class="text-xs mb-2" style="color: var(--text-secondary, #94a3b8);">
-          단계별 power transfer ratio = downstream / upstream. <span style="color: #16a34a;">정상</span> = ratio가 elite 범위 (1.15~1.45 골반→몸통, 4.5~7.0 몸통→상완 등). 이 범위 밖이면 손실 또는 과다.
+          ★ KE 기반 직접 계산: <strong>각 segment KE = 0.5·I·ω²</strong>(Joule), 단계별 ratio = downstream KE / upstream KE.
+          <span style="color: #16a34a;">정상</span> = elite 범위 (① 발 GRF→골반 KE 0.6~1.8, ② 골반 KE→몸통 KE 1.3~2.4, ③ 몸통 KE→상완 KE 2.5~5.5).
+          ⚡ 손실량 = upstream − downstream (J).
         </div>
-        ${evidenceHtml || '<div class="text-xs" style="color: var(--text-muted);">단계별 데이터 부족 — Joint Power가 측정되어야 정확한 판정 가능</div>'}
-        <div class="text-[10px] mt-2 mono" style="color: var(--text-muted);">측정 ${totalEv}/5 단계 · 정상 ${okCnt} · 손실 ${lossCnt} · 과다 ${surplusCnt}</div>
+        ${evidenceHtml || '<div class="text-xs" style="color: var(--text-muted);">단계별 데이터 부족 — segment ω 측정 필요</div>'}
+        <div class="text-[10px] mt-2 mono" style="color: var(--text-muted);">측정 ${totalEv}/5 단계 · 정상 ${okCnt} · 손실 ${lossCnt} · 과다 ${surplusCnt} · I_pelvis=${I_pelvis.toFixed(2)} I_trunk=${I_trunk.toFixed(2)} I_humerus=${I_humerus.toFixed(3)} kg·m² (BSP)</div>
       </div>
 
       <details class="mb-2 text-xs" style="background: #0b1f3a; padding: 6px 10px; border-radius: 4px; border-left: 2px solid #60a5fa;">
