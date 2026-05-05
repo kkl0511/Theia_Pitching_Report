@@ -293,8 +293,9 @@
       const labelPositions = [
         // ★ v0.27 — 박스를 분절에서 더 멀리 (겹침 방지)
         // [boxX, boxY] = 박스 위치, [anchorX, anchorY] = 분절 keypoint (화살표 끝)
-        { id: 'lower_drive',  boxX: 640, boxY: 470, anchorX: 620, anchorY: 410 },  // Trail 발 (+45 우)
-        { id: 'lead_block',   boxX: 125, boxY: 495, anchorX: 332, anchorY: 472 },  // Lead 발 (-50 좌)
+        // ★ v0.54 — GRF 라벨(발 옆)과 겹침 해소 — 더 위·바깥쪽으로 이동
+        { id: 'lower_drive',  boxX: 645, boxY: 400, anchorX: 620, anchorY: 410 },  // Trail 무릎 옆 (오른쪽 위)
+        { id: 'lead_block',   boxX:  60, boxY: 400, anchorX: 332, anchorY: 472 },  // Lead 무릎 옆 (왼쪽 위)
         { id: 'pelvis_trunk', boxX: 220, boxY: 285, anchorX: 446, anchorY: 280 },  // 골반 (-70 좌)
         { id: 'trunk_power',  boxX: 220, boxY: 195, anchorX: 446, anchorY: 220 },  // 몸통 (-70 좌)
         { id: 'arm_transfer', boxX: 615, boxY: 25,  anchorX: 572, anchorY: 108 },  // 팔꿈치 위 (-25 위)
