@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.43';
+  const ALGORITHM_VERSION = 'v0.47';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -1197,7 +1197,8 @@
       const val = agg[varName];
       if (val == null) continue;
       let score = TC.getScore(val, varName, def.polarity, mode);
-      let scoreSource = 'cohort';
+      // ★ v0.45 — scoreSource 정밀 분기 (cohort_theia.js의 getScoreSource 활용)
+      let scoreSource = (TC.getScoreSource ? TC.getScoreSource(varName, mode) : null) || 'cohort';
       // ★ 통합 fallback — cohort에 분포 없을 때 임계 기반 점수
       //   P 카테고리(SD), HIGHER (deg/s 등), SIGNED (FC 회전 같은 양수=좋음) 모두 대응
       if (score == null && TM.getFallbackScore) {
@@ -1209,9 +1210,8 @@
                         TM.SIGNED_THRESHOLDS?.[varName] ? 'signed_threshold_fallback' : 'fallback';
         }
       }
-      if (score != null) {
-        varScores[varName] = { value: val, score, polarity: def.polarity, scoreSource };
-      }
+      // ★ v0.44 — score null이어도 value 있으면 varScores에 넣음 (인과 분석에서 표시)
+      varScores[varName] = { value: val, score: score != null ? score : null, polarity: def.polarity, scoreSource };
     }
     result.varScores = varScores;
 

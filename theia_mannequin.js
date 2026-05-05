@@ -528,22 +528,22 @@
           <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+42}" text-anchor="middle" font-size="14" fill="#e2e8f0" font-weight="700" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#94a3b8" font-family="Inter"> BW</tspan></text>
         </g>` : ''}
 
-        <!-- ★ 팔꿈치 토크/파워 라벨 -->
-        ${elbowP != null ? `
-        <g>
-          <line x1="${K.rElbow[0]+8}" y1="${K.rElbow[1]-4}" x2="700" y2="80" stroke="${elbowColor}" stroke-width="1.4" stroke-dasharray="2 3"/>
-          <rect x="592" y="48" width="190" height="62" rx="6" fill="#0b1220" stroke="${elbowColor}" stroke-opacity="0.85" stroke-width="2"/>
-          <text x="687" y="64" fill="${elbowColor}" font-size="10" font-family="Inter" font-weight="800" text-anchor="middle" letter-spacing="1">${elbowStatus === 'high' ? '🚨 ELBOW POWER' : elbowStatus === 'low' ? '△ ELBOW POWER' : '✓ ELBOW POWER'}</text>
-          <text x="687" y="84" fill="#e2e8f0" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${elbowP >= 1000 ? (elbowP/1000).toFixed(2)+'k' : elbowP.toFixed(0)}<tspan font-size="10" fill="#94a3b8" font-family="Inter"> W (peak)</tspan></text>
-          <text x="687" y="100" fill="${elbowColor}" font-size="9" font-family="Inter" text-anchor="middle">${elbowStatus === 'high' ? 'UCL stress 위험 (정상 200~500W)' : elbowStatus === 'low' ? '팔꿈치 power 부족' : '정상 (200~500W)'}</text>
-        </g>` : ''}
-
-        <!-- 어깨 power 라벨 (왼쪽 머리 위) -->
+        <!-- 어깨 power 라벨 (왼쪽 머리 위) — v0.47 둘 다 왼쪽 정렬 -->
         ${shoulderP != null ? `
         <g>
           <rect x="42" y="48" width="170" height="50" rx="6" fill="#0b1220" stroke="${shoulderP >= 1200 ? '#4ade80' : '#fbbf24'}" stroke-width="1.6"/>
           <text x="127" y="64" fill="${shoulderP >= 1200 ? '#4ade80' : '#fbbf24'}" font-size="10" font-family="Inter" font-weight="800" text-anchor="middle">★ SHOULDER POWER</text>
           <text x="127" y="84" fill="#e2e8f0" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${shoulderP >= 1000 ? (shoulderP/1000).toFixed(2)+'k' : shoulderP.toFixed(0)}<tspan font-size="9" fill="#94a3b8" font-family="Inter"> W</tspan></text>
+        </g>` : ''}
+
+        <!-- ★ 팔꿈치 토크/파워 라벨 — v0.47 왼쪽 어깨 박스 아래로 이동 (마네킹 머리·공 겹침 해소) -->
+        ${elbowP != null ? `
+        <g>
+          <line x1="${K.rElbow[0]}" y1="${K.rElbow[1]}" x2="212" y2="141" stroke="${elbowColor}" stroke-width="1.4" stroke-dasharray="2 3"/>
+          <rect x="42" y="110" width="170" height="62" rx="6" fill="#0b1220" stroke="${elbowColor}" stroke-opacity="0.85" stroke-width="2"/>
+          <text x="127" y="126" fill="${elbowColor}" font-size="10" font-family="Inter" font-weight="800" text-anchor="middle" letter-spacing="1">${elbowStatus === 'high' ? '🚨 ELBOW POWER' : elbowStatus === 'low' ? '△ ELBOW POWER' : '✓ ELBOW POWER'}</text>
+          <text x="127" y="146" fill="#e2e8f0" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${elbowP >= 1000 ? (elbowP/1000).toFixed(2)+'k' : elbowP.toFixed(0)}<tspan font-size="10" fill="#94a3b8" font-family="Inter"> W (peak)</tspan></text>
+          <text x="127" y="162" fill="${elbowColor}" font-size="9" font-family="Inter" text-anchor="middle">${elbowStatus === 'high' ? 'UCL stress 위험 (정상 200~500W)' : elbowStatus === 'low' ? '팔꿈치 power 부족' : '정상 (200~500W)'}</text>
         </g>` : ''}
 
         <!-- ★ v0.14 — lag·flying open·knee collapse·drive 라벨 박스 모두 제거.
