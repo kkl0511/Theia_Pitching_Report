@@ -233,6 +233,192 @@
   // ════════════════════════════════════════════════════════════
   // Helpers
   // ════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════
+  // 제구 P 카테고리 fallback 점수표 (cohort에 분포 없을 때)
+  //   임계: Driveline R&D · Werner & Fleisig 2009 · Murray 2001 기반
+  //   polarity = 'lower' (모두 SD 변수 — 낮을수록 좋음)
+  //   점수 = 100 (≤elite) → 75 (avg) → 50 (poor) → 0
+  // ════════════════════════════════════════════════════════════
+  const P_THRESHOLDS = {
+    P1_wrist_3D_SD:       { elite: 5,  avg: 8,  poor: 12, unit: 'cm',  ref: 'Werner & Fleisig 2009 — elite ≤5 cm' },
+    P2_arm_slot_SD:       { elite: 2,  avg: 5,  poor: 10, unit: 'deg', ref: 'Driveline R&D — slot variation 5° = avg' },
+    P3_release_height_SD: { elite: 3,  avg: 5,  poor: 8,  unit: 'cm',  ref: 'Driveline — release height SD 3cm = elite' },
+    P4_mer_to_br_SD:      { elite: 5,  avg: 10, poor: 20, unit: 'ms',  ref: 'Theia 측정 — timing SD 10ms = 발달 평균' },
+    P5_stride_SD:         { elite: 3,  avg: 6,  poor: 10, unit: 'cm',  ref: 'Davis 2009 — foot position SD 6cm = avg HS' },
+    P6_trunk_tilt_SD:     { elite: 2,  avg: 5,  poor: 10, unit: 'deg', ref: 'Murray 2001 — trunk tilt SD 5° = avg' },
+  };
+
+  function pFallbackScore(varName, value) {
+    const thr = P_THRESHOLDS[varName];
+    if (!thr || value == null || isNaN(value)) return null;
+    if (value <= thr.elite) return Math.min(100, 90 + (thr.elite - value) / thr.elite * 10);
+    if (value <= thr.avg)   return Math.round(75 - (value - thr.elite) / (thr.avg - thr.elite) * 25);
+    if (value <= thr.poor)  return Math.round(50 - (value - thr.avg)  / (thr.poor - thr.avg)  * 25);
+    return Math.max(0, Math.round(25 - (value - thr.poor) / thr.poor * 25));
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // 변수별 세부 설명 (expand 카드용)
+  // ════════════════════════════════════════════════════════════
+  const VAR_DETAILS = {
+    Pelvis_peak: {
+      formula: 'Pelvis_Ang_Vel.Z 시계열 KH→BR 구간 max |abs|',
+      threshold: 'Elite ≥800°/s · HS Top 10% mean ~640°/s · 발달 ~500°/s',
+      mlb_avg: '720°/s (MLB Combine)',
+      coaching: '뒷다리 push + hip rotation의 폭발력. 골반 회전 속도 부족 시 trunk·arm 출력 baseline 부족.',
+      drill: 'Med ball rotational throws 3×8, Hip rotation 90/90 holds, Single-leg cable rotation',
+    },
+    Trunk_peak: {
+      formula: 'Thorax_Ang_Vel.Z 시계열 max |abs|',
+      threshold: 'Elite ≥1100°/s · HS Top 10% ~825°/s · 발달 ~700°/s',
+      mlb_avg: '1100°/s (Werner 2008)',
+      coaching: '몸통 회전 출력 — pelvis 에너지를 증폭해서 arm으로 전달하는 핵심.',
+      drill: 'Anti-rotation core (Pallof press), 메디신볼 rotational throw, Connected throw',
+    },
+    Arm_peak: {
+      formula: 'Pitching_Humerus_Ang_Vel.Z 시계열 max |abs|',
+      threshold: 'Elite ≥7000°/s · HS Top 10% ~4716°/s · 발달 ~3500°/s',
+      mlb_avg: '7240°/s (Fleisig 2018)',
+      coaching: '상완 IR 속도 = release 직전 humerus internal rotation 가속. 구속 결정 핵심.',
+      drill: 'Plyo ball reverse throws, Sleeper stretch, Layback drill',
+    },
+    pelvis_to_trunk: {
+      formula: 'Trunk peak time − Pelvis peak time (s)',
+      threshold: 'Optimal 30~60ms · <20=동시 회전 (출력 손실) · >90=시퀀스 단절',
+      mlb_avg: '45ms (Aguinaldo 2007)',
+      coaching: 'Proximal-to-distal 시퀀싱의 첫 lag. 키네틱 체인 효율 ratio 결정.',
+      drill: 'Connected throw (느린→빠른), 메디신볼 rotational + delay, Hip-shoulder dissociation',
+    },
+    trunk_to_arm: {
+      formula: 'Arm peak time − Trunk peak time (s)',
+      threshold: 'Optimal 30~60ms · <20=팔 동기 회전 · >90=시퀀스 끊김',
+      mlb_avg: '40ms (Stodden 2001)',
+      coaching: 'Trunk acceleration이 arm 가속 launch pad. lag 짧으면 arm 단독 출력.',
+      drill: 'Connected throw with delay, Plyo ball positional throws',
+    },
+    angular_chain_amplification: {
+      formula: 'Arm_peak / Pelvis_peak (ratio)',
+      threshold: 'Elite 2.5~3.5 · HS 2.0=평균 · <1.5=증폭 부족',
+      mlb_avg: '3.0 (Werner 2008)',
+      coaching: '전체 사슬 증폭률 — 골반→손목 에너지 증폭도.',
+      drill: 'Sequential throwing drill, Plyo ball med→light progression',
+    },
+    fc_xfactor: {
+      formula: 'Trunk_wrt_Pelvis_Angle.Z at FC',
+      threshold: 'Elite ≥30° · 평균 20° · <5° = Flying Open',
+      mlb_avg: '38° (Fleisig 2018)',
+      coaching: 'FC 시점 분리 자세 = X-factor stretch. 분리 클수록 회전 저장 에너지 큼.',
+      drill: 'KH pause drill (3초 hold), Hip-shoulder dissociation',
+    },
+    peak_xfactor: {
+      formula: 'Trunk_wrt_Pelvis_Angle.Z 시계열 KH→FC 구간 max',
+      threshold: 'Elite ≥45° · 평균 35°',
+      mlb_avg: '52° (Werner 2008)',
+      coaching: '분리 자세 최대치 — 코킹 단계 stretch reflex 활용도.',
+      drill: 'Counter-rotation hold drill, Plyo wall throw with twist',
+    },
+    Trail_leg_peak_vertical_GRF: {
+      formula: 'Trail_Leg_GRF.Z peak / (mass × 9.81), KH→FC',
+      threshold: 'Elite ≥1.8 BW · 평균 1.5 · <1.2 = 추진 부족',
+      mlb_avg: '1.7 BW (Driveline)',
+      coaching: '뒷다리 vertical push — 키네틱 체인 시작점.',
+      drill: 'Single-leg vertical jump 3×6, Sled push 5×20m, Trap bar deadlift 3×5',
+    },
+    Lead_leg_peak_vertical_GRF: {
+      formula: 'Lead_Leg_GRF.Z peak / (mass × 9.81), FC→BR',
+      threshold: 'Elite ≥2.5 BW · 평균 2.0 · <1.5 = block 약함',
+      mlb_avg: '2.3 BW (MacWilliams 1998)',
+      coaching: '앞다리 block — 추진 → 회전 전환 효율. block 강할수록 trunk 가속 큼.',
+      drill: 'Eccentric step-down 3×8 (5초 hold), Drop landing 3×6, Single-leg ecc box jump',
+    },
+    fc_trunk_forward_tilt: {
+      formula: 'Trunk_Angle.X at FC',
+      threshold: 'Optimal 0~10° · >15° = 과도 굽힘 · <-5° = 뒤로 젖힘',
+      mlb_avg: '5° (Stodden 2001)',
+      coaching: 'FC 자세 = 회전축. 과도 굽힘 시 axis 흔들려 회전 효율 저하.',
+      drill: 'Anti-flexion plank 3×60s, Closed-posture cue, Mirror feedback',
+    },
+    br_lead_leg_knee_flexion: {
+      formula: 'Pitching_Knee_Angle.X at BR',
+      threshold: 'Optimal ≤25° · 30~50°=평균 · >50°=무릎 무너짐',
+      mlb_avg: '20° (Werner 2008)',
+      coaching: 'BR 시점 앞무릎 = 회전 안정성. 무너지면 efficient 손실.',
+      drill: 'Single-leg eccentric squat, Drop landing hold, Single-leg RDL',
+    },
+    lead_knee_ext_change_fc_to_br: {
+      formula: '(BR knee ext) − (FC knee ext) °',
+      threshold: 'Elite +5° (펴짐) · 0°=유지 · -10°=무너짐 · -22°=심각',
+      mlb_avg: '+3° (Driveline)',
+      coaching: '앞다리 ecc → con 전환 — 무너지지 않고 펴면 block 성공.',
+      drill: 'Eccentric step-down (5초 hold), Heavy ecc box jump, Stop-and-rotate',
+    },
+    max_shoulder_ER: {
+      formula: '|min(Pitching_Shoulder_Angle.Z)| FC→BR',
+      threshold: 'Elite 175~190° · <160°=가동 부족 · >195°=부상 위험',
+      mlb_avg: '183° (Fleisig 2018)',
+      coaching: '어깨 외회전 max = layback. 부족 시 출력 감소, 과다 시 UCL stress.',
+      drill: 'Sleeper stretch 3×30s, PNF rotator cuff, Layback drill (gentle)',
+    },
+    mer_shoulder_abd: {
+      formula: 'Pitching_Shoulder_Angle.X at MER',
+      threshold: 'Optimal 90~100° (MLB Pitch Smart) · <80·>110 = 부상 위험',
+      mlb_avg: '95° (MLB Pitch Smart)',
+      coaching: 'MER 시점 어깨 외전 90° = 안전 자세. 벗어나면 GH joint stress.',
+      drill: '90/90 hold drill, Mirror feedback, Pitch Smart cueing',
+    },
+    Pitching_Shoulder_Power_peak: {
+      formula: 'Joint Power = Torque × Angular velocity (W)',
+      threshold: 'Elite ≥1500W · 평균 1000W · <500W=출력 부족',
+      mlb_avg: '1500W (Driveline R&D)',
+      coaching: '어깨 power = 진짜 출력 (토크 결합).',
+      drill: 'Plyo ball reverse, Sleeper + ER strengthening, Med ball overhead',
+    },
+    Pitching_Elbow_Power_peak: {
+      formula: 'Joint Power = Torque × Angular velocity (W)',
+      threshold: '정상 200~500W · >500W = UCL stress · <200W = 전달 부족',
+      mlb_avg: '350W (Driveline)',
+      coaching: '팔꿈치 power 과다 = trunk 출력 부족 + arm 의존 (UCL stress 신호).',
+      drill: 'Trunk power 강화 (medball rotational), Sleeper stretch, Volume monitor',
+    },
+    P1_wrist_3D_SD: {
+      formula: '√(SD_X² + SD_Y² + SD_Z²) × 100 cm',
+      threshold: 'Elite ≤5cm · 평균 8cm · >12cm = 일관성 부족',
+      mlb_avg: '4.5 cm (Werner 2009)',
+      coaching: 'Trial 간 손목 3D 위치 변동 = 제구 일관성 가장 직접 지표.',
+      drill: '반복 폼 (mirror), Target throw 5×10, 비디오 frame-by-frame 분석',
+    },
+    P3_release_height_SD: {
+      formula: 'SD(wrist Y at BR) × 100 cm',
+      threshold: 'Elite ≤3cm · 평균 5cm · >8cm = 높이 변동',
+      mlb_avg: '2.8 cm (Driveline)',
+      coaching: 'release 높이 SD 크면 공 궤적 일관성 저하.',
+      drill: 'Mirror drill, Target throw with height feedback',
+    },
+    P4_mer_to_br_SD: {
+      formula: 'SD(BR_time − MER_time) × 1000 ms',
+      threshold: 'Elite ≤5ms · 평균 10ms · >20ms = 타이밍 변동',
+      mlb_avg: '6 ms (Theia 측정)',
+      coaching: 'MER→BR 시간 SD = 운동사슬 타이밍 안정성.',
+      drill: 'Tempo throw drill (1-2-3 count), Connected throw with metronome',
+    },
+    P5_stride_SD: {
+      formula: 'SD(stride_length) cm',
+      threshold: 'Elite ≤3cm · 평균 6cm · >10cm = 발 위치 변동',
+      mlb_avg: '3.2 cm (Davis 2009)',
+      coaching: '발 위치 SD = 시동 자세 일관성.',
+      drill: 'Stride mat drill, Mound work 반복, Foot placement feedback',
+    },
+    P6_trunk_tilt_SD: {
+      formula: 'SD(fc_trunk_forward_tilt) °',
+      threshold: 'Elite ≤2° · 평균 5° · >10° = 자세 변동',
+      mlb_avg: '2.5° (Murray 2001)',
+      coaching: 'FC 시점 몸통 기울기 SD = 자세 일관성.',
+      drill: 'Mirror drill, FC 자세 hold (3초), 비디오 angle 분석',
+    },
+  };
+
+  function getVarDetail(varName) { return VAR_DETAILS[varName] || null; }
+
   function getCategoryVars(catId) {
     return OTL_CATEGORIES[catId]?.variables || [];
   }
@@ -240,5 +426,6 @@
     return VAR_DEFS[varName] || null;
   }
 
-  window.TheiaMeta = { OTL_CATEGORIES, VAR_DEFS, KINETIC_FAULTS, getCategoryVars, getVarMeta };
+  window.TheiaMeta = { OTL_CATEGORIES, VAR_DEFS, KINETIC_FAULTS, P_THRESHOLDS, VAR_DETAILS,
+                       getCategoryVars, getVarMeta, getVarDetail, pFallbackScore };
 })();
