@@ -565,33 +565,42 @@
       { label: '앞다리 버팀 (Block)', val: _avg(['Lead_leg_peak_vertical_GRF', 'CoG_Decel', 'Lead_Knee_Power_peak', 'br_lead_leg_knee_flexion', 'lead_knee_ext_change_fc_to_br']),
         refVars: ['Lead_leg_peak_vertical_GRF', 'lead_knee_ext_change_fc_to_br', 'br_lead_leg_knee_flexion'],
         desc: 'FC→BR 무릎 무너짐 여부 — 각도 유지가 핵심' },
-      { label: '몸통 에너지 로딩',    val: _avg(['fc_xfactor', 'peak_xfactor', 'peak_trunk_CounterRotation']),
-        refVars: ['fc_xfactor', 'peak_xfactor'],
-        desc: '꼬임·닫힘·기울기로 트렁크 에너지 저장 (FC stretch)' },
-      { label: '몸통 에너지 발현',    val: _avg(['Pelvis_peak', 'Trunk_peak', 'pelvis_to_trunk', 'pelvis_trunk_speedup']),
-        refVars: ['Trunk_peak', 'Pelvis_peak', 'pelvis_to_trunk'],
-        desc: '몸통 회전 속도로 에너지 발현 (FC→MER→BR)' },
-      { label: '팔 에너지',           val: _avg(['Arm_peak', 'trunk_to_arm', 'arm_trunk_speedup', 'mer_shoulder_abd', 'max_shoulder_ER', 'Pitching_Shoulder_Power_peak']),
-        refVars: ['Arm_peak', 'max_shoulder_ER', 'trunk_to_arm', 'Pitching_Shoulder_Power_peak'],
-        desc: '레이백·전달율·lag·어깨 IR 속도 통합' },
+      // ★ v0.10 — 몸통 에너지 로딩에 trunk_rotation_at_fc(Flying Open) 추가
+      { label: '몸통 에너지 로딩',    val: _avg(['fc_xfactor', 'peak_xfactor', 'peak_trunk_CounterRotation', 'trunk_rotation_at_fc']),
+        refVars: ['fc_xfactor', 'peak_xfactor', 'trunk_rotation_at_fc'],
+        desc: '꼬임·닫힘·기울기·FC 절대 회전으로 트렁크 에너지 저장' },
+      // ★ v0.10 — 몸통 에너지 발현에 trunk_forward_flexion_vel_peak 추가
+      { label: '몸통 에너지 발현',    val: _avg(['Pelvis_peak', 'Trunk_peak', 'trunk_forward_flexion_vel_peak', 'pelvis_to_trunk', 'pelvis_trunk_speedup']),
+        refVars: ['Trunk_peak', 'trunk_forward_flexion_vel_peak', 'Pelvis_peak', 'pelvis_to_trunk'],
+        desc: '회전(Z) + 굴곡(X) 속도로 에너지 발현 (FC→MER→BR)' },
+      // ★ v0.10 — 팔 에너지에 humerus_segment_peak 추가 (Arm_peak는 shoulder IR vel)
+      { label: '팔 에너지',           val: _avg(['Arm_peak', 'humerus_segment_peak', 'trunk_to_arm', 'arm_trunk_speedup', 'mer_shoulder_abd', 'max_shoulder_ER', 'Pitching_Shoulder_Power_peak']),
+        refVars: ['Arm_peak', 'humerus_segment_peak', 'max_shoulder_ER', 'trunk_to_arm', 'Pitching_Shoulder_Power_peak'],
+        desc: '레이백·전달율·lag·어깨 IR 속도(=Arm_peak)·humerus segment 통합' },
       { label: '릴리스',             val: _avg(['wrist_release_speed', 'angular_chain_amplification', 'br_shoulder_abd', 'Pitching_Elbow_Power_peak']),
         refVars: ['angular_chain_amplification', 'Pitching_Elbow_Power_peak'],
         desc: '손목 릴리스·전체 증폭·UCL stress' },
     ];
   }
 
-  // 제구 6축 — P1~P6
+  // 제구 6축 — P1~P6 (산출 안 되는 항목은 desc에 측정 필요 컬럼 안내)
   function _compute6axisCtrl(result) {
     const m = result.varScores || {};
+    const need = (col) => `<span style="color: var(--bad, #dc2626);">⚠ 측정 필요:</span> <code class="mono text-[10px]">${col}</code>`;
     return [
-      { label: '릴리스 점 일관성 (3D)', val: m.P1_wrist_3D_SD?.score, varKey: 'P1_wrist_3D_SD', desc: '손목 X·Y·Z 결합 SD' },
-      { label: '팔 슬롯 안정성',        val: m.P2_arm_slot_SD?.score, varKey: 'P2_arm_slot_SD', desc: '팔 각도 일관성' },
-      { label: '릴리스 높이 안정성',    val: m.P3_release_height_SD?.score, varKey: 'P3_release_height_SD', desc: '수직 위치만 (Y SD)' },
-      { label: '타이밍 일관성',         val: m.P4_mer_to_br_SD?.score, varKey: 'P4_mer_to_br_SD', desc: '운동사슬 타이밍 안정성' },
-    ].concat([
-      { label: '스트라이드 일관성',     val: m.P5_stride_SD?.score, varKey: 'P5_stride_SD', desc: '발 위치 일관성' },
-      { label: '몸통 자세 일관성',      val: m.P6_trunk_tilt_SD?.score, varKey: 'P6_trunk_tilt_SD', desc: '몸통 기울기 안정성' },
-    ]);
+      { label: '릴리스 점 일관성 (3D)', val: m.P1_wrist_3D_SD?.score, varKey: 'P1_wrist_3D_SD',
+        desc: m.P1_wrist_3D_SD?.score != null ? '손목 X·Y·Z 결합 SD (cm)' : `손목 X·Y·Z 결합 SD — ${need('Pitching_Wrist_jc_Position')}` },
+      { label: '팔 슬롯 안정성',        val: m.P2_arm_slot_SD?.score, varKey: 'P2_arm_slot_SD',
+        desc: m.P2_arm_slot_SD?.score != null ? '팔 각도 일관성 (deg SD)' : `팔 각도 SD — ${need('arm_slot_angle (Pitching_Wrist_jc_Position 필요)')}` },
+      { label: '릴리스 높이 안정성',    val: m.P3_release_height_SD?.score, varKey: 'P3_release_height_SD',
+        desc: m.P3_release_height_SD?.score != null ? '수직 위치만 (Y SD, cm)' : `Y SD — ${need('Pitching_Wrist_jc_Position.Y')}` },
+      { label: '타이밍 일관성',         val: m.P4_mer_to_br_SD?.score, varKey: 'P4_mer_to_br_SD',
+        desc: '운동사슬 타이밍 안정성 (MER→BR ms SD) · ★ events 컬럼 있으면 산출' },
+      { label: '스트라이드 일관성',     val: m.P5_stride_SD?.score, varKey: 'P5_stride_SD',
+        desc: '발 위치 일관성 (stride_length SD cm)' },
+      { label: '몸통 자세 일관성',      val: m.P6_trunk_tilt_SD?.score, varKey: 'P6_trunk_tilt_SD',
+        desc: '몸통 기울기 안정성 (fc_trunk_forward_tilt SD deg)' },
+    ];
   }
 
   // 체력 변수 — 단순 linear scoring (raw → 0~100점)

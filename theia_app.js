@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.9';
+  const ALGORITHM_VERSION = 'v0.10';
   let CURRENT_MODE = 'hs_top10';
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -323,9 +323,26 @@
     out.Trunk_peak = maxAbsBetween(parsed, 'Thorax_Ang_Vel.Z', winFrom, winTo);
     if (out.Trunk_peak != null) out.Trunk_peak = Math.abs(out.Trunk_peak);
 
-    // Arm_peak = Pitching_Shoulder_Ang_Vel.Z (humerus IR/ER vel — Theia 검증된 정의)
+    // ★ Arm_peak = Pitching_Shoulder_Ang_Vel.Z (어깨 IR/ER 각속도 = "Shoulder IR vel max")
+    //   주의: humerus segment 자체 각속도(Pitching_Humerus_Ang_Vel)와 다름 — 박명균 col 17 vs col 5
+    //   둘 다 비슷한 시점에 비슷한 값(~7000°/s elite)이지만 정의 다름
     const armPeak = maxAbsBetween(parsed, 'Pitching_Shoulder_Ang_Vel.Z', winFrom, winTo);
     out.Arm_peak = armPeak != null ? Math.abs(armPeak) : null;
+    out.shoulder_ir_vel_max = out.Arm_peak;  // alias (BBL Uplift 호환)
+
+    // ★ humerus segment 절대 각속도 (분리 산출 — 새 변수)
+    const humerusSegPeak = maxAbsBetween(parsed, 'Pitching_Humerus_Ang_Vel.Z', winFrom, winTo);
+    out.humerus_segment_peak = humerusSegPeak != null ? Math.abs(humerusSegPeak) : null;
+
+    // ★ 몸통 굴곡 속도 peak (Thorax_Ang_Vel.X = frontal axis 회전 = forward flexion 각속도)
+    const trunkFlexVel = maxAbsBetween(parsed, 'Thorax_Ang_Vel.X', winFrom, winTo);
+    out.trunk_forward_flexion_vel_peak = trunkFlexVel != null ? Math.abs(trunkFlexVel) : null;
+
+    // ★ FC 시점 몸통 절대 회전 각도 (Trunk_Angle.Z at FC = "Flying Open" 절대값)
+    //   양수 = 닫힘 (좋음), 음수 = 일찍 열림 (Flying Open)
+    if (ev.FC != null) {
+      out.trunk_rotation_at_fc = valAtTime(parsed, 'Trunk_Angle.Z', ev.FC);
+    }
 
     // peak frames (timing for lag)
     const pelvisPeakT = argmaxAbs(parsed, 'Pelvis_Ang_Vel.Z', winFrom, winTo);
@@ -543,11 +560,16 @@
       if (val == null) continue;
       let score = TC.getScore(val, varName, def.polarity, mode);
       let scoreSource = 'cohort';
-      // ★ P 카테고리 fallback — cohort에 분포 없을 때 임계 기반 점수 사용 (Driveline·Werner·Murray ref)
-      if (score == null && TM.P_THRESHOLDS && TM.P_THRESHOLDS[varName]) {
-        score = TM.pFallbackScore(varName, val);
-        if (score != null) score = Math.round(score);
-        scoreSource = 'p_threshold_fallback';
+      // ★ 통합 fallback — cohort에 분포 없을 때 임계 기반 점수
+      //   P 카테고리(SD), HIGHER (deg/s 등), SIGNED (FC 회전 같은 양수=좋음) 모두 대응
+      if (score == null && TM.getFallbackScore) {
+        const fb = TM.getFallbackScore(varName, val);
+        if (fb != null) {
+          score = Math.round(fb);
+          scoreSource = TM.P_THRESHOLDS?.[varName] ? 'p_threshold_fallback' :
+                        TM.HIGHER_THRESHOLDS?.[varName] ? 'higher_threshold_fallback' :
+                        TM.SIGNED_THRESHOLDS?.[varName] ? 'signed_threshold_fallback' : 'fallback';
+        }
       }
       if (score != null) {
         varScores[varName] = { value: val, score, polarity: def.polarity, scoreSource };

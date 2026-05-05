@@ -18,7 +18,11 @@
     // ── ① Output 출력 ──
     'Pelvis_peak':          { name: '골반 회전 속도 peak', unit: 'deg/s', polarity: 'higher', cat: 'OUTPUT', hint: '단계 1 — 하체 회전 출력' },
     'Trunk_peak':           { name: '몸통 회전 속도 peak', unit: 'deg/s', polarity: 'higher', cat: 'OUTPUT', hint: '단계 4 — 몸통(코어) 회전 출력' },
-    'Arm_peak':             { name: '상완 IR/ER 속도 peak', unit: 'deg/s', polarity: 'higher', cat: 'OUTPUT', hint: '★ 공 가속 핵심 출력 (humerus IR vel)' },
+    'Arm_peak':             { name: '어깨 내회전 속도 max (Shoulder IR vel)', unit: 'deg/s', polarity: 'higher', cat: 'OUTPUT', hint: '★ 공 가속 핵심 출력 — Pitching_Shoulder_Ang_Vel.Z (GH joint IR/ER vel)' },
+    'shoulder_ir_vel_max':  { name: '어깨 내회전 속도 max (alias)', unit: 'deg/s', polarity: 'higher', cat: 'OUTPUT', hint: 'Arm_peak 동의어 — BBL Uplift 호환' },
+    'humerus_segment_peak': { name: '상완 segment 회전 속도 max', unit: 'deg/s', polarity: 'higher', cat: 'OUTPUT', hint: 'Pitching_Humerus_Ang_Vel.Z (humerus 절대 각속도, GCS 기준)' },
+    'trunk_forward_flexion_vel_peak': { name: '몸통 굴곡 속도 peak', unit: 'deg/s', polarity: 'higher', cat: 'OUTPUT', hint: 'Thorax_Ang_Vel.X (forward flexion 각속도) — 트렁크 자체 출력' },
+    'trunk_rotation_at_fc': { name: 'FC 시 몸통 회전 (Flying Open)', unit: 'deg', polarity: 'higher', cat: 'TRANSFER', hint: 'Trunk_Angle.Z at FC — 양수 닫힘(좋음) / 음수 일찍 열림' },
     'Max_CoG_Velo':         { name: '무게중심 전진 속도 max', unit: 'm/s', polarity: 'higher', cat: 'OUTPUT', hint: '하체 추진의 선형 출력' },
     'Trail_leg_peak_vertical_GRF':   { name: 'Trail vGRF peak', unit: 'BW', polarity: 'higher', cat: 'OUTPUT', hint: '★ 단계 1 — 뒷다리 vertical push' },
     'Trail_leg_peak_AP_GRF': { name: 'Trail AP GRF peak', unit: 'BW', polarity: 'higher', cat: 'OUTPUT', hint: '뒷다리 forward push' },
@@ -82,6 +86,7 @@
       color: '#C00000',
       variables: [
         'Pelvis_peak', 'Trunk_peak', 'Arm_peak',
+        'humerus_segment_peak', 'trunk_forward_flexion_vel_peak',
         'Max_CoG_Velo', 'wrist_release_speed',
         'Trail_leg_peak_vertical_GRF', 'Trail_leg_peak_AP_GRF', 'trail_impulse_stride',
         'Lead_leg_peak_vertical_GRF', 'Lead_leg_peak_AP_GRF',
@@ -99,7 +104,7 @@
       variables: [
         'pelvis_to_trunk', 'trunk_to_arm',
         'pelvis_trunk_speedup', 'arm_trunk_speedup', 'angular_chain_amplification',
-        'peak_xfactor', 'fc_xfactor',
+        'peak_xfactor', 'fc_xfactor', 'trunk_rotation_at_fc',
         'proper_sequence_binary',
         'trail_to_lead_vgrf_peak_s', 'stride_to_pelvis_lag_ms',
       ],
@@ -248,6 +253,23 @@
     P6_trunk_tilt_SD:     { elite: 2,  avg: 5,  poor: 10, unit: 'deg', ref: 'Murray 2001 — trunk tilt SD 5° = avg' },
   };
 
+  // ────────────────────────────────────────────────────
+  // 신규 변수 (v0.10) — 코호트 분포 없을 때 점수 산출용 임계
+  // polarity = 'higher' (높을수록 좋음)
+  // 점수 = 100 (≥elite) → 75 (avg) → 50 (poor) → 0
+  // ────────────────────────────────────────────────────
+  const HIGHER_THRESHOLDS = {
+    humerus_segment_peak:           { elite: 7000, avg: 5400, poor: 4000, unit: 'deg/s', ref: 'Driveline R&D — humerus segment 7000°/s elite' },
+    trunk_forward_flexion_vel_peak: { elite: 600,  avg: 400,  poor: 250,  unit: 'deg/s', ref: 'Stodden 2001 — trunk forward flexion 600°/s elite' },
+    shoulder_ir_vel_max:            { elite: 7000, avg: 5500, poor: 3500, unit: 'deg/s', ref: 'Fleisig 2018 — shoulder IR vel 7240°/s elite (= Arm_peak 동의어)' },
+  };
+
+  // FC 시 몸통 회전: 양수=닫힘 좋음. -30~50 범위. 단순 polarity로 처리하면 좋음 'higher'
+  // 임계: ≥10° = 닫힘 (정상) / 0~10 = 평균 / -20~0 = 미세 열림 / ≤-30 = Flying Open
+  const SIGNED_THRESHOLDS = {
+    trunk_rotation_at_fc: { elite: 10, avg: 0, poor: -20, unit: 'deg', ref: 'Aguinaldo 2007 — Flying Open <-30°' },
+  };
+
   function pFallbackScore(varName, value) {
     const thr = P_THRESHOLDS[varName];
     if (!thr || value == null || isNaN(value)) return null;
@@ -255,6 +277,34 @@
     if (value <= thr.avg)   return Math.round(75 - (value - thr.elite) / (thr.avg - thr.elite) * 25);
     if (value <= thr.poor)  return Math.round(50 - (value - thr.avg)  / (thr.poor - thr.avg)  * 25);
     return Math.max(0, Math.round(25 - (value - thr.poor) / thr.poor * 25));
+  }
+
+  // higher-better 임계 fallback (값이 높을수록 좋음)
+  function higherFallbackScore(varName, value) {
+    const thr = HIGHER_THRESHOLDS[varName];
+    if (!thr || value == null || isNaN(value)) return null;
+    if (value >= thr.elite) return Math.min(100, 90 + Math.min(10, (value - thr.elite) / thr.elite * 10));
+    if (value >= thr.avg)   return Math.round(75 - (thr.elite - value) / (thr.elite - thr.avg) * 25);
+    if (value >= thr.poor)  return Math.round(50 - (thr.avg - value)   / (thr.avg - thr.poor)  * 25);
+    return Math.max(0, Math.round(25 - (thr.poor - value) / thr.poor * 25));
+  }
+
+  // signed 임계 fallback (양수일수록 좋음, Flying Open 같은 변수)
+  function signedFallbackScore(varName, value) {
+    const thr = SIGNED_THRESHOLDS[varName];
+    if (!thr || value == null || isNaN(value)) return null;
+    if (value >= thr.elite) return Math.min(100, 90 + (value - thr.elite) / 20 * 10);
+    if (value >= thr.avg)   return Math.round(75 - (thr.elite - value) / (thr.elite - thr.avg) * 25);
+    if (value >= thr.poor)  return Math.round(50 - (thr.avg - value)   / (thr.avg - thr.poor)  * 25);
+    return Math.max(0, Math.round(25 - (thr.poor - value) / 30 * 25));
+  }
+
+  // 통합 fallback — varName으로 어떤 임계표를 쓸지 자동 판단
+  function getFallbackScore(varName, value) {
+    if (P_THRESHOLDS[varName])      return pFallbackScore(varName, value);
+    if (HIGHER_THRESHOLDS[varName]) return higherFallbackScore(varName, value);
+    if (SIGNED_THRESHOLDS[varName]) return signedFallbackScore(varName, value);
+    return null;
   }
 
   // ════════════════════════════════════════════════════════════
@@ -276,11 +326,39 @@
       drill: 'Anti-rotation core (Pallof press), 메디신볼 rotational throw, Connected throw',
     },
     Arm_peak: {
-      formula: 'Pitching_Humerus_Ang_Vel.Z 시계열 max |abs|',
+      formula: 'Pitching_Shoulder_Ang_Vel.Z 시계열 max |abs| (★ 어깨 IR/ER 각속도, GH joint, ≠ humerus segment)',
       threshold: 'Elite ≥7000°/s · HS Top 10% ~4716°/s · 발달 ~3500°/s',
-      mlb_avg: '7240°/s (Fleisig 2018)',
-      coaching: '상완 IR 속도 = release 직전 humerus internal rotation 가속. 구속 결정 핵심.',
+      mlb_avg: '7240°/s (Fleisig 2018) — same as shoulder_ir_vel_max',
+      coaching: '★ Shoulder IR vel max 동일 변수. release 직전 humerus internal rotation 가속 = 구속 결정 핵심.',
       drill: 'Plyo ball reverse throws, Sleeper stretch, Layback drill',
+    },
+    shoulder_ir_vel_max: {
+      formula: 'Arm_peak alias — Pitching_Shoulder_Ang_Vel.Z 시계열 max',
+      threshold: 'Elite ≥7000°/s · 평균 5500°/s',
+      mlb_avg: '7240°/s (Fleisig 2018)',
+      coaching: 'BBL Uplift 호환 변수명. 실체는 Arm_peak와 동일.',
+      drill: 'Arm_peak 참고',
+    },
+    humerus_segment_peak: {
+      formula: 'Pitching_Humerus_Ang_Vel.Z 시계열 max |abs| (★ humerus segment GCS 절대 각속도)',
+      threshold: 'Elite ≥7000°/s · 평균 5500°/s · 부족 <4000°/s',
+      mlb_avg: '6800°/s (Driveline)',
+      coaching: 'Arm_peak (= shoulder IR vel)와 다른 변수. humerus segment 자체의 GCS 회전 — release 동시 trunk-relative + global motion 합산.',
+      drill: 'Plyo ball positional throws, 회전 반발 drill',
+    },
+    trunk_forward_flexion_vel_peak: {
+      formula: 'Thorax_Ang_Vel.X 시계열 max |abs| (frontal axis = forward flexion 각속도)',
+      threshold: 'Elite ≥600°/s · 평균 400°/s · 부족 <250°/s',
+      mlb_avg: '~620°/s (Stodden 2001)',
+      coaching: '몸통 굴곡 출력 — 회전(Z축)뿐 아니라 굴곡(X축) 속도가 release momentum에 기여. Trunk flexion power.',
+      drill: 'Anti-extension core (deadbug, hollow body), 메디신볼 overhead slam',
+    },
+    trunk_rotation_at_fc: {
+      formula: 'Trunk_Angle.Z at FC (foot contact) — 양수 = 닫힘, 음수 = 일찍 열림',
+      threshold: '닫힘 ≥+10° elite · 0~+10 평균 · -20~0 미세 열림 · ≤-30 Flying Open',
+      mlb_avg: '+15° (Aguinaldo 2007)',
+      coaching: 'FC 시점 몸통 절대 회전 각도. 일찍 열리면 X-factor 분리·trunk 가속 launchpad 모두 손실.',
+      drill: 'KH→FC 닫힘 hold (3초), Hip-shoulder dissociation 3×8, Mirror feedback',
     },
     pelvis_to_trunk: {
       formula: 'Trunk peak time − Pelvis peak time (s)',
@@ -426,6 +504,8 @@
     return VAR_DEFS[varName] || null;
   }
 
-  window.TheiaMeta = { OTL_CATEGORIES, VAR_DEFS, KINETIC_FAULTS, P_THRESHOLDS, VAR_DETAILS,
-                       getCategoryVars, getVarMeta, getVarDetail, pFallbackScore };
+  window.TheiaMeta = { OTL_CATEGORIES, VAR_DEFS, KINETIC_FAULTS,
+                       P_THRESHOLDS, HIGHER_THRESHOLDS, SIGNED_THRESHOLDS, VAR_DETAILS,
+                       getCategoryVars, getVarMeta, getVarDetail,
+                       pFallbackScore, higherFallbackScore, signedFallbackScore, getFallbackScore };
 })();
