@@ -287,11 +287,11 @@
         kpi: 'Pelvis→Trunk lag · Trunk→Arm lag · Transfer rate',
       },
       p4: {
-        kicker: 'Coach Delivery · 결함 → 코칭 연결',
-        explain: '앞발이 닿은 뒤 끝까지 버티는 시간이 짧아, 앞으로 가던 힘이 회전으로 바뀌지 못합니다.',
-        cue: '"앞발이 닿으면, 몸을 밀고 나가지 말고 그 자리에서 돌자."',
-        videoCheck: 'MER ~ Release 구간에서 앞다리 지지가 유지되는가? 앞무릎 굴곡이 더 깊어지는지 확인',
-        kpi: 'Lead braking impulse · Lead knee 각도 변화 (MER→BR)',
+        kicker: 'Coach Delivery · 5단계 결론 한 문장',
+        explain: '5단계 흐름 중 가장 큰 누수가 어디서 발생하고 그 결과 다음 단계로 어떻게 번지는지가 위 타임라인에 있습니다. 같은 메시지를 한 문장으로 압축합니다.',
+        cue: '"앞단계가 새고 있으면 뒤 단계는 보상으로 흩어진다 — 시간 순서를 먼저 바로잡자."',
+        videoCheck: '타임라인의 가장 빨간 단계부터 영상으로 확인 — 앞단계의 결함이 다음 단계 보상을 만드는지',
+        kpi: '재측정 KPI는 아래 Today\'s Focus 박스 참고',
       },
     };
     const msg = messages[page] || messages.p1;
@@ -467,7 +467,7 @@
       </div>
 
       <div style="margin-top: 18px; padding: 16px; background: rgba(255,255,255,0.07); border-radius: 8px;">
-        <div class="kbo-eyebrow" style="color: #FFD166; margin-bottom: 8px;">오늘의 훈련 (4 drill)</div>
+        <div class="kbo-eyebrow" style="color: #FFD166; margin-bottom: 8px;">6주 핵심 drill 4종 (선수 핸드아웃용)</div>
         <ol style="font-size: 13px; line-height: 1.8; margin: 0; padding-left: 22px;">
           ${isLeakDom
             ? `<li>Eccentric step-down (5초 hold)</li>
@@ -904,22 +904,16 @@
         </div>
         <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
           ★ 5축 중 <strong>Transmission(에너지 전달)</strong> 축 하위 진단. ELI는 이 축을 분해하는 도구 — 별도 종합점수 아님.
+          <span style="margin-left: 8px;">시간 흐름별 진단은 <a href="#p4" style="color: ${KBO_T.navy}; font-weight: 700;">P4</a></span>.
         </div>
       </div>`;
     return `
     <section id="p3" class="report-page kbo-scope">
       <div class="kbo-pad">
-        ${_kboPageHeader({ num: '3', en: 'Kinetic Chain Map', kr: '에너지 전달 능력', q: '발-골반-몸통-팔-공 흐름 어디서 누수가 가장 큰가' })}
+        ${_kboPageHeader({ num: '3', en: 'Kinetic Chain Map', kr: '에너지 전달 능력 (분절 단위)', q: '발-골반-몸통-팔-공 — 어느 분절(공간)에서 누수가 가장 큰가' })}
         ${headline}
-        <!-- ★ v0.77 권고 ① — Dynamic Kinematic Sequence를 P3 메인 visual로 복원 -->
-        <div style="margin: 18px 0;">
-          <div class="kbo-eyebrow" style="margin-bottom: 8px; color: ${KBO_T.navySoft};">Dynamic Kinematic Sequence · 분절 순서 동적 시각화</div>
-          <div style="font-size: 13px; color: ${KBO_T.text2}; margin-bottom: 12px; line-height: 1.6;">
-            분절이 순서대로 열려야 힘이 모입니다. 골반 → 몸통 → 팔의 peak timing과 lag을 시각화 — <em>"몸통이 골반 뒤에서 충분히 기다리는가"</em>가 핵심.
-          </div>
-          ${_renderKinematicBellUplift(result)}
-        </div>
-        <!-- ★ v0.79 — Energy Flow Mannequin 메인 위치 복원: 어느 분절에서 누수가 발생했는지 직관 시각화 -->
+        <!-- ★ v0.88 — Dynamic Kinematic Sequence는 P4(시간 흐름별)로 이동 — P3는 분절(공간) 단위 분석에 집중 -->
+        <!-- ★ v0.79 — Energy Flow Mannequin 메인 위치: 어느 분절에서 누수가 발생했는지 직관 시각화 -->
         <div style="margin: 24px 0;">
           <div class="kbo-eyebrow" style="margin-bottom: 8px; color: ${KBO_T.navySoft};">Energy Flow Mannequin · 키네틱 체인 누수 위치</div>
           <div style="font-size: 13px; color: ${KBO_T.text2}; margin-bottom: 12px; line-height: 1.6;">
@@ -1096,7 +1090,7 @@
             : card({ kicker: '가장 큰 누수', label: '데이터 부족', body: '5단계 변수 측정이 부족합니다.', color: '#F6F6F6', accent: KBO_T.textMuted })}
       ${top2 ? card({ kicker: '두 번째 문제', label: top2.name.replace(/^[①②③④⑤]\s*/, '') + ' (' + (top2.score ?? '—') + '점)', body: top2Lib?.diag || '—', color: 'rgba(168,115,51,0.08)', accent: KBO_T.caution })
             : card({ kicker: '두 번째 문제', label: '—', body: '추가 데이터 필요', color: '#F6F6F6', accent: KBO_T.textMuted })}
-      ${card({ kicker: '코칭 우선순위', label: top1 ? top1Lib?.cue?.replace(/^["']|["']$/g, '') || '—' : '데이터 보강 후 진단', body: top1Lib?.drills?.length ? '오늘의 우선 drill: ' + top1Lib.drills.slice(0,2).join(' · ') : '—', color: 'rgba(15,42,74,0.06)', accent: KBO_T.navy })}
+      ${card({ kicker: '코칭 우선순위', label: top1 ? top1Lib?.cue?.replace(/^["']|["']$/g, '') || '—' : '데이터 보강 후 진단', body: '단계별 진단·drill은 아래 5단계 타임라인 / 오늘의 우선 drill은 페이지 하단 Today\'s Focus.', color: 'rgba(15,42,74,0.06)', accent: KBO_T.navy })}
     </div>`;
   }
 
@@ -1176,7 +1170,8 @@
         ${items || `<div style="font-size: 12px; color: ${KBO_T.textMuted};">데이터 보강 후 우선순위 산출</div>`}
       </div>
       <div style="margin-top: 14px; padding: 12px 14px; border-top: 1px solid ${KBO_T.borderSoft}; font-size: 12px; color: ${KBO_T.text2};">
-        <b style="color: ${KBO_T.navy};">재측정 KPI</b> · Lead braking impulse · 골반→몸통 전달율 · 릴리스 일관성 · (그리고 측정 구속의 변화)
+        <b style="color: ${KBO_T.navy};">재측정 KPI</b> · Lead braking impulse · 골반→몸통 전달율 · 릴리스 일관성 · (그리고 측정 구속의 변화).
+        <span style="color: ${KBO_T.textMuted};">주차별 운영안과 retest 슬롯은 <a href="#p6" style="color: ${KBO_T.navy}; font-weight: 700;">P6</a> 처방 페이지.</span>
       </div>
     </div>`;
   }
@@ -1191,13 +1186,14 @@
           어느 구간에서 힘이 새는지와 왜 그런지 한눈에.
         </div>
         <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
-          시간 순서대로 5단계 흐름을 따라가며 누수 위치·원인·코칭 큐·drill을 묶어서 보여줍니다. 6주 처방은 <a href="#p6" style="color: ${KBO_T.navy}; font-weight: 700;">P6</a>에서.
+          시간 순서대로 5단계 흐름을 따라가며 누수 위치·원인·코칭 큐·drill을 묶어서 보여줍니다.
+          분절(공간) 단위 분석은 <a href="#p3" style="color: ${KBO_T.navy}; font-weight: 700;">P3</a>, 6주 처방은 <a href="#p6" style="color: ${KBO_T.navy}; font-weight: 700;">P6</a>에서.
         </div>
       </div>`;
     return `
     <section id="p4" class="report-page kbo-scope">
       <div class="kbo-pad">
-        ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '에너지가 새는 부분과 그 원인', q: 'Drive → Landing → Torso → Arm → Release 흐름에서 어디가 새는가' })}
+        ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '에너지가 새는 부분과 그 원인 (시간 흐름)', q: 'Drive → Landing → Torso → Arm → Release — 시간 순서대로 언제·왜 새는가' })}
         ${headline}
         ${_p4SummaryBar(stages)}
         ${_renderKinematicBellUplift(result)}
@@ -1309,13 +1305,12 @@
           ※ 학술 인용·산식·연구 footnote는 아래 보조 영역의 펼침 카드 안에 격리되어 있습니다.
         </div>
       </div>
-      <!-- 보조 영역 — 분석가용 상세 시각화 (Bell·GRF·Consistency Matrix) -->
+      <!-- 보조 영역 — 분석가용 상세 시각화 (GRF·Consistency Matrix) — Bell은 P4로 이동 -->
       <details style="background: var(--bg-card); margin-top: 20px;">
         <summary style="padding: 16px 28px; cursor: pointer; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); list-style: none;">
-          ▼ 분석가용 상세 시각화 — 키네매틱 Bell · GRF 5단계 · Consistency × Quality Matrix (펼치기)
+          ▼ 분석가용 상세 시각화 — GRF 5단계 · Consistency × Quality Matrix (펼치기)
         </summary>
         <div style="padding: 28px;">
-          ${_renderKinematicBellUplift(result)}
           ${_renderGRFSection(result)}
           ${_renderConsistencyQualityMatrix(result)}
         </div>
