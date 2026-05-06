@@ -737,11 +737,11 @@
 
     // 사분면 분류
     let zoneId, zoneLabel, zoneColor, zoneRoi;
-    // ★ v0.73 PDF 검토 #4 fix — '낭비형' 부정적 표현 → '전달 개선 타입 (Transfer-Limited)'
-    if (px >= 50 && py >= 50)      { zoneId='①'; zoneLabel='Elite (출력·전달 모두 우수)';   zoneColor=KBO_T.good;     zoneRoi='유지·세부 조정'; }
-    else if (px >= 50 && py < 50)  { zoneId='②'; zoneLabel='전달 개선 타입 (Transfer-Limited)';  zoneColor=KBO_T.injury;   zoneRoi='메카닉 ROI 높은 유형'; }
-    else if (px < 50 && py >= 50)  { zoneId='③'; zoneLabel='출력 보강 타입 (Output-Limited)';  zoneColor=KBO_T.transfer; zoneRoi='체력·출력 보강'; }
-    else                           { zoneId='④'; zoneLabel='기초 재정립 (Foundation)';    zoneColor='#94a3b8';      zoneRoi='기초부터 단계적'; }
+    // ★ v0.78 — 사분면 라벨 통일: 정상급/전달 개선/효율형/개선 필요 (영어 부제 제거, 부정적 표현 정돈)
+    if (px >= 50 && py >= 50)      { zoneId='①'; zoneLabel='정상급 (출력·전달 모두 우수)';   zoneColor=KBO_T.good;     zoneRoi='유지·세부 조정'; }
+    else if (px >= 50 && py < 50)  { zoneId='②'; zoneLabel='전달 개선 타입';                  zoneColor=KBO_T.injury;   zoneRoi='메카닉 코칭 우선순위'; }
+    else if (px < 50 && py >= 50)  { zoneId='③'; zoneLabel='효율형 (출력 보강 필요)';         zoneColor=KBO_T.transfer; zoneRoi='체력·출력 보강'; }
+    else                           { zoneId='④'; zoneLabel='개선 필요 (기초 재정립)';         zoneColor='#94a3b8';      zoneRoi='기초부터 단계적'; }
 
     // SVG 좌표 (40~360 가로, 320~40 세로)
     const cx = 40 + Math.max(0, Math.min(100, px)) / 100 * 320;
@@ -768,16 +768,16 @@
         <line x1="40"  y1="180" x2="360" y2="180" stroke="${KBO_T.border}" stroke-dasharray="4,4"/>
         <line x1="40" y1="320" x2="360" y2="320" stroke="${KBO_T.text2}"/>
         <line x1="40" y1="320" x2="40"  y2="40"  stroke="${KBO_T.text2}"/>
-        <text x="280" y="74"  text-anchor="middle" font-size="13" fill="${KBO_T.good}"     font-weight="700" font-family="'Space Grotesk',sans-serif">① Elite</text>
+        <text x="280" y="74"  text-anchor="middle" font-size="13" fill="${KBO_T.good}"     font-weight="700" font-family="'Space Grotesk',sans-serif">① 정상급</text>
         <text x="280" y="92"  text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">출력·전달 모두 우수</text>
-        <text x="280" y="218" text-anchor="middle" font-size="13" fill="${KBO_T.injury}"   font-weight="700" font-family="'Space Grotesk',sans-serif">② 낭비형</text>
+        <text x="280" y="218" text-anchor="middle" font-size="13" fill="${KBO_T.injury}"   font-weight="700" font-family="'Space Grotesk',sans-serif">② 전달 개선 타입</text>
         <text x="280" y="236" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">출력은 있으나 전달 약함</text>
         <text x="120" y="74"  text-anchor="middle" font-size="13" fill="${KBO_T.transfer}" font-weight="700" font-family="'Space Grotesk',sans-serif">③ 효율형</text>
         <text x="120" y="92"  text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">전달은 우수, 출력 부족</text>
-        <text x="120" y="218" text-anchor="middle" font-size="13" fill="#94a3b8"           font-weight="700" font-family="'Space Grotesk',sans-serif">④ 아마</text>
+        <text x="120" y="218" text-anchor="middle" font-size="13" fill="#94a3b8"           font-weight="700" font-family="'Space Grotesk',sans-serif">④ 개선 필요</text>
         <text x="120" y="236" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">둘 다 부족</text>
-        <text x="200" y="350" text-anchor="middle" font-size="12" fill="${KBO_T.text2}" font-weight="600">출력 Output (%)</text>
-        <text x="14"  y="180" text-anchor="middle" font-size="12" fill="${KBO_T.text2}" font-weight="600" transform="rotate(-90 14 180)">전달 효율 Transmission (%)</text>
+        <text x="200" y="350" text-anchor="middle" font-size="12" fill="${KBO_T.text2}" font-weight="600">출력 (%)</text>
+        <text x="14"  y="180" text-anchor="middle" font-size="12" fill="${KBO_T.text2}" font-weight="600" transform="rotate(-90 14 180)">전달 효율 (%)</text>
         <text x="40"  y="334" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">0</text>
         <text x="200" y="334" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">50</text>
         <text x="360" y="334" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">100</text>
@@ -895,16 +895,23 @@
           </div>
           ${_renderKinematicBellUplift(result)}
         </div>
+        <!-- ★ v0.79 — Energy Flow Mannequin 메인 위치 복원: 어느 분절에서 누수가 발생했는지 직관 시각화 -->
+        <div style="margin: 24px 0;">
+          <div class="kbo-eyebrow" style="margin-bottom: 8px; color: ${KBO_T.navySoft};">Energy Flow Mannequin · 키네틱 체인 누수 위치</div>
+          <div style="font-size: 13px; color: ${KBO_T.text2}; margin-bottom: 12px; line-height: 1.6;">
+            발에서 만든 힘이 골반·몸통·팔로 어떻게 흐르고, 어느 분절에서 새는지 한 눈에 표시. <em>색상이 짙은 구간이 누수 발생 지점</em>입니다.
+          </div>
+          ${_renderMannequinUplift(result)}
+        </div>
         ${_renderEnergyTransferBar(result)}
         ${_renderCoachDeliveryBox(result, 'p3')}
       </div>
-      <!-- 상세 진단 — 마네킹 + ELI + ETE 분해 (펼침 격리) -->
+      <!-- 상세 진단 — ELI + ETE 분해 (펼침 격리. 마네킹은 메인으로 이동) -->
       <details style="background: var(--bg-card); margin-top: 16px;">
         <summary style="padding: 16px 28px; cursor: pointer; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); list-style: none;">
-          ▼ 상세 진단 — 마네킹 + ELI 6영역 + ETE 분해 (펼치기)
+          ▼ 상세 진단 — ELI 6영역 분해 + ETE 영역별 (펼치기)
         </summary>
         <div style="padding: 28px;">
-          ${_renderMannequinUplift(result)}
           ${_renderELISection(result)}
           ${_renderETESection(result)}
         </div>
