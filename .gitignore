@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# 선수 데이터 (개인정보 보호 — repo 외부로 격리)
+leeyoungha/
+*.bak
+
+# 임시 작업 폴더 / 다른 시스템 자료
+BBL_unpacked/
+**/BBL_v31.27_HeaderRedesign_*/
+
+# IDE
+.vscode/
+.idea/

@@ -323,8 +323,31 @@
       { id: 'BR',  label: 'Ball Release',  t: m['t_ball_release']?.value,       ko: '릴리스' },
     ];
     const valid = events.filter(e => e.t != null);
+    const missing = events.filter(e => e.t == null).map(e => `<span style="color: #dc2626; font-weight: 600;">${e.id}</span><span style="color: var(--text-muted); font-size: 10px;">(${e.ko})</span>`);
+    const present = valid.map(e => `<span style="color: #16a34a; font-weight: 600;">${e.id}</span>`);
     if (valid.length < 2) {
-      return `<div style="background: var(--bg-elevated); padding: 16px; border-radius: 8px; color: var(--text-muted); font-size: 13px; text-align: center;">⏱️ 이벤트 시점 데이터 부족 — KH·FC·MER·BR 중 일부 결측</div>`;
+      // ★ v0.58 — fallback에 어떤 이벤트가 측정/결측인지 명시 + 1개라도 있으면 단일 점이라도 표시
+      const presentList = present.length > 0 ? present.join(' · ') : '<span style="color: var(--text-muted);">없음</span>';
+      const missingList = missing.length > 0 ? missing.join(' · ') : '<span style="color: var(--text-muted);">없음</span>';
+      const singleDot = valid.length === 1 ? `
+        <div style="position: relative; height: 4px; background: var(--border); border-radius: 2px; margin: 18px 8px 32px;">
+          <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);">
+            <div style="width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 3px solid var(--bg-card); box-shadow: 0 0 0 2px var(--accent);"></div>
+            <div style="position: absolute; top: 24px; left: 50%; transform: translateX(-50%); white-space: nowrap; text-align: center;">
+              <div style="font-size: 11px; font-weight: 700; color: var(--text-primary);">${valid[0].id}</div>
+              <div style="font-size: 9px; color: var(--text-muted);">${valid[0].ko} (단일 — 시계열 그릴 수 없음)</div>
+            </div>
+          </div>
+        </div>` : '';
+      return `<div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin: 16px 0;">
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">⏱️ Event Timeline — 부분 결측</div>
+        <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
+          측정됨: ${presentList}<br>
+          결측: ${missingList}
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">trial별 자동 검출 실패. 평균에서 KH·FC·MER·BR 중 <strong>2개 이상</strong> 있어야 시계열 표시 가능. trial별 결측 분포는 콘솔 result._meta·varScores._n에서 확인.</div>
+        ${singleDot}
+      </div>`;
     }
     const t0 = valid[0].t;
     const t1 = valid[valid.length - 1].t;
@@ -372,7 +395,24 @@
           <div style="position: absolute; left: 24px; right: 24px; top: 24px; bottom: 24px; border-left: 1px solid var(--border); border-bottom: 1px solid var(--border);"></div>
           <div style="position: absolute; left: 50%; top: 24px; bottom: 24px; border-left: 1px dashed var(--border);"></div>
           <div style="position: absolute; left: 24px; right: 24px; top: 50%; border-top: 1px dashed var(--border);"></div>
-          <div style="position: absolute; left: ${24 + (x/100) * 80}%; top: ${24 + (1 - y/100) * 80}%; transform: translate(-50%, -50%);">
+          ${(() => {
+            // ★ v0.58 — 4사분면 라벨 (현재 위치 사분면은 강조)
+            const inQ = (qx, qy) => (qx === (x>=50)) && (qy === (y>=50));
+            const qLabel = (qx, qy, label, sub) => {
+              const active = inQ(qx, qy);
+              const left = qx ? '74%' : '26%';
+              const top = qy ? '26%' : '74%';
+              const color = active ? 'var(--accent)' : 'var(--text-muted)';
+              const opacity = active ? 1 : 0.55;
+              const weight = active ? 700 : 500;
+              return `<div style="position: absolute; left: ${left}; top: ${top}; transform: translate(-50%, -50%); font-size: 9px; color: ${color}; opacity: ${opacity}; font-weight: ${weight}; text-align: center; line-height: 1.25; pointer-events: none; letter-spacing: 0.02em;">${label}<br><span style="font-size: 8px; opacity: 0.85;">${sub}</span></div>`;
+            };
+            return qLabel(false, true,  '🔁 Stable<br>but Sub',     '메카닉 재학습')
+                 + qLabel(true,  true,  '🎯 Stable<br>& Optimal',  '유지')
+                 + qLabel(false, false, '🚧 Unstable<br>& Sub',     '기초 재정립')
+                 + qLabel(true,  false, '⚡ Optimal<br>but Unstable','반복 훈련');
+          })()}
+          <div style="position: absolute; left: ${24 + (x/100) * 80}%; top: ${24 + (1 - y/100) * 80}%; transform: translate(-50%, -50%); z-index: 2;">
             <div style="width: 14px; height: 14px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(255,107,53,0.25);"></div>
           </div>
           <div style="position: absolute; left: 8px; top: 8px; font-size: 10px; color: var(--text-muted);">반복성↑</div>
@@ -1136,6 +1176,7 @@
         </div>
         <div class="text-right">
           <div class="mono text-xs uppercase tracking-widest mb-1" style="color: var(--text-muted);">${m.label}</div>
+          ${result._mode === 'pro' ? `<div class="mono" style="color: #fbbf24; font-size: 9px; letter-spacing: 0.05em; margin-bottom: 4px;">⚠ 본인 trial이 reference에 포함될 경우<br>자가비교 — 점수 deflate 정상</div>` : ''}
           <div style="background: ${playerMode.color}22; color: ${playerMode.color}; padding: 6px 16px; border-radius: 18px; font-weight: 700; font-size: 14px; display: inline-block;">
             ${handLabel} · ${playerMode.label}
           </div>

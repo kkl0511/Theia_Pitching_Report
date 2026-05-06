@@ -282,16 +282,16 @@
         <span class="ml-2 mono" style="color: var(--good);">v<span id="algo-version-stamp">0.2</span></span>
         <span class="mono" style="color: var(--text-muted);">(2026-05-05)</span>
       </div>
-      <div class="text-[10px] mt-1" style="color: var(--text-muted);">
-        Theia + Qualisys + 지면반력 마운드 · HS Top 10% (n=41) · Wood-Smith·Werner·ASMI·Driveline
+      <div class="text-[10px] mt-1" id="header-subtitle" style="color: var(--text-muted);">
+        Theia + Qualisys + 지면반력 마운드 · KBO Pro Reference · MLB·KBO Wood-Smith·Werner·ASMI·Driveline 종합
       </div>
     </div>
     <div class="flex items-center gap-3 flex-wrap">
       <!-- 코호트 모드 토글 (상단 우측 복원) -->
       <div class="mode-toggle-row">
         <span class="text-xs" style="color: var(--text-muted);">코호트</span>
-        <button id="mode-pill-hs" class="mode-pill active" onclick="selectMode('hs_top10')">고교</button>
-        <button id="mode-pill-pro" class="mode-pill" onclick="selectMode('pro')">프로</button>
+        <button id="mode-pill-hs" class="mode-pill" onclick="selectMode('hs_top10')">고교</button>
+        <button id="mode-pill-pro" class="mode-pill active" onclick="selectMode('pro')">프로</button>
       </div>
       <button onclick="toggleFilter()" class="theme-toggle" id="filter-btn"
               title="자동 데이터 정리 (기본 OFF — 데이터가 이미 정리됐다고 가정. raw 데이터일 때만 ON)"
@@ -367,9 +367,9 @@
         <label class="text-xs block mb-2" style="color: var(--text-muted);">수준 — 코호트 모드 자동 매핑</label>
         <div class="flex gap-2 flex-wrap">
           <button class="level-btn" data-level="중학" onclick="selectLevel('중학')">중학</button>
-          <button class="level-btn active" data-level="고교" onclick="selectLevel('고교')">고교</button>
+          <button class="level-btn" data-level="고교" onclick="selectLevel('고교')">고교</button>
           <button class="level-btn" data-level="대학" onclick="selectLevel('대학')">대학</button>
-          <button class="level-btn" data-level="프로" onclick="selectLevel('프로')">프로</button>
+          <button class="level-btn active" data-level="프로" onclick="selectLevel('프로')">프로</button>
         </div>
       </div>
       <div>
@@ -510,11 +510,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.57"></script>
-<script src="metadata_theia.js?v=0.57"></script>
-<script src="theia_app.js?v=0.57"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.57"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.57"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.58"></script>
+<script src="metadata_theia.js?v=0.58"></script>
+<script src="theia_app.js?v=0.58"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.58"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.58"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
@@ -568,7 +568,7 @@ function toggleTheme() {
 // ════════════════════════════════════════════════════════════
 // 수준 선택 → 코호트 모드 자동 매핑
 // ════════════════════════════════════════════════════════════
-let CURRENT_LEVEL = '고교';
+let CURRENT_LEVEL = '프로';  // ★ v0.58 — KBO 프로구단 영업 정렬
 
 function selectLevel(level) {
   CURRENT_LEVEL = level;
@@ -1278,8 +1278,8 @@ function showAlert(msg, type='info') {
   if (window.TheiaApp?.ALGORITHM_VERSION) {
     document.getElementById('algo-version-stamp').textContent = window.TheiaApp.ALGORITHM_VERSION.replace(/^v/, '');
   }
-  // 기본 수준 = 고교
-  selectLevel('고교');
+  // 기본 수준 = 프로 (★ v0.58 KBO 영업 정렬)
+  selectLevel('프로');
   // 저장된 선수 dropdown
   refreshSavedPlayerSelector();
 })();
