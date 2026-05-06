@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.90';  // ★ v0.90 — 오프라인 패키지 모바일 호환: viewport meta 추가 (iOS Safari·PDF viewer에서 미디어쿼리 적용 안 되던 문제 해결) / data-theme night→day 통일 / body overflow-x hidden + #result-area max-width 100% / 모바일 .offline-wrap 패딩·title 축소 / 마네킹 "착지발 제동력" 라벨 좌·상으로 이동 (lAnkle 발과 겹침 해소) + 점선 leader 추가
+  const ALGORITHM_VERSION = 'v0.91';  // ★ v0.91 — 모바일 추가 overflow fix: P1 6-page nav strip 슬림화 (768px·480px 단계별 padding·font·desc 숨김) / 6주 재평가 KPI 표 가로 스크롤 wrapper + Visualization 컬럼 480px 이하 숨김 + 셀 padding 축소
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

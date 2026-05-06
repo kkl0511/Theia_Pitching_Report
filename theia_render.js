@@ -1605,23 +1605,26 @@
         <td style="padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 12px;">${r.group}</td>
         <td style="padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary);">${r.kpi}</td>
         <td style="padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary);">${r.target}</td>
-        <td style="padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-muted);">${r.viz}</td>
+        <td class="kpi-viz-col" style="padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-muted);">${r.viz}</td>
       </tr>`).join('');
     return `
     <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin: 16px 0;">
       <div style="font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">📋 6주 재평가 설계 — Before/After KPI</div>
       <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">"속도"만 보지 말고 Generation / Transmission / Fault / Cost 지표를 같은 순서로 비교</div>
-      <table style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr style="background: var(--bg-elevated);">
-            <th style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Metric Group</th>
-            <th style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Primary KPI</th>
-            <th style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Target Direction</th>
-            <th style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Visualization</th>
-          </tr>
-        </thead>
-        <tbody>${tr}</tbody>
-      </table>
+      <!-- ★ v0.91 — 모바일 가로 스크롤 wrapper -->
+      <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+        <table class="kpi-retest-table" style="width: 100%; min-width: 480px; border-collapse: collapse;">
+          <thead>
+            <tr style="background: var(--bg-elevated);">
+              <th style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Metric Group</th>
+              <th style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Primary KPI</th>
+              <th style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Target Direction</th>
+              <th class="kpi-viz-col" style="padding: 10px 12px; text-align: left; font-size: 11px; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase;">Visualization</th>
+            </tr>
+          </thead>
+          <tbody>${tr}</tbody>
+        </table>
+      </div>
     </div>`;
   }
 
