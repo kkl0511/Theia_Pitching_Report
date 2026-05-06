@@ -134,9 +134,64 @@
     <section id="p1" class="report-page">
       ${_pageBanner('1', '한눈에 보는 결론', 'Executive Summary', '이 선수는 어떤 유형이고 어디를 먼저 고치면 속도가 오르는가?')}
       ${_renderHeader(result)}
+      ${_renderConfidenceCoverageStrip(result)}
       ${_renderVeloWaterfall(result)}
       ${_renderQuadrantDiagnosis(result)}
     </section>`;
+  }
+
+  // ★ v0.61 — PDF §5 추가 시각화: Confidence Coverage Strip
+  // 카테고리별 측정 커버리지(체력 N/4, 메카닉 N/M, 제구 N/M) 가로 띠로 표시 → 과학적 정직성 강화
+  function _renderConfidenceCoverageStrip(result) {
+    const TM = window.TheiaMeta;
+    const m = result.varScores || {};
+    const fit = (typeof _getFit === 'function' ? _getFit() : null) || {};
+
+    // 체력 4 dim (P2 radar 기준)
+    const fitKeys = ['imtp_peak_force_bm','cmj_peak_power_bm','cmj_rsi_modified','bmi'];
+    const fitN = fitKeys.filter(k => fit[k] != null).length;
+    const fitTot = fitKeys.length;
+
+    // 메카닉 = OUTPUT + TRANSFER + LEAK + INJURY 합산
+    let mechN = 0, mechTot = 0;
+    for (const cat of ['OUTPUT','TRANSFER','LEAK','INJURY']) {
+      const vars = TM.OTL_CATEGORIES?.[cat]?.variables || [];
+      mechTot += vars.length;
+      mechN += vars.filter(v => m[v]?.value != null).length;
+    }
+    // 제구 = CONTROL
+    const ctrlVars = TM.OTL_CATEGORIES?.CONTROL?.variables || [];
+    const ctrlTot = ctrlVars.length;
+    const ctrlN = ctrlVars.filter(v => m[v]?.value != null).length;
+
+    const seg = (label, n, tot, color) => {
+      const pct = tot > 0 ? Math.round(n / tot * 100) : 0;
+      const dim = pct < 50 ? 'opacity: 0.55;' : '';
+      const icon = n === tot && tot > 0 ? '✓' : (n === 0 ? '○' : '~');
+      return `<div style="flex: 1; min-width: 140px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; margin-bottom: 4px;">
+          <span style="color: var(--text-secondary); font-weight: 600;">${icon} ${label}</span>
+          <span class="mono" style="color: ${color}; font-weight: 700;">${n}/${tot}</span>
+        </div>
+        <div style="background: var(--bg-elevated); border-radius: 3px; height: 6px; overflow: hidden;">
+          <div style="width: ${pct}%; height: 100%; background: ${color}; ${dim} transition: width 0.4s;"></div>
+        </div>
+      </div>`;
+    };
+
+    return `
+    <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; margin: 12px 0; ">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px;">
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary);">📊 측정 커버리지 — 어떤 영역이 측정 기반인지</div>
+        <div style="font-size: 10px; color: var(--text-muted); font-style: italic;">측정 변수 / 전체 정의 변수</div>
+      </div>
+      <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+        ${seg('체력', fitN, fitTot, 'var(--fitness)')}
+        ${seg('메카닉', mechN, mechTot, 'var(--mechanics)')}
+        ${seg('제구', ctrlN, ctrlTot, 'var(--control)')}
+      </div>
+      ${fitN === 0 ? `<div style="margin-top: 8px; font-size: 10px; color: var(--text-muted); font-style: italic;">⚠ 체력 0/${fitTot} — Step 2 metadata 미입력 시 잠재 구속·체력 카테고리 점수는 추정·placeholder</div>` : ''}
+    </div>`;
   }
 
   // ── P2 Force Generation Profile ──
@@ -641,7 +696,7 @@
             <div style="width: ${barWidth}%; height: 100%; background: ${c}; transition: width 0.4s;"></div>
           </div>
           <div class="text-[10px] mt-1" style="color: var(--text-muted); line-height: 1.4;">
-            ${a.desc} · <em style="color: ${sc != null && sc < 50 ? '#dc2626' : 'var(--text-muted)'};">${a.leak_when_low}</em>
+            ${a.desc}${(sc == null || sc < 50) ? ` · <em style="color: ${sc != null ? '#dc2626' : 'var(--text-muted)'};">${a.leak_when_low}</em>` : ` · <em style="color: var(--good);">정상 — 보통 이상</em>`}
             ${a.hasFaults ? ` <span style="color: #dc2626; font-weight: 600;">· ⚠ ${a.matchedFaults.length}건 패널티</span>` : ''}
           </div>
         </summary>
@@ -1331,7 +1386,7 @@
         </div>
       </div>
       <!-- ▸ expand 카드 형식 -->
-      ${_expandCard('출력 (Power Generation · 높을수록 좋음)', '각 분절(하체→몸통→팔)이 만들어내는 절대 회전·선형 출력', outScore, '#16a34a', 'OUTPUT', 'wrist_release_speed', ' m/s')}
+      ${_expandCard('출력 (Power Generation · 높을수록 좋음)', '각 분절(하체→몸통→팔)이 만들어내는 절대 회전·선형 출력 — Ball velocity는 km/h, wrist 선형 속도는 별도 m/s 변수', outScore, '#16a34a', 'OUTPUT', 'ball_speed', ' km/h')}
       ${_expandCard('에너지 전달 (Transfer Efficiency · 높을수록 좋음)', '분절 간 에너지가 효율적으로 흐르는가 — 타이밍·증폭률·저장방출', trScore, '#fb923c', 'TRANSFER', 'angular_chain_amplification', ' x')}
       ${_expandCard('부하 안전도 (Load Safety · 높을수록 안전)', '★ v0.60 PDF §4 #4 fix — 점수 방향성 명시. 출력의 비용 — UCL stress (팔꿈치) + knee stress (drive 다리). 점수 높음 = 부하 적음 = 안전. UCL stress 경고가 별도 표시되면 그것이 우선.', injScore, '#f87171', 'INJURY', 'max_shoulder_ER', ' °')}
     </div>`;
