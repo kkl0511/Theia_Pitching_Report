@@ -19,6 +19,22 @@
   const _getFitMeta = () => (window.TheiaApp && window.TheiaApp.getFitnessMeta ? window.TheiaApp.getFitnessMeta() : null);
   const ALGORITHM_VERSION = 'v0.7';  // legacy 참조 호환 (실제로는 _appVer() 사용)
 
+  // ★ v0.87 — 선수 이름 익명화 (프로 노출 보호)
+  //   파일 경로에서 추출된 athlete name을 표시용으로 변환
+  //   원칙: 알려진 KBO 프로 → 코드명, 그 외에는 원본 그대로 (사용자 표기 존중)
+  const _ANON_MAP = {
+    'leeyoungha': 'LYH',
+    'lee_young_ha': 'LYH',
+    'leeyounghaa': 'LYH',
+    'lyh': 'LYH',
+    '이영하': 'LYH',
+  };
+  function _anonAthlete(name) {
+    if (!name) return '신규 선수';
+    const k = String(name).toLowerCase().replace(/\s+/g, '');
+    return _ANON_MAP[k] || name;
+  }
+
   // ════════════════════════════════════════════════════════════
   // ★ v0.62 — KBO 디자인 핸드오프 v0.8 (Navy/White) 8 컴포넌트 vanilla JS 헬퍼
   // 사용 위치: .kbo-scope 래퍼 안에서만 (index.html에 CSS 정의)
@@ -420,7 +436,7 @@
     const out = cs.OUTPUT?.score ?? 50;
     const isLeakDom = tr < out;
     const meta = result._meta || {};
-    const athlete = meta.athlete || '선수';
+    const athlete = _anonAthlete(meta.athlete) || '선수';  // ★ v0.87 익명화
     const handLabel = (meta.handedness === 'left' ? '좌투' : '우투');
 
     return `
@@ -587,7 +603,7 @@
     const hand = meta.handedness || 'right';
     const handLabel = hand === 'left' ? '좌투' : '우투';
     const level = meta.level || '프로';
-    const athlete = meta.athlete || '신규 선수';
+    const athlete = _anonAthlete(meta.athlete);  // ★ v0.87 익명화
     const playerMode = _getPlayerMode(hand, cur);
     const typeColor = playerMode?.color || KBO_T.injury;
 
@@ -2140,7 +2156,7 @@
       <div class="flex justify-between items-start flex-wrap gap-3 mb-2">
         <div>
           <div class="text-xs mb-1 mono" style="color: var(--text-muted); letter-spacing: 0.1em;">PLAYER ID · ${level || '—'}</div>
-          <div class="display text-3xl" style="font-weight: 700;">${result._meta?.athlete || '신규 선수'}</div>
+          <div class="display text-3xl" style="font-weight: 700;">${_anonAthlete(result._meta?.athlete)}</div>
           <div class="text-xs mt-1" style="color: var(--text-muted);">
             ${date || (result._meta?.date || '—')} · ${nVar}개 변수 입력
           </div>
@@ -2833,7 +2849,9 @@
           측정 변수: <span style="color: ${color}; font-weight: 600;">${measured}/${total}</span> · 신뢰도 ${measured/total >= 0.7 ? '<span style="color: #16a34a;">높음</span>' : measured/total >= 0.4 ? '<span style="color: #fb923c;">중간</span>' : '<span style="color: #dc2626;">낮음</span>'}
         </div>
         <div class="text-[10px] mb-3" style="color: var(--text-muted); font-style: italic;">
-          ※ 100점 = MLB 평균 표준값. 80점+ = 한국 고1 elite. 50점 = 발전 평균.
+          ${_isPro
+            ? '※ 100점 = MLB 평균 표준값 · 80+ = KBO 상위권 · 50 = 평균 수준'
+            : '※ 100점 = MLB 평균 표준값 · 80+ = 한국 고1 상위권 · 50 = 평균 수준'}
         </div>
         <div style="height: 240px; position: relative;">
           <canvas id="${canvasId}"></canvas>

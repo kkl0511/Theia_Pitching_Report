@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.86';  // ★ v0.86 — 마네킹 한국어화·재배치: SHOULDER POWER→어깨 파워, ELBOW POWER→팔꿈치 파워, TRAIL vGRF→뒷다리 추진력, LEAD vGRF→착지발 제동력 / 팔 전달 흐름선 어스톤 status (taLeak ∪ elbowStatus) / 팔꿈치 빨간점 callout "팔꿈치 부하 신호" 추가 / 앞다리 블로킹 화살표 → lKnee, 하체 추진 → 뒷다리 골반 / 팔 전달 박스 우측 이동(615→660) / GRF 라벨 dark text 가독성 개선
+  const ALGORITHM_VERSION = 'v0.87';  // ★ v0.87 — 프로 선수 이름 익명화 (leeyoungha→LYH 매핑 helper) — Athlete Card·Theia Take·P1 헤더 모두 적용 / Pro 모드 radar 캡션 "한국 고1 elite" → "KBO 상위권"으로 mode-branched / cohort_theia_pro_v0.json·theia_app.js 코드 주석 내 한글 이름 일괄 치환
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -134,7 +134,7 @@
     if (kinematic.length > 0) {
       const r0 = kinematic[0];
       // 각 이벤트별로 시도할 컬럼명 후보 리스트 (앞 우선)
-      // ★ v0.18.2 — leeyoungha 형식 'MaxShoulderVel' 추가 (MER 시점 후보)
+      // ★ v0.18.2 — LYH 형식 'MaxShoulderVel' 추가 (MER 시점 후보)
       const evCandidates = {
         'KH': ['MaxKneeHeight', 'KneeHeight'],
         'FS': ['Footstrike', 'FootStrike', 'FootContact', 'FC'],
@@ -498,7 +498,7 @@
   // ★ v0.29 — FP1/FP2 → Lead/Trail 고정 매핑 (사용자 데이터 검증 후 확정)
   //   FP2 = Trail leg (좌·우완 무관) — 시작부터 trail leg 위, FC 직후 떠나며 0
   //   FP1 = Lead leg  (좌·우완 무관) — FC 전 0, FC 후 spike (블로킹)
-  //   ★ 이영하 8 trial 실측 검증: FP2가 정적 weight → push → 떠남 패턴 (= trail)
+  //   ★ LYH 8 trial 실측 검증: FP2가 정적 weight → push → 떠남 패턴 (= trail)
   //   각 plate의 FC 전후 0/non-zero는 정상이며 impulse 적분에 영향 없음.
   function detectGRFPlateMapping(parsed, mass_kg) {
     const fp1 = getForceTimeSeries(parsed, 'FP1.Z');
@@ -772,7 +772,7 @@
     // ★ v0.48 — Visual3D Trunk Cardan(XYZ) 순서: X=forward tilt, Y=lateral lean, Z=axial rotation
     // ★ v0.56 — 절대각도 형식(직립≈90°) 자동 감지·정규화. |raw|>30이면 90 빼서 "직립=0" 기준으로
     //   박명균 c3d (segment-relative, raw=-9.43°) → normalize 안 함
-    //   이영하 c3d (절대 각도, raw=96°) → 90 빼서 +6° (앞으로 기울임)
+    //   LYH c3d (절대 각도, raw=96°) → 90 빼서 +6° (앞으로 기울임)
     //   결과 의미: 양수 = 앞으로 기울임(나쁨), 음수 = 뒤로 젖힘(좋음)
     let _tilt = valAtTime(parsed, 'Trunk_Angle.X', ev.FC);
     if (_tilt != null && Math.abs(_tilt) > 30) _tilt -= 90;
@@ -924,7 +924,7 @@
 
     // ── Joint Power (Tier 2) — 두 형식 호환 ──
     //   1차: 표준 키 (Pitching_Shoulder_Power 등) — Visual3D pipeline 표준
-    //   2차: leeyoungha 새 형식 fallback (R_Shoulder_Power_Scalar / L_Knee_Power_Scalar 등)
+    //   2차: LYH 새 형식 fallback (R_Shoulder_Power_Scalar / L_Knee_Power_Scalar 등)
     //   좌·우투 기반 매핑: 우투 → 던지는 팔 = R, Lead leg = L, Trail leg = R
     const isLeftHanded = (parsed.meta?.handHint === 'left');
     const armSide  = isLeftHanded ? 'L' : 'R';   // 던지는 팔 (LH 좌투 / RH 우투)
@@ -948,7 +948,7 @@
       }
     }
 
-    // ── 분절 Mechanical Energy (J) — leeyoungha 새 형식에 직접 측정값 있음 ──
+    // ── 분절 Mechanical Energy (J) — LYH 새 형식에 직접 측정값 있음 ──
     //   PDF §4 권장: KE 추정(0.5·I·ω²) 대신 직접 측정 ME 사용
     const meMap = [
       ['Pelvis_ME_peak',  'Pelvis_Mechanical_Energy',  'Pelvis_ME'],
