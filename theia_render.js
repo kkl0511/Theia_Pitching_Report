@@ -283,14 +283,15 @@
       </div>${arrow}`;
     }).join('');
 
-    const leak1 = (W_hip != null && dE_trunk != null) ? (1 - dE_trunk / W_hip) * 100 : null;
-    const leak2 = (dE_trunk != null && dE_arm != null) ? (1 - dE_arm / dE_trunk) * 100 : null;
+    // ★ v0.73 PDF 검토 #2 fix — 전달율과 누수율 분모 통일 (둘 다 ETE 기반: leak = 1 - 전달율)
+    const leak1 = ete_p2t != null ? (1 - ete_p2t) * 100 : null;
+    const leak2 = ete_t2a != null ? (1 - ete_t2a) * 100 : null;
     const leakNote = (leak1 != null || leak2 != null) ? `
       <div style="margin-top: 12px; padding: 10px 14px; border-left: 3px solid ${KBO_T.leak}; background: rgba(185,28,28,0.05); border-radius: 4px; font-size: 12px; color: ${KBO_T.text2};">
-        ⚠ <strong>누수 진단</strong>:
-        ${leak1 != null ? `골반→몸통 누수 <strong>${leak1.toFixed(0)}%</strong>` : ''}
+        ⚠ <strong>누수 진단</strong> (분모 통일 — 전달율 + 누수율 = 100%):
+        ${leak1 != null ? `골반→몸통 전달 ${(ete_p2t*100).toFixed(0)}% · <strong>누수 ${leak1.toFixed(0)}%</strong>` : ''}
         ${leak1 != null && leak2 != null ? ' · ' : ''}
-        ${leak2 != null ? `몸통→팔 누수 <strong>${leak2.toFixed(0)}%</strong>` : ''}
+        ${leak2 != null ? `몸통→팔 전달 ${(ete_t2a*100).toFixed(0)}% · <strong>누수 ${leak2.toFixed(0)}%</strong>` : ''}
         — 누수가 큰 단계가 메카닉 코칭 1순위
       </div>` : '';
 
@@ -312,13 +313,13 @@
     const v = (k) => m[k]?.value;
     const s = (k) => m[k]?.score;
 
-    // 가장 큰 누수 chain 자동 선택 — 점수 낮은 것 우선
+    // ★ v0.73 PDF 검토 #3 fix — '앞무릎 무너짐' (수치는 음수 신전이라 표현 충돌) → '블로킹 유지 부족'
     const chain = [
-      { node: '앞무릎 무너짐', metric: v('knee_flexion_change_MER_to_BR'), unit: '°', score: s('knee_flexion_change_MER_to_BR'), color: KBO_T.leak, kind: 'fault' },
-      { node: 'Lead 브레이킹 부족', metric: v('lead_leg_braking_impulse'), unit: 'BW·s', score: s('lead_leg_braking_impulse'), color: KBO_T.caution, kind: 'leak' },
-      { node: 'Pelvis 감속 지연', metric: v('pelvis_deceleration'), unit: '°/s²', score: s('pelvis_deceleration'), color: KBO_T.caution, kind: 'leak' },
-      { node: 'Trunk 전달 저하', metric: v('ETE_pelvis_to_trunk'), unit: 'ratio', score: s('ETE_pelvis_to_trunk'), color: KBO_T.transfer, kind: 'transfer' },
-      { node: '팔 보상 ↑', metric: v('Arm_peak'), unit: '°/s', score: s('Arm_peak'), color: KBO_T.injury, kind: 'result' },
+      { node: '앞다리 블로킹 유지 부족', metric: v('knee_flexion_change_MER_to_BR'), unit: '°', score: s('knee_flexion_change_MER_to_BR'), color: KBO_T.leak, kind: 'fault' },
+      { node: '디딤발 브레이킹 부족', metric: v('lead_leg_braking_impulse'), unit: 'BW·s', score: s('lead_leg_braking_impulse'), color: KBO_T.caution, kind: 'leak' },
+      { node: '골반 감속 지연', metric: v('pelvis_deceleration'), unit: '°/s²', score: s('pelvis_deceleration'), color: KBO_T.caution, kind: 'leak' },
+      { node: '몸통 전달율 저하', metric: v('ETE_pelvis_to_trunk'), unit: 'ratio', score: s('ETE_pelvis_to_trunk'), color: KBO_T.transfer, kind: 'transfer' },
+      { node: '팔 의존 ↑', metric: v('Arm_peak'), unit: '°/s', score: s('Arm_peak'), color: KBO_T.injury, kind: 'result' },
     ];
     const measured = chain.filter(x => x.metric != null);
     if (measured.length < 3) return '';
@@ -348,7 +349,7 @@
         ${flow}
       </div>
       <div style="margin-top: 12px; padding: 10px 14px; background: ${KBO_T.bgElev}; border-radius: 4px; font-size: 12px; color: ${KBO_T.text2}; line-height: 1.6;">
-        💡 <strong>해석</strong>: 첫 박스(<span style="color: ${KBO_T.leak}; font-weight: 700;">결함</span>)가 가장 빠르게 고칠 수 있는 지점. 마지막 박스(<span style="color: ${KBO_T.injury}; font-weight: 700;">팔 보상</span>)는 부상 위험 신호 — 결함을 고치면 팔 보상이 자동 감소합니다.
+        💡 <strong>해석</strong>: 첫 박스(<span style="color: ${KBO_T.leak}; font-weight: 700;">결함</span>)가 가장 빠르게 고칠 수 있는 지점. 마지막 박스(<span style="color: ${KBO_T.injury}; font-weight: 700;">팔 의존</span>)는 팔 부하 모니터 신호 — 결함을 고치면 팔 의존이 자동 감소하며 부하 부담도 줄어듭니다.
       </div>
     </div>`;
   }
@@ -360,10 +361,11 @@
     const cs = result.catScores || {};
     const v = (k) => m[k]?.value;
     const ballSp = v('ball_speed');
+    // ★ v0.73 PDF 검토 #6 fix — retest 목표 완화 (보장처럼 안 보이게)
     const slots = [
-      { label: '측정 구속',     before: ballSp,                  unit: 'km/h', target: '+3~5 km/h', color: KBO_T.text2 },
-      { label: '메카닉 종합',   before: cs.OUTPUT?.score,        unit: '/100', target: '+10~15점',  color: KBO_T.output },
-      { label: '에너지 전달',   before: cs.TRANSFER?.score,      unit: '/100', target: '+15~20점',  color: KBO_T.transfer },
+      { label: '측정 구속',     before: ballSp,                  unit: 'km/h', target: '+1~3 km/h 우선', color: KBO_T.text2 },
+      { label: '메카닉 종합',   before: cs.OUTPUT?.score,        unit: '/100', target: '+5~10점',  color: KBO_T.output },
+      { label: '에너지 전달',   before: cs.TRANSFER?.score,      unit: '/100', target: '+10~15점',  color: KBO_T.transfer },
       { label: '제구 일관성',   before: cs.CONTROL?.score,       unit: '/100', target: '안정 유지', color: KBO_T.good },
     ];
     const slotCard = (s) => `<div class="kbo-card" style="padding: 16px;">
@@ -397,7 +399,7 @@
         ${slots.map(slotCard).join('')}
       </div>
       <div style="margin-top: 14px; padding: 10px 14px; border-left: 3px solid ${KBO_T.navy}; background: rgba(15,42,74,0.04); border-radius: 4px; font-size: 12px; color: ${KBO_T.text2};">
-        🎯 <strong>서비스 클로징</strong>: 6주 코칭 + retest = 1 사이클. 개선이 수치로 증명되지 않으면 다음 사이클 비용 X. 검증 가능한 결과 기반 도입.
+        🎯 <strong>서비스 클로징</strong>: 6주 파일럿 후 Before/After 리포트 제공 · 개선 여부를 동일 지표로 검증 · 결과에 따라 다음 사이클 우선순위 재설정.
       </div>
     </div>`;
   }
@@ -410,7 +412,7 @@
       { id: 'OUTPUT',   label: '출력',           sub: 'Power Generation',     color: KBO_T.output,     dir: '높을수록 좋음', icon: '⚡' },
       { id: 'TRANSFER', label: '에너지 전달',    sub: 'Transfer Efficiency',  color: KBO_T.transfer,   dir: '높을수록 좋음', icon: '🔋', note: 'ELI는 이 축의 하위 진단' },
       { id: 'LEAK',     label: '누수',           sub: 'Leak / Fault',         color: KBO_T.leak,       dir: '높을수록 좋음 (누수 적음)', icon: '⚠' },
-      { id: 'INJURY',   label: '부하 안전도',    sub: 'Load Safety',          color: KBO_T.injury,     dir: '높을수록 안전', icon: '🛡' },
+      { id: 'INJURY',   label: '팔 부하 모니터',  sub: 'Arm Load Monitor',     color: KBO_T.injury,     dir: '점수 높음 = 부하 적음 (안전도 아닌 모니터링 신호)', icon: '🛡', note: '부상 진단 아님 — 코칭과 함께 부하 관리' },
       { id: 'CONTROL',  label: '제구·일관성',    sub: 'Consistency',          color: KBO_T.good,       dir: '높을수록 좋음', icon: '🎯' },
     ];
     const axisCard = a => {
@@ -493,17 +495,20 @@
     const confLevel = fitN >= 3 ? 'h' : fitN >= 1 ? 'm' : 'l';
     const confLabel = fitN === 0 ? '체력 미측정' : `체력 ${fitN}/4`;
 
-    // Headline
+    // ★ v0.73 PDF 검토 #6 fix — '+5.5 km/h 보장'처럼 보이는 표현 완화 ('모델 기반 예상 upside')
     const headline = `
       <div style="margin-bottom: 32px;">
         <div class="kbo-eyebrow" style="margin-bottom: 10px;">The Theia Take · ${athlete} · ${level} ${handLabel}</div>
         <div class="kbo-headline">
-          현재 <em>${cur != null ? cur.toFixed(1) : '—'} km/h</em> · 메카닉 정돈만으로 <em>${dMech != null && dMech > 0 ? '+'+dMech.toFixed(1) : '—'} km/h</em>,<br/>
-          체력 동반 발전 시 상한 <em>${both != null ? both.toFixed(1) : '—'} km/h</em>.
+          현재 <em>${cur != null ? cur.toFixed(1) : '—'} km/h</em>.<br/>
+          모델 기반 메카닉 개선 여지 <em>${dMech != null && dMech > 0 ? '+'+dMech.toFixed(1) : '—'} km/h</em> · 체력 동반 시 상한 <em>${both != null ? both.toFixed(1) : '—'} km/h</em> 추정.
         </div>
         <div style="font-size: 14px; color: ${KBO_T.textMuted}; margin-top: 12px; max-width: 720px;">
           유형 — <span style="color: ${typeColor}; font-weight: 700;">${playerMode?.label || '평가'}</span> ·
           ${playerMode?.desc || '출력·전달·반복성 종합 — 자세한 진단은 P2~P4 참조'}
+        </div>
+        <div style="font-size: 11px; color: ${KBO_T.textMuted}; margin-top: 8px; font-style: italic;">
+          ※ upside 값은 6주 retest에서 우선 +1~3 km/h 변화를 관찰한 뒤 누적 검증되는 모델 기반 예상치입니다.
         </div>
       </div>`;
 
@@ -604,7 +609,7 @@
         ${seg('메카닉', mechN, mechTot, 'var(--mechanics)')}
         ${seg('제구', ctrlN, ctrlTot, 'var(--control)')}
       </div>
-      ${fitN === 0 ? `<div style="margin-top: 8px; font-size: 10px; color: var(--text-muted); font-style: italic;">⚠ 체력 0/${fitTot} — Step 2 metadata 미입력 시 잠재 구속·체력 카테고리 점수는 추정·placeholder</div>` : ''}
+      ${fitN === 0 ? `<div style="margin-top: 8px; font-size: 10px; color: var(--text-muted); font-style: italic;">⚠ 체력 0/${fitTot} — Step 2 metadata 미입력 시 잠재 구속·체력 카테고리 점수는 추정·placeholder</div>` : `<div style="margin-top: 8px; padding: 6px 10px; background: rgba(180,83,9,0.08); border-left: 2px solid ${KBO_T.caution}; border-radius: 0 3px 3px 0; font-size: 10px; color: ${KBO_T.text2};">⚠ <strong>본 체력 섹션은 도입 데모용 모듈 예시입니다</strong> — 실제 선수 리포트에서는 VALD ForceDecks 실측값 연동 후 산출됩니다.</div>`}
     </div>`;
   }
 
@@ -618,10 +623,11 @@
 
     // 사분면 분류
     let zoneId, zoneLabel, zoneColor, zoneRoi;
-    if (px >= 50 && py >= 50)      { zoneId='①'; zoneLabel='Elite';   zoneColor=KBO_T.good;     zoneRoi='유지·세부 조정'; }
-    else if (px >= 50 && py < 50)  { zoneId='②'; zoneLabel='낭비형';  zoneColor=KBO_T.injury;   zoneRoi='High Coaching ROI'; }
-    else if (px < 50 && py >= 50)  { zoneId='③'; zoneLabel='효율형';  zoneColor=KBO_T.transfer; zoneRoi='출력 보강 필요'; }
-    else                           { zoneId='④'; zoneLabel='아마';    zoneColor='#94a3b8';      zoneRoi='기초 재정립'; }
+    // ★ v0.73 PDF 검토 #4 fix — '낭비형' 부정적 표현 → '전달 개선 타입 (Transfer-Limited)'
+    if (px >= 50 && py >= 50)      { zoneId='①'; zoneLabel='Elite (출력·전달 모두 우수)';   zoneColor=KBO_T.good;     zoneRoi='유지·세부 조정'; }
+    else if (px >= 50 && py < 50)  { zoneId='②'; zoneLabel='전달 개선 타입 (Transfer-Limited)';  zoneColor=KBO_T.injury;   zoneRoi='메카닉 ROI 높은 유형'; }
+    else if (px < 50 && py >= 50)  { zoneId='③'; zoneLabel='출력 보강 타입 (Output-Limited)';  zoneColor=KBO_T.transfer; zoneRoi='체력·출력 보강'; }
+    else                           { zoneId='④'; zoneLabel='기초 재정립 (Foundation)';    zoneColor='#94a3b8';      zoneRoi='기초부터 단계적'; }
 
     // SVG 좌표 (40~360 가로, 320~40 세로)
     const cx = 40 + Math.max(0, Math.min(100, px)) / 100 * 320;
@@ -1346,10 +1352,10 @@
     <div class="cat-card mb-6" style="padding: 22px; border: 2px solid ${grade.color}; background: linear-gradient(135deg, ${grade.color}10, transparent);">
       <div class="flex justify-between items-start flex-wrap gap-3 mb-3">
         <div>
-          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">Transmission Health · 전달 효율 종합 (높을수록 좋음)</div>
+          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">Transfer Score · 전달 효율 종합</div>
           <div class="display text-2xl mt-1" style="color: ${grade.color};">🔋 발에서 공까지 — 힘이 얼마나 잘 전달됐는가</div>
           <div class="text-xs mt-1" style="color: var(--text-muted);">
-            발·골반·몸통·팔 6개 단계의 힘 전달 효율을 종합한 점수 (★ v0.60 — 'ELI'는 이 점수를 설명하는 하위 진단 도구)
+            ★ v0.73 — 이 점수가 P3의 <strong>유일한 메인 종합점수</strong>입니다. 'ELI'는 이 점수를 분해하는 sub-diagnostic 지표일 뿐, 별도 종합점수가 아닙니다 (검토 의견 #7 반영).
           </div>
         </div>
         <div class="text-right">
@@ -2006,7 +2012,7 @@
       <!-- ▸ expand 카드 형식 -->
       ${_expandCard('출력 (Power Generation · 높을수록 좋음)', '각 분절(하체→몸통→팔)이 만들어내는 절대 회전·선형 출력 — Ball velocity는 km/h, wrist 선형 속도는 별도 m/s 변수', outScore, '#16a34a', 'OUTPUT', 'ball_speed', ' km/h')}
       ${_expandCard('에너지 전달 (Transfer Efficiency · 높을수록 좋음)', '분절 간 에너지가 효율적으로 흐르는가 — 타이밍·증폭률·저장방출', trScore, '#fb923c', 'TRANSFER', 'angular_chain_amplification', ' x')}
-      ${_expandCard('부하 안전도 (Load Safety · 높을수록 안전)', '★ v0.60 PDF §4 #4 fix — 점수 방향성 명시. 출력의 비용 — UCL stress (팔꿈치) + knee stress (drive 다리). 점수 높음 = 부하 적음 = 안전. UCL stress 경고가 별도 표시되면 그것이 우선.', injScore, '#f87171', 'INJURY', 'max_shoulder_ER', ' °')}
+      ${_expandCard('팔 부하 모니터 (Arm Load Monitor)', '★ v0.73 PDF 검토의견 #1 fix — Load Safety 점수와 UCL 경고가 동시에 나오던 모순 해결. 점수 높음 = 부하 적음 (모니터 신호). 본 리포트는 부상 진단이 아니며, 속도 향상 코칭과 함께 팔 부하를 추적하기 위한 보조 지표입니다.', injScore, '#f87171', 'INJURY', 'max_shoulder_ER', ' °')}
     </div>`;
   }
 

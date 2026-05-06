@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.71';  // ★ v0.71 — Bug fix: 자동 복원 시 LAST_RESULT 갱신 안 됨 → 다운로드 버튼·저장 거부됐던 버그. setLastResult 추가 + loadSavedPlayer에서 호출
+  const ALGORITHM_VERSION = 'v0.73';  // ★ v0.73 — KBO 의사결정자 데모 신뢰도 리스크 7개 fix (Load Safety→Arm Load Monitor / 전달율·누수율 분모 통일 / 앞무릎 무너짐→블로킹 유지 부족 / 낭비형→전달 개선 타입 / 체력 Demo 표시 / +5.5 보장표현 완화 / Transfer Score 메인·ELI sub)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -797,7 +797,10 @@
       out.fc_lead_leg_knee_flexion = valAtTime(parsed, lkKey, ev.FC);
       out.br_lead_leg_knee_flexion = valAtTime(parsed, lkKey, ev.BR);
       if (out.fc_lead_leg_knee_flexion != null && out.br_lead_leg_knee_flexion != null) {
-        out.lead_knee_ext_change_fc_to_br = out.br_lead_leg_knee_flexion - out.fc_lead_leg_knee_flexion;
+        // ★ v0.72 — 부호 컨벤션 fix: FC→BR 동안 신전(양수)·무너짐(음수)으로 통일
+        //   knee_flexion_change_MER_to_BR과 같은 컨벤션 (Math.abs 차이로 양수=신전)
+        //   metadata polarity 'higher' + hint '신전(양수)'와 일치
+        out.lead_knee_ext_change_fc_to_br = Math.abs(out.fc_lead_leg_knee_flexion) - Math.abs(out.br_lead_leg_knee_flexion);
       }
     }
 
