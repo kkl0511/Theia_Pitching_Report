@@ -242,6 +242,50 @@
     return { level: 'low', label: '신뢰도 낮음', cls: 'conf-low', icon: '○' };
   }
 
+  // ★ v0.64 — PDF §3 5축 계층화: Generation/Transmission/Leak/Load/Consistency 한눈 보드
+  // ELI는 Transmission 하위 진단 도구로 명시 (별도 종합점수 X)
+  function _render5AxisBoard(result) {
+    const cs = result.catScores || {};
+    const axes = [
+      { id: 'OUTPUT',   label: '출력',           sub: 'Power Generation',     color: KBO_T.output,     dir: '높을수록 좋음', icon: '⚡' },
+      { id: 'TRANSFER', label: '에너지 전달',    sub: 'Transfer Efficiency',  color: KBO_T.transfer,   dir: '높을수록 좋음', icon: '🔋', note: 'ELI는 이 축의 하위 진단' },
+      { id: 'LEAK',     label: '누수',           sub: 'Leak / Fault',         color: KBO_T.leak,       dir: '높을수록 좋음 (누수 적음)', icon: '⚠' },
+      { id: 'INJURY',   label: '부하 안전도',    sub: 'Load Safety',          color: KBO_T.injury,     dir: '높을수록 안전', icon: '🛡' },
+      { id: 'CONTROL',  label: '제구·일관성',    sub: 'Consistency',          color: KBO_T.good,       dir: '높을수록 좋음', icon: '🎯' },
+    ];
+    const axisCard = a => {
+      const c = cs[a.id] || {};
+      const sc = c.score;
+      const measured = c.measured || 0;
+      const total = c.total || 0;
+      const scColor = sc == null ? KBO_T.textMuted : sc >= 75 ? KBO_T.good : sc >= 50 ? a.color : sc >= 30 ? KBO_T.caution : KBO_T.leak;
+      return `<div class="kbo-card" style="padding: 16px 18px; border-left: 3px solid ${a.color};">
+        <div class="kbo-eyebrow" style="color: ${a.color}; margin-bottom: 4px;">${a.icon} ${a.label}</div>
+        <div style="font-size: 11px; color: ${KBO_T.textMuted}; margin-bottom: 10px; font-style: italic;">${a.sub}</div>
+        <div style="display: flex; align-items: baseline; gap: 4px;">
+          <span class="kbo-metric-num" style="font-size: 36px; color: ${scColor};">${sc != null ? sc : '—'}</span>
+          <span style="font-size: 11px; color: ${KBO_T.textMuted}; margin-left: 4px;">/100</span>
+        </div>
+        <div style="font-size: 10px; color: ${KBO_T.textMuted}; margin-top: 6px; line-height: 1.4;">
+          ↑ ${a.dir}<br>
+          <span class="kbo-mono">측정 ${measured}/${total}</span>
+          ${a.note ? `<br><span style="color: ${KBO_T.navySoft};">· ${a.note}</span>` : ''}
+        </div>
+      </div>`;
+    };
+    return `
+    <div style="margin-top: 18px; margin-bottom: 18px;">
+      ${_kboSectionTitle({
+        kicker: '5-Axis Diagnosis · Power → Transfer → Leak → Load → Control',
+        title: '다섯 축으로 본 종합 점수',
+        sub: '“구속/구위 결과”가 아니라 “왜 그런 결과가 나왔는가”를 다섯 축으로 분리. ELI는 에너지 전달 축의 하위 진단.',
+      })}
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;">
+        ${axes.map(axisCard).join('')}
+      </div>
+    </div>`;
+  }
+
   // ── P1 Executive Summary (★ v0.62 KBO Navy/White 디자인 핸드오프 v0.8 적용) ──
   function _renderP1Summary(result) {
     const m = result.varScores || {};
@@ -345,6 +389,7 @@
         ${headline}
         ${waterfall}
         ${kpis}
+        ${_render5AxisBoard(result)}
       </div>
     </section>`;
   }
@@ -425,8 +470,8 @@
       ${_pageBanner('3', '힘이 어디서 새는가', 'Force Transmission Map', '생성된 힘이 발→골반→몸통→팔→공으로 얼마나 잘 전달되는가?')}
       <div class="page-intro">
         <span class="scope-chip scope-trans">Transmission</span>
-        ELI는 "전체 리포트의 또 다른 종합점수"가 아니라 <strong>전달 효율을 분해하는 도구</strong>입니다.
-        절대 출력은 <a href="#p2">P2</a>에서 보세요.
+        ★ <strong>5축 중 Transmission(에너지 전달) 축</strong>의 하위 진단 페이지입니다. ELI는 별도 종합점수가 아니라 <strong>이 축을 분해하는 도구</strong>로 사용됩니다.
+        절대 출력은 <a href="#p2">P2 Generation</a>, 5축 종합 점수는 <a href="#p1">P1</a> 하단 보드에서 확인하세요.
       </div>
       ${_renderMannequinUplift(result)}
       ${_renderELISection(result)}

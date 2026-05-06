@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.63';  // ★ v0.63 — PDF §10 코칭 언어 변환 + §4 #6 블로킹 phase 분리 (마지막 보류 모순)
+  const ALGORITHM_VERSION = 'v0.64';  // ★ v0.64 — PDF §3 5축 계층화 (Generation/Transmission/Leak/Load/Consistency 한눈 보드 P1) + ELI를 Transmission 하위 명시
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
