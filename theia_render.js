@@ -242,6 +242,166 @@
     return { level: 'low', label: '신뢰도 낮음', cls: 'conf-low', icon: '○' };
   }
 
+  // ★ v0.65 — PDF §5 신규 시각화 #3: Energy Transfer Bar
+  // 골반 work → 몸통 받은 에너지 → 팔 받은 에너지 — 단계별 절대값 + ETE 비율
+  function _renderEnergyTransferBar(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const W_hip = v('W_hip_pos_KH_FC');                    // 골반이 만든 힘 (J)
+    const dE_trunk = v('dE_trunk_KH_FC');                  // 몸통이 받은 힘 (J)
+    const dE_arm = v('dE_arm_FC_BR');                      // 팔이 받은 힘 (J)
+    const ete_p2t = v('ETE_pelvis_to_trunk');              // 비율
+    const ete_t2a = v('ETE_trunk_to_arm');                 // 비율
+    if (W_hip == null && dE_trunk == null && dE_arm == null) return '';
+
+    const items = [
+      { label: '골반 출력', sub: 'Generation · 하체 추진', val: W_hip, color: KBO_T.output, badge: '출력 source' },
+      { label: '몸통 받음', sub: 'Transfer 1 · 하체 → 몸통', val: dE_trunk, color: KBO_T.transfer, badge: ete_p2t != null ? `전달율 ${(ete_p2t*100).toFixed(0)}%` : '' },
+      { label: '팔 받음',   sub: 'Transfer 2 · 몸통 → 팔',   val: dE_arm, color: KBO_T.injury, badge: ete_t2a != null ? `전달율 ${(ete_t2a*100).toFixed(0)}%` : '' },
+    ];
+    const measured = items.filter(x => x.val != null);
+    if (measured.length === 0) return '';
+    const maxV = Math.max(...measured.map(x => x.val));
+
+    const rows = items.map((x, i) => {
+      const w = x.val != null ? Math.max(8, Math.min(100, x.val / maxV * 100)) : 0;
+      const arrow = i < items.length - 1 && x.val != null && items[i+1].val != null
+        ? `<div style="text-align: center; padding: 6px 0; color: ${KBO_T.textMuted}; font-size: 18px;">↓</div>` : '';
+      return `<div style="display: grid; grid-template-columns: 160px 1fr 100px 110px; gap: 14px; align-items: center; padding: 8px 0;">
+        <div>
+          <div style="font-size: 13px; color: ${KBO_T.text}; font-weight: 700;">${x.label}</div>
+          <div style="font-size: 10px; color: ${KBO_T.textMuted};">${x.sub}</div>
+        </div>
+        <div style="background: ${KBO_T.bgElev}; height: 28px; border-radius: 5px; position: relative; overflow: hidden;">
+          ${x.val != null ? `<div style="position: absolute; inset: 0 ${100-w}% 0 0; background: ${x.color}; opacity: 0.85; border-radius: 5px;"></div>` : ''}
+          <div style="position: absolute; inset: 0; display: flex; align-items: center; padding: 0 12px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: ${x.val != null ? '#fff' : KBO_T.textMuted}; font-weight: 700; text-shadow: ${x.val != null ? '0 1px 2px rgba(0,0,0,0.3)' : 'none'};">
+            ${x.val != null ? `${x.val.toFixed(1)} J` : '미측정'}
+          </div>
+        </div>
+        <div class="kbo-mono" style="font-size: 11px; color: ${KBO_T.navySoft}; font-weight: 600; text-align: right;">${x.badge}</div>
+        <div style="font-size: 10px; color: ${KBO_T.textMuted};">${i === 0 ? '하체에서 만든 힘' : i === 1 ? '몸통이 흡수한 힘' : '팔에 도달한 힘'}</div>
+      </div>${arrow}`;
+    }).join('');
+
+    const leak1 = (W_hip != null && dE_trunk != null) ? (1 - dE_trunk / W_hip) * 100 : null;
+    const leak2 = (dE_trunk != null && dE_arm != null) ? (1 - dE_arm / dE_trunk) * 100 : null;
+    const leakNote = (leak1 != null || leak2 != null) ? `
+      <div style="margin-top: 12px; padding: 10px 14px; border-left: 3px solid ${KBO_T.leak}; background: rgba(185,28,28,0.05); border-radius: 4px; font-size: 12px; color: ${KBO_T.text2};">
+        ⚠ <strong>누수 진단</strong>:
+        ${leak1 != null ? `골반→몸통 누수 <strong>${leak1.toFixed(0)}%</strong>` : ''}
+        ${leak1 != null && leak2 != null ? ' · ' : ''}
+        ${leak2 != null ? `몸통→팔 누수 <strong>${leak2.toFixed(0)}%</strong>` : ''}
+        — 누수가 큰 단계가 메카닉 코칭 1순위
+      </div>` : '';
+
+    return `<div class="kbo-card" style="padding: 22px 24px; margin: 18px 0;">
+      ${_kboSectionTitle({
+        kicker: 'Energy Transfer · 흐름 시각화',
+        title: '하체에서 만든 힘이 몸통·팔로 얼마나 넘어가는가',
+        sub: '단계별 절대 에너지(J) + 전달율 % — Generation과 Transmission을 한 흐름으로 연결',
+      })}
+      ${rows}
+      ${leakNote}
+    </div>`;
+  }
+
+  // ★ v0.65 — PDF §5 신규 시각화 #4: Fault-to-Loss Causal Chain
+  // 결함 → 누수1 → 누수2 → 결과 한 줄 horizontal flow (P4 인과 카드 강화)
+  function _renderFaultLossCausalChain(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const s = (k) => m[k]?.score;
+
+    // 가장 큰 누수 chain 자동 선택 — 점수 낮은 것 우선
+    const chain = [
+      { node: '앞무릎 무너짐', metric: v('knee_flexion_change_MER_to_BR'), unit: '°', score: s('knee_flexion_change_MER_to_BR'), color: KBO_T.leak, kind: 'fault' },
+      { node: 'Lead 브레이킹 부족', metric: v('lead_leg_braking_impulse'), unit: 'BW·s', score: s('lead_leg_braking_impulse'), color: KBO_T.caution, kind: 'leak' },
+      { node: 'Pelvis 감속 지연', metric: v('pelvis_deceleration'), unit: '°/s²', score: s('pelvis_deceleration'), color: KBO_T.caution, kind: 'leak' },
+      { node: 'Trunk 전달 저하', metric: v('ETE_pelvis_to_trunk'), unit: 'ratio', score: s('ETE_pelvis_to_trunk'), color: KBO_T.transfer, kind: 'transfer' },
+      { node: '팔 보상 ↑', metric: v('Arm_peak'), unit: '°/s', score: s('Arm_peak'), color: KBO_T.injury, kind: 'result' },
+    ];
+    const measured = chain.filter(x => x.metric != null);
+    if (measured.length < 3) return '';
+
+    const nodeBox = (x, idx) => {
+      const sc = x.score;
+      const sColor = sc == null ? KBO_T.textMuted : sc >= 60 ? KBO_T.good : sc >= 40 ? KBO_T.caution : KBO_T.leak;
+      const kindLabel = { fault: '결함', leak: '누수', transfer: '전달 저하', result: '결과' }[x.kind];
+      return `<div style="flex: 1; min-width: 130px; padding: 12px 10px; background: ${KBO_T.bgCard}; border-top: 3px solid ${x.color}; border-radius: 6px; box-shadow: ${KBO_T.shadow}; text-align: center;">
+        <div class="kbo-eyebrow" style="color: ${x.color}; margin-bottom: 4px; font-size: 9px;">${idx === 0 ? '★ ' : ''}${kindLabel}</div>
+        <div style="font-size: 12px; color: ${KBO_T.text}; font-weight: 700; line-height: 1.3; margin-bottom: 6px;">${x.node}</div>
+        ${x.metric != null ? `<div class="kbo-mono" style="font-size: 11px; color: ${KBO_T.text2};">${x.metric.toFixed(2)} ${x.unit}</div>` : ''}
+        ${sc != null ? `<div class="kbo-mono" style="font-size: 11px; color: ${sColor}; font-weight: 700; margin-top: 4px;">${sc}점</div>` : ''}
+      </div>`;
+    };
+
+    const arrow = `<div style="display: flex; align-items: center; padding: 0 4px; color: ${KBO_T.textMuted}; font-size: 22px; font-weight: 700;">→</div>`;
+    const flow = chain.map((x, i) => i === 0 ? nodeBox(x, i) : arrow + nodeBox(x, i)).join('');
+
+    return `<div class="kbo-card" style="padding: 22px 24px; margin: 18px 0;">
+      ${_kboSectionTitle({
+        kicker: 'Fault-to-Loss Causal Chain · 결함 → 누수 → 결과',
+        title: '하나의 결함이 어떻게 팔까지 영향을 주는가',
+        sub: '왼쪽이 원인(결함), 오른쪽이 결과(팔 보상). 각 박스의 색상 border가 손실 단계를 구분.',
+      })}
+      <div style="display: flex; align-items: stretch; gap: 4px; overflow-x: auto; padding: 4px 0;">
+        ${flow}
+      </div>
+      <div style="margin-top: 12px; padding: 10px 14px; background: ${KBO_T.bgElev}; border-radius: 4px; font-size: 12px; color: ${KBO_T.text2}; line-height: 1.6;">
+        💡 <strong>해석</strong>: 첫 박스(<span style="color: ${KBO_T.leak}; font-weight: 700;">결함</span>)가 가장 빠르게 고칠 수 있는 지점. 마지막 박스(<span style="color: ${KBO_T.injury}; font-weight: 700;">팔 보상</span>)는 부상 위험 신호 — 결함을 고치면 팔 보상이 자동 감소합니다.
+      </div>
+    </div>`;
+  }
+
+  // ★ v0.65 — PDF §5 신규 시각화 #5: Before/After Re-test Slots
+  // 6주 재측정 후 채울 ghost 카드 — 영업 클로징 (도입 → 6주 → 검증 흐름)
+  function _renderBeforeAfterRetestSlots(result) {
+    const m = result.varScores || {};
+    const cs = result.catScores || {};
+    const v = (k) => m[k]?.value;
+    const ballSp = v('ball_speed');
+    const slots = [
+      { label: '측정 구속',     before: ballSp,                  unit: 'km/h', target: '+3~5 km/h', color: KBO_T.text2 },
+      { label: '메카닉 종합',   before: cs.OUTPUT?.score,        unit: '/100', target: '+10~15점',  color: KBO_T.output },
+      { label: '에너지 전달',   before: cs.TRANSFER?.score,      unit: '/100', target: '+15~20점',  color: KBO_T.transfer },
+      { label: '제구 일관성',   before: cs.CONTROL?.score,       unit: '/100', target: '안정 유지', color: KBO_T.good },
+    ];
+    const slotCard = (s) => `<div class="kbo-card" style="padding: 16px;">
+      <div class="kbo-eyebrow" style="color: ${s.color}; margin-bottom: 8px;">${s.label}</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div>
+          <div style="font-size: 9px; color: ${KBO_T.textMuted}; letter-spacing: 0.1em; margin-bottom: 4px;">BEFORE · 도입 측정</div>
+          <div style="display: flex; align-items: baseline; gap: 4px;">
+            <span class="kbo-metric-num" style="font-size: 28px; color: ${s.color};">${s.before != null ? (typeof s.before === 'number' ? s.before.toFixed(s.unit === 'km/h' ? 1 : 0) : s.before) : '—'}</span>
+            <span style="font-size: 10px; color: ${KBO_T.textMuted};">${s.unit}</span>
+          </div>
+        </div>
+        <div style="border-left: 2px dashed ${KBO_T.border}; padding-left: 14px;">
+          <div style="font-size: 9px; color: ${KBO_T.navy}; letter-spacing: 0.1em; margin-bottom: 4px;">AFTER · 6주 retest 목표</div>
+          <div style="display: flex; align-items: baseline; gap: 4px;">
+            <span class="kbo-metric-num" style="font-size: 28px; color: ${KBO_T.borderSoft};">__.__</span>
+            <span style="font-size: 10px; color: ${KBO_T.textMuted};">${s.unit}</span>
+          </div>
+          <div class="kbo-mono" style="font-size: 10px; color: ${KBO_T.good}; font-weight: 700; margin-top: 4px;">▲ ${s.target}</div>
+        </div>
+      </div>
+    </div>`;
+
+    return `<div class="kbo-card" style="padding: 22px 24px; margin: 18px 0; background: linear-gradient(135deg, rgba(15,42,74,0.03), transparent);">
+      ${_kboSectionTitle({
+        kicker: 'Pilot Retest · Before/After',
+        title: '6주 후 같은 리포트로 검증',
+        sub: '각 카드의 오른쪽 칸은 6주 retest에서 채워질 자리입니다 — 도입 효과를 같은 지표로 직접 비교',
+      })}
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+        ${slots.map(slotCard).join('')}
+      </div>
+      <div style="margin-top: 14px; padding: 10px 14px; border-left: 3px solid ${KBO_T.navy}; background: rgba(15,42,74,0.04); border-radius: 4px; font-size: 12px; color: ${KBO_T.text2};">
+        🎯 <strong>서비스 클로징</strong>: 6주 코칭 + retest = 1 사이클. 개선이 수치로 증명되지 않으면 다음 사이클 비용 X. 검증 가능한 결과 기반 도입.
+      </div>
+    </div>`;
+  }
+
   // ★ v0.64 — PDF §3 5축 계층화: Generation/Transmission/Leak/Load/Consistency 한눈 보드
   // ELI는 Transmission 하위 진단 도구로 명시 (별도 종합점수 X)
   function _render5AxisBoard(result) {
@@ -473,6 +633,7 @@
         ★ <strong>5축 중 Transmission(에너지 전달) 축</strong>의 하위 진단 페이지입니다. ELI는 별도 종합점수가 아니라 <strong>이 축을 분해하는 도구</strong>로 사용됩니다.
         절대 출력은 <a href="#p2">P2 Generation</a>, 5축 종합 점수는 <a href="#p1">P1</a> 하단 보드에서 확인하세요.
       </div>
+      <div class="kbo-scope" style="margin: 16px 0;">${_renderEnergyTransferBar(result)}</div>
       ${_renderMannequinUplift(result)}
       ${_renderELISection(result)}
       ${_renderETESection(result)}
@@ -489,6 +650,7 @@
         결함마다 phase(KH→FC→MER→BR)와 결과 metric을 함께 표기합니다. drill 처방은 <a href="#p6">P6</a>에서.
       </div>
       ${_renderEventTimeline(result)}
+      <div class="kbo-scope" style="margin: 16px 0;">${_renderFaultLossCausalChain(result)}</div>
       ${_renderCausalAnalysis(result)}
     </section>`;
   }
@@ -520,6 +682,7 @@
       ${_renderFaultsWithDrills(result)}
       ${_renderSummaryWithTraining(result)}
       ${_renderRetestKPITable(result)}
+      <div class="kbo-scope" style="margin: 16px 0;">${_renderBeforeAfterRetestSlots(result)}</div>
     </section>`;
   }
 

@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.64';  // ★ v0.64 — PDF §3 5축 계층화 (Generation/Transmission/Leak/Load/Consistency 한눈 보드 P1) + ELI를 Transmission 하위 명시
+  const ALGORITHM_VERSION = 'v0.65';  // ★ v0.65 — PDF §5 신규 시각화 3종 (Energy Transfer Bar P3 / Fault-to-Loss Causal Chain P4 / Before/After Re-test Slots P6)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
