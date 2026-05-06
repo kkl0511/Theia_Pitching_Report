@@ -399,7 +399,9 @@
           <p style="margin: 0;"><strong style="color: #0F2A4A;">결함 라벨</strong> · <span style="color: #A8443A;">빨강</span> = 명확한 누수 · <span style="color: #A87333;">주황</span> = 미세 누수 · 색 없음 = 정상. lag·X-factor·knee collapse 자동 진단.</p>
         </div>
       </details>
-      <svg viewBox="0 0 800 540" width="100%" preserveAspectRatio="xMidYMid meet" style="max-height: 540px;">
+      <!-- ★ v0.97 — 모바일 가로 스크롤 wrapper: SVG가 좁은 화면에서 압축되는 대신 좌우 panning 가능 -->
+      <div class="mannequin-pan-wrap" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+      <svg viewBox="0 0 800 540" width="100%" preserveAspectRatio="xMidYMid meet" style="max-height: 540px; min-width: 720px;">
         <!-- ★ v0.13 — ELI 6영역 라벨 박스 (마네킹 분절 위치별) -->
         ${eliAreaLabels}
         <defs>
@@ -551,6 +553,8 @@
              ELI 6영역 박스(${eliAreaLabels})가 "어디서·왜 누수 발생"의 통합 표시이므로 충분.
              팔꿈치 빨간점 + "팔꿈치 부하 신호" callout만 유지 (UCL 부상 신호는 ELI에 없는 별도 진단). -->
       </svg>
+      </div>
+      <div class="kbo-pan-hint" style="display: none; font-size: 11px; color: #6B7280; text-align: center; margin: 2px 0 6px;">← 좌우로 밀어서 전체 보기 →</div>
 
       <div class="text-xs mt-2 px-2" style="color: #3F3F46; line-height: 1.6;">
         <span style="color:#3F7D5C">●</span> 정상 ·
@@ -689,8 +693,8 @@
       <div class="text-xs mb-3 p-2 rounded" style="background: rgba(96,165,250,0.08); border-left: 2px solid var(--accent-soft, #60a5fa); color: var(--text-secondary);">
         💡 <strong>다음 카드 (마네킹 + ELI)</strong>는 같은 키네틱 체인을 <strong>분절별 ELI 점수</strong>로 직접 진단합니다 — 시퀀스 그래프의 정량적 해석.
       </div>
-      <div class="card p-3" style="background: #FAFAF7;">
-        <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMidYMid meet">
+      <div class="card p-3 bell-pan-wrap" style="background: #FAFAF7; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+        <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMidYMid meet" style="min-width: 560px;">
           <defs>
             <filter id="curveGlow-${uid}" x="-20%" y="-20%" width="140%" height="140%">
               <feGaussianBlur stdDeviation="3" result="b"/>

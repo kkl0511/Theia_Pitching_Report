@@ -468,8 +468,35 @@
       grid-template-columns: 110px 1fr !important;
       gap: 8px !important;
     }
-    /* SVG 자동 축소 */
+    /* SVG 자동 축소 (단, 가로 스크롤 wrap 안의 SVG는 min-width 유지) */
     .kbo-scope svg { max-width: 100% !important; height: auto !important; }
+    /* ★ v0.97 — 시각적으로 가로 흐름이 핵심인 블록은 stack 대신 좌우 panning */
+    .mannequin-pan-wrap, .bell-pan-wrap {
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
+    .mannequin-pan-wrap svg, .bell-pan-wrap svg {
+      max-width: none !important;  /* override above rule */
+      width: auto !important;
+    }
+    .mannequin-pan-wrap svg { min-width: 720px !important; }
+    .bell-pan-wrap svg { min-width: 560px !important; }
+    /* 5단계 흐름 dot row — 강제 stack 대신 가로 panning */
+    .p4-dot-row {
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: thin;
+    }
+    .p4-dot-row > * {
+      flex: 0 0 auto !important;
+      min-width: 110px !important;
+      scroll-snap-align: start;
+    }
+    /* hint UI는 모바일에서만 노출 */
+    .kbo-pan-hint { display: block !important; }
     /* 큰 게이지 숫자 (P2 56px 등) */
     .kbo-scope span[style*="font-size: 56px"] { font-size: 36px !important; }
     .kbo-scope span[style*="font-size: 64px"] { font-size: 40px !important; }
@@ -742,11 +769,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.96"></script>
-<script src="metadata_theia.js?v=0.96"></script>
-<script src="theia_app.js?v=0.96"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.96"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.96"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.97"></script>
+<script src="metadata_theia.js?v=0.97"></script>
+<script src="theia_app.js?v=0.97"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.97"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.97"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>

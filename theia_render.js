@@ -1198,7 +1198,7 @@
         title: 'Drive → Landing → Torso → Arm → Release',
         sub: '시간 순서대로 어느 구간에서 힘이 새고, 왜 그런지 한눈에',
       })}
-      <div style="display: flex; align-items: stretch; padding: 12px 4px 16px; margin-bottom: 14px; border-bottom: 1px dashed ${KBO_T.borderSoft};">
+      <div class="p4-dot-row" style="display: flex; align-items: stretch; padding: 12px 4px 16px; margin-bottom: 14px; border-bottom: 1px dashed ${KBO_T.borderSoft};">
         ${dotRow}
       </div>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
