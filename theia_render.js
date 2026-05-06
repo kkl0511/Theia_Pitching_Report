@@ -915,11 +915,12 @@
 
   function _renderRetestKPITable(result) {
     // P6 — 6주 재평가 KPI 표
+    // ★ v0.66 PDF §10 — 코치/프론트 표현으로 변환
     const rows = [
-      { group: '전달 효율',   kpi: 'P→T ETE, T→Arm ETE',                    target: '0.50+ 또는 개인 기준값 대비 상승', viz: 'Before/After slope line' },
-      { group: '리드블록',     kpi: 'Lead braking impulse, Lead force at BR', target: '증가',                              viz: 'GRF impulse bar' },
-      { group: '몸통',         kpi: 'FC trunk tilt, Trunk flexion speed',     target: '개인 기준범위 내 안정',             viz: 'Event timeline overlay' },
-      { group: '제구 (반복성)', kpi: 'Release point SD, Trunk tilt SD',      target: '감소',                              viz: 'Consistency control chart' },
+      { group: '에너지 전달 효율', kpi: '골반→몸통 전달율, 몸통→팔 전달율',         target: '50% 이상 또는 개인 기준 대비 상승', viz: 'Before/After 막대 비교' },
+      { group: '디딤발 받쳐주기',  kpi: '디딤발 브레이킹, 릴리스 지점 지지력',        target: '증가',                              viz: 'GRF 충격량 막대' },
+      { group: '몸통 자세',        kpi: '착지 시점 몸통 기울기, 몸통 굴곡 속도',     target: '개인 기준범위 내 안정',             viz: '이벤트 타임라인 오버레이' },
+      { group: '제구 (반복성)',    kpi: '릴리스 지점 흩어짐, 몸통 자세 흩어짐',      target: '감소',                              viz: '일관성 관리도' },
     ];
     const tr = rows.map(r => `
       <tr>
@@ -1310,16 +1311,23 @@
       const narrative = chainScore != null && chainScore >= 60 ? ch.narrative_high : ch.narrative_low;
 
       // ★ v0.60 — PDF 사양 §4 모순 #2 fix: sec 단위 lag을 ms 라벨에 그대로 표시하던 버그 수정
+      // ★ v0.66 — PDF §10 코칭 언어: ratio (0~1) → % 표시로 변환 (코치/프론트 직관성)
       const _displayLagVal = (val, unit) => {
-        // unit이 'ms'고 raw 값이 |x|<1이면 sec → ms 변환 (×1000)
-        if (unit === 'ms' && val != null && Math.abs(val) < 1) return val * 1000;
+        if (unit === 'ms' && val != null && Math.abs(val) < 1) return val * 1000;  // sec → ms
         return val;
       };
+      const _displayCoachVal = (val, unit) => {
+        if (unit === 'ms' && val != null && Math.abs(val) < 1) return val * 1000;
+        if (unit === 'ratio' && val != null && Math.abs(val) <= 2) return val * 100;  // ratio → %
+        return val;
+      };
+      const _displayCoachUnit = (unit) => unit === 'ratio' ? '%' : unit;
       // 인과 화살표 시각
       const causeRows = causesData.map(c => {
         const cc = c.score == null ? '#94a3b8' : c.score >= 75 ? '#16a34a' : c.score >= 50 ? '#22d3ee' : c.score >= 30 ? '#fb923c' : '#dc2626';
-        const _v = _displayLagVal(c.value, c.unit);
-        const valStr = c.measured ? `${_v.toFixed(2)} ${c.unit}` : '미측정';
+        const _v = _displayCoachVal(c.value, c.unit);
+        const _u = _displayCoachUnit(c.unit);
+        const valStr = c.measured ? `${_v.toFixed(_u === '%' ? 0 : 2)} ${_u}` : '미측정';
         const scoreStr = c.measured && c.score != null ? `${c.score}점` : '—';
         const opacity = c.measured ? '' : 'opacity: 0.5;';
         return `<div class="py-1" style="border-bottom: 1px dashed var(--border); ${opacity}">
@@ -1334,9 +1342,10 @@
 
       const effectRows = effectsData.map(e => {
         const ec = e.score == null ? '#94a3b8' : e.score >= 75 ? '#16a34a' : e.score >= 50 ? '#22d3ee' : e.score >= 30 ? '#fb923c' : '#dc2626';
-        // ★ v0.60 — PDF §4 #2: sec 값에 ms 라벨 붙던 표시 버그 fix
-        const _ev = typeof e.value === 'number' ? _displayLagVal(e.value, e.unit) : e.value;
-        const valStr = e.measured ? `${typeof _ev === 'number' ? _ev.toFixed(2) : _ev} ${e.unit}` : '미측정';
+        // ★ v0.60 + v0.66 — sec→ms, ratio→% 변환 (코치 직관성)
+        const _ev = typeof e.value === 'number' ? _displayCoachVal(e.value, e.unit) : e.value;
+        const _eu = _displayCoachUnit(e.unit);
+        const valStr = e.measured ? `${typeof _ev === 'number' ? _ev.toFixed(_eu === '%' ? 0 : 2) : _ev} ${_eu}` : '미측정';
         const scoreStr = e.measured && e.score != null ? `${e.score}점` : '—';
         const opacity = e.measured ? '' : 'opacity: 0.5;';
         return `<div class="py-1" style="border-bottom: 1px dashed var(--border); ${opacity}">

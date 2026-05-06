@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.65';  // ★ v0.65 — PDF §5 신규 시각화 3종 (Energy Transfer Bar P3 / Fault-to-Loss Causal Chain P4 / Before/After Re-test Slots P6)
+  const ALGORITHM_VERSION = 'v0.66';  // ★ v0.66 — PDF §10 코칭 언어 2차 (ETE ratio→% 변환, ELI 영역 desc 한국어화, Retest KPI 야구 표현)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
