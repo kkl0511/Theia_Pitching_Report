@@ -153,9 +153,9 @@
     const html = [
       _renderPageNav(result),       // 0. 페이지 navigation (sticky)
       _renderP1Summary(result),     // P1. Executive Summary — 한눈에 보는 결론
-      _renderP2Generation(result),  // P2. Force Generation Profile — 힘을 얼마나 만들었나
-      _renderP3Transmission(result),// P3. Force Transmission Map — 힘이 어디서 새는가
-      _renderP4RootCause(result),   // P4. Root-Cause Timeline — 어떤 동작이 막는가
+      _renderP2Generation(result),  // P2. Force Generation Profile — 에너지 생성 능력
+      _renderP3Transmission(result),// P3. Force Transmission Map — 에너지 전달 능력
+      _renderP4RootCause(result),   // P4. Root-Cause Timeline — 에너지 누수 원인
       _renderP5Evidence(result),    // P5. Evidence Dashboard — 진단 근거
       _renderP6Action(result),      // P6. Action Plan & Retest — 무엇을 어떻게 고칠 것인가
       _renderELIReferences(result), // 부록 — 참고문헌 (접기)
@@ -173,9 +173,9 @@
   function _renderPageNav(result) {
     const pages = [
       { id: 'p1', n: '1', label: '한눈에 보는 결론',     desc: 'Executive Summary' },
-      { id: 'p2', n: '2', label: '힘을 얼마나 만들었나', desc: 'Force Generation' },
-      { id: 'p3', n: '3', label: '힘이 어디서 새는가',   desc: 'Force Transmission' },
-      { id: 'p4', n: '4', label: '어떤 동작이 막는가',   desc: 'Root-Cause Timeline' },
+      { id: 'p2', n: '2', label: '에너지 생성 능력', desc: 'Force Generation' },
+      { id: 'p3', n: '3', label: '에너지 전달 능력', desc: 'Force Transmission' },
+      { id: 'p4', n: '4', label: '에너지 누수 원인', desc: 'Root-Cause Timeline' },
       { id: 'p5', n: '5', label: '진단 근거',           desc: 'Evidence Dashboard' },
       { id: 'p6', n: '6', label: '훈련 처방',           desc: 'Action & Retest' },
     ];
@@ -859,7 +859,7 @@
     return `
     <section id="p2" class="report-page kbo-scope">
       <div class="kbo-pad">
-        ${_kboPageHeader({ num: '2', en: 'Opportunity Map', kr: '힘 생성 vs 힘 전달', q: '출력과 전달은 다르다 — 어느 쪽이 약하면 코칭 효과가 큰가' })}
+        ${_kboPageHeader({ num: '2', en: 'Opportunity Map', kr: '에너지 생성 능력', q: '출력과 전달은 다르다 — 어느 쪽이 약하면 코칭 효과가 큰가' })}
         ${headline}
         ${main}
         ${_render5AxisBoard(result)}
@@ -893,7 +893,7 @@
     return `
     <section id="p3" class="report-page kbo-scope">
       <div class="kbo-pad">
-        ${_kboPageHeader({ num: '3', en: 'Kinetic Chain Map', kr: '힘이 어디서 새는가', q: '발-골반-몸통-팔-공 흐름 어디서 누수가 가장 큰가' })}
+        ${_kboPageHeader({ num: '3', en: 'Kinetic Chain Map', kr: '에너지 전달 능력', q: '발-골반-몸통-팔-공 흐름 어디서 누수가 가장 큰가' })}
         ${headline}
         <!-- ★ v0.77 권고 ① — Dynamic Kinematic Sequence를 P3 메인 visual로 복원 -->
         <div style="margin: 18px 0;">
@@ -988,7 +988,7 @@
     return `
     <section id="p4" class="report-page kbo-scope">
       <div class="kbo-pad">
-        ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '어떤 동작이 막는가', q: '결함이 어느 phase에서 발생하고 어떤 전달 손실을 만드는가' })}
+        ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '에너지 누수 원인', q: '어느 동작·phase에서 에너지가 새고, 어떤 전달 손실로 이어지는가' })}
         ${headline}
         ${_renderFaultLossCausalChain(result)}
         ${_render3FrameCoachingStrip(result)}

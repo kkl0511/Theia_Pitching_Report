@@ -56,11 +56,12 @@
     } else if (trailHipP != null) {
       driveStatus = trailHipP >= 800 ? 'normal' : (trailHipP >= 500 ? 'weak' : 'leak');
     }
+    // ★ v0.85 — 어스톤 status 톤 통일
     const driveColors = {
-      normal: { stop1: '#22d3ee', stop2: '#3b82f6', label: '#3b82f6', text: '✓ 추진 양호' },
-      weak:   { stop1: '#fde68a', stop2: '#f59e0b', label: '#f59e0b', text: '△ 추진 약함' },
-      leak:   { stop1: '#fca5a5', stop2: '#ef4444', label: '#ef4444', text: '⚠ 추진 부족' },
-      na:     { stop1: '#3F3F46', stop2: '#3F3F46', label: '#3F3F46', text: '데이터 없음' },
+      normal: { stop1: '#5C8FB5', stop2: '#3B5A82', label: '#3B5A82', text: '✓ 추진 양호' },
+      weak:   { stop1: '#D4A86A', stop2: '#A87333', label: '#A87333', text: '△ 추진 약함' },
+      leak:   { stop1: '#C97A6E', stop2: '#A8443A', label: '#A8443A', text: '⚠ 추진 부족' },
+      na:     { stop1: '#6B7280', stop2: '#6B7280', label: '#6B7280', text: '데이터 없음' },
     }[driveStatus];
 
     // ── 3. Lead leg block — vGRF + knee collapse ──
@@ -83,7 +84,10 @@
       else if (elbowP > 200) elbowStatus = 'normal';
       else elbowStatus = 'low';
     }
-    const elbowColor = elbowStatus === 'high' ? '#ef4444' : elbowStatus === 'low' ? '#f59e0b' : '#4ade80';
+    const elbowColor = elbowStatus === 'high' ? '#A8443A' : elbowStatus === 'low' ? '#A87333' : '#3F7D5C';  // ★ v0.85 어스톤
+    // ★ v0.86 — 팔 전달 흐름선 색상 = trunk-to-arm timing 누수 OR 팔꿈치 power 이상 (UCL 위험·과소)
+    const armIssue = taLeak || elbowStatus === 'high' || elbowStatus === 'low';
+    const armSevere = (taLeak && taSevere) || elbowStatus === 'high';
 
     // ── 6. Mannequin keypoints + paths (BBL Uplift 동일) ──
     const uid = 'eg' + Math.random().toString(36).slice(2, 8);
@@ -294,38 +298,35 @@
         // ★ v0.27 — 박스를 분절에서 더 멀리 (겹침 방지)
         // [boxX, boxY] = 박스 위치, [anchorX, anchorY] = 분절 keypoint (화살표 끝)
         // ★ v0.54 — GRF 라벨(발 옆)과 겹침 해소 — 더 위·바깥쪽으로 이동
-        { id: 'lower_drive',  boxX: 645, boxY: 400, anchorX: 620, anchorY: 410 },  // Trail 무릎 옆 (오른쪽 위)
-        { id: 'lead_block',   boxX:  60, boxY: 400, anchorX: 332, anchorY: 472 },  // Lead 무릎 옆 (왼쪽 위)
+        { id: 'lower_drive',  boxX: 540, boxY: 220, anchorX: 506, anchorY: 280 },  // ★ v0.86 — 뒷다리 골반(rear hip) 바로 위 (오른쪽)
+        { id: 'lead_block',   boxX:  60, boxY: 340, anchorX: 370, anchorY: 384 },  // ★ v0.86 — 앞무릎(lKnee) 가리키도록 변경
         { id: 'pelvis_trunk', boxX: 220, boxY: 285, anchorX: 446, anchorY: 280 },  // 골반 (-70 좌)
         { id: 'trunk_power',  boxX: 220, boxY: 195, anchorX: 446, anchorY: 220 },  // 몸통 (-70 좌)
-        { id: 'arm_transfer', boxX: 615, boxY: 25,  anchorX: 572, anchorY: 108 },  // 팔꿈치 위 (-25 위)
+        { id: 'arm_transfer', boxX: 660, boxY: 30,  anchorX: 572, anchorY: 108 },  // ★ v0.86 — 박스 우측 이동 (615→660)
         { id: 'load_eff',     boxX: 700, boxY: 190, anchorX: 612, anchorY: 72 },   // 손목/팔꿈치 (+55 우)
       ];
       eliAreaLabels = eliAreas.map((a, i) => {
         const pos = labelPositions[i];
         if (!pos) return '';
         const sc = a.score;
-        const c = sc == null ? '#3F3F46' : sc >= 80 ? '#16a34a' : sc >= 60 ? '#22d3ee' : sc >= 40 ? '#fb923c' : '#dc2626';
+        // ★ v0.85 — 어스톤 status 톤 통일 (sage/amber/rust)
+        const c = sc == null ? '#6B7280' : sc >= 80 ? '#3F7D5C' : sc >= 60 ? '#3B5A82' : sc >= 40 ? '#A87333' : '#A8443A';
         const isStarred = a.weight >= 20 ? ' ★' : '';
         const W = 150, H = 46;
-        // 화살표 line — 박스 중앙에서 분절 keypoint로
         const lineX1 = pos.boxX + W / 2;
         const lineY1 = pos.boxY + H / 2;
         return `<g>
-          <!-- 화살표 line: 박스 중앙 → 분절 -->
           <line x1="${lineX1}" y1="${lineY1}" x2="${pos.anchorX}" y2="${pos.anchorY}"
-                stroke="${c}" stroke-width="1" stroke-dasharray="2 3" opacity="0.55"/>
-          <!-- 분절 끝 점 -->
-          <circle cx="${pos.anchorX}" cy="${pos.anchorY}" r="4" fill="${c}" opacity="0.7"/>
-          <!-- 박스 -->
+                stroke="${c}" stroke-width="1.2" stroke-dasharray="2 3" opacity="0.7"/>
+          <circle cx="${pos.anchorX}" cy="${pos.anchorY}" r="4" fill="${c}" opacity="0.85"/>
           <rect x="${pos.boxX}" y="${pos.boxY}" width="${W}" height="${H}" rx="5"
-                fill="#FAFAF7" stroke="${c}" stroke-width="1.8" opacity="0.95"/>
-          <!-- 영역 이름 -->
-          <text x="${pos.boxX + 8}" y="${pos.boxY + 16}" font-size="12" fill="${c}"
-                font-weight="700" letter-spacing="0.3">${a.name}${isStarred}</text>
-          <!-- 점수 (큰 폰트) -->
-          <text x="${pos.boxX + 8}" y="${pos.boxY + 38}" font-size="20" fill="#DCD7CF"
-                font-weight="700" font-family="JetBrains Mono">${sc != null ? sc + '점' : '—'}<tspan font-size="11" fill="var(--text-muted, #3F3F46)" font-family="Inter" font-weight="500"> w=${a.weight}</tspan></text>
+                fill="#FFFFFF" stroke="${c}" stroke-width="1.8" opacity="0.98"/>
+          <!-- 영역 이름: navy 색 + 굵게 -->
+          <text x="${pos.boxX + 10}" y="${pos.boxY + 18}" font-size="13" fill="#0F2A4A"
+                font-weight="700" letter-spacing="0.2">${a.name}${isStarred}</text>
+          <!-- 점수: status 색 + 큰 폰트 (가독성 강화) -->
+          <text x="${pos.boxX + 10}" y="${pos.boxY + 39}" font-size="20" fill="${c}"
+                font-weight="700" font-family="JetBrains Mono">${sc != null ? sc + '점' : '—'}<tspan font-size="11" fill="#6B7280" font-family="Inter" font-weight="500"> w=${a.weight}</tspan></text>
         </g>`;
       }).join('');
     }
@@ -367,15 +368,20 @@
         </details>
       </div>
 
-      <details class="mb-2 text-xs" style="background: #0F2A4A; padding: 6px 10px; border-radius: 4px; border-left: 2px solid #60a5fa;">
-        <summary class="cursor-pointer" style="color: #93c5fd; font-weight: 600;">📖 어떻게 읽나요? (코치용 가이드)</summary>
-        <div class="mt-2 leading-relaxed" style="color: #E8E4DD;">
-          <strong style="color: #22d3ee;">에너지 흐름 — 키네틱 기반</strong>: 발에서 시작한 추진력이 무릎·골반·몸통·어깨·팔꿈치를 거쳐 손목으로 전달되는 power 사슬. 각 분절은 <strong>Joint Power(W)</strong>로 평가되며, 어디서 power 손실이 발생하는지 시각화합니다.<br><br>
-          <strong style="color: #fb923c;">Power Transfer Ratio</strong>: 단계별 effective transfer = downstream/upstream. ① GRF→Hip 4~12 (W가 BW의 4~12배 normalized), ② Pelvis→Trunk 1.15~1.45 (속도 1.3배 증폭), ③ Trunk→Arm 4.5~7.0 (5~6배), ④ Shoulder→Elbow 0.15~0.40 (효율적 분배), ⑤ Arm→Wrist 2~3.5.<br><br>
-          <strong style="color: #f87171;">손실</strong>: ratio < min → 단절·전달 비효율. <strong style="color: #fb923c;">과다</strong>: ratio > max → 단계 출력이 균형 깨짐 (joint stress↑). <strong style="color: #16a34a;">정상</strong>: ratio가 elite 범위.<br><br>
-          <strong style="color: #fb923c;">GRF (양 발 라벨)</strong>: Trail vGRF (뒷다리 push) → 추진 시작. Lead vGRF (앞다리 block) → 회전 전환. <em>Elite ≥1.5 / 2.0 BW</em>.<br>
-          <strong style="color: #f87171;">팔꿈치 토크/파워</strong>: <code>Pitching_Elbow_Power</code>가 비정상적으로 높으면 UCL stress 위험. <em>elite 200~500 W</em>.<br>
-          <strong style="color: #fbbf24;">결함 라벨</strong>: 빨강 = 명확한 누수, 주황 = 미세 누수, 색 없음 = 정상. lag/X-factor/knee collapse 진단 자동.
+      <details class="mb-2 text-xs" style="background: #EAF0F7; padding: 12px 14px; border-radius: 6px; border-left: 3px solid #0F2A4A;">
+        <summary class="cursor-pointer" style="color: #0F2A4A; font-weight: 700; font-size: 12px;">📖 어떻게 읽나요? (코치용 가이드)</summary>
+        <div class="mt-3" style="color: #0F1419; line-height: 1.7; font-size: 12px;">
+          <p style="margin: 0 0 10px;"><strong style="color: #0F2A4A;">에너지 흐름 — 키네틱 기반</strong> · 발에서 시작한 추진력이 무릎·골반·몸통·어깨·팔꿈치를 거쳐 손목으로 전달되는 power 사슬. 각 분절은 Joint Power(W)로 평가되며, 어디서 power 손실이 발생하는지 시각화합니다.</p>
+          <p style="margin: 0 0 10px;"><strong style="color: #0F2A4A;">Power Transfer Ratio</strong> · 단계별 effective transfer = downstream/upstream.<br>
+          ① GRF→Hip 4~12 · ② Pelvis→Trunk 1.15~1.45 · ③ Trunk→Arm 4.5~7.0 · ④ Shoulder→Elbow 0.15~0.40 · ⑤ Arm→Wrist 2~3.5.</p>
+          <p style="margin: 0 0 10px;">
+            <span style="color: #A8443A; font-weight: 700;">손실</span>: ratio &lt; min → 전달 비효율 ·
+            <span style="color: #A87333; font-weight: 700;">과다</span>: ratio &gt; max → 균형 깨짐 ·
+            <span style="color: #3F7D5C; font-weight: 700;">정상</span>: elite 범위.
+          </p>
+          <p style="margin: 0 0 10px;"><strong style="color: #0F2A4A;">GRF (양 발 라벨)</strong> · Trail vGRF (뒷다리 push) = 추진 시작 · Lead vGRF (앞다리 block) = 회전 전환. <em>Elite ≥1.5 / 2.0 BW</em>.</p>
+          <p style="margin: 0 0 10px;"><strong style="color: #0F2A4A;">팔꿈치 토크/파워</strong> · Pitching_Elbow_Power가 비정상적으로 높으면 UCL stress 신호 (참고 지표). <em>elite 200~500 W</em>.</p>
+          <p style="margin: 0;"><strong style="color: #0F2A4A;">결함 라벨</strong> · <span style="color: #A8443A;">빨강</span> = 명확한 누수 · <span style="color: #A87333;">주황</span> = 미세 누수 · 색 없음 = 정상. lag·X-factor·knee collapse 자동 진단.</p>
         </div>
       </details>
       <svg viewBox="0 0 800 540" width="100%" preserveAspectRatio="xMidYMid meet" style="max-height: 540px;">
@@ -390,10 +396,10 @@
             <stop offset="0%"  stop-color="${kneeCollapse ? '#fde68a' : '#22d3ee'}"/>
             <stop offset="17%" stop-color="${kneeCollapse ? '#fbbf24' : '#60a5fa'}"/>
             <stop offset="30%" stop-color="${kneeCollapse ? '#f59e0b' : '#60a5fa'}"/>
-            <stop offset="50%" stop-color="${ptLeak ? (ptSevere ? '#ef4444' : '#f59e0b') : '#3b82f6'}"/>
-            <stop offset="72%" stop-color="${taLeak ? (taSevere ? '#ef4444' : '#f59e0b') : '#2563EB'}"/>
-            <stop offset="86%" stop-color="${taLeak ? (taSevere ? '#7f1d1d' : '#d97706') : '#1d4ed8'}"/>
-            <stop offset="100%" stop-color="${taLeak ? (taSevere ? '#7f1d1d' : '#d97706') : '#1e3a8a'}"/>
+            <stop offset="50%" stop-color="${ptLeak ? (ptSevere ? '#A8443A' : '#A87333') : '#3B5A82'}"/>
+            <stop offset="72%" stop-color="${armIssue ? (armSevere ? '#A8443A' : '#A87333') : '#3B5A82'}"/>
+            <stop offset="86%" stop-color="${armIssue ? (armSevere ? '#7F1D1D' : '#8B5A29') : '#2A4566'}"/>
+            <stop offset="100%" stop-color="${armIssue ? (armSevere ? '#7F1D1D' : '#8B5A29') : '#1E3A5F'}"/>
           </linearGradient>
           <linearGradient id="drive-${uid}" gradientUnits="userSpaceOnUse" x1="${K.rAnkle[0]}" y1="${K.rAnkle[1]}" x2="${K.pelvisR[0]}" y2="${K.pelvisR[1]}">
             <stop offset="0%"  stop-color="${driveColors.stop1}"/>
@@ -511,40 +517,45 @@
             <animate attributeName="stroke-opacity" values="0.6;0.15;0.6" dur="1.8s" repeatCount="indefinite"/>
           </circle>
           <circle cx="${K.rElbow[0]}" cy="${K.rElbow[1]}" r="6" fill="${elbowColor}" stroke="#FFFFFF" stroke-width="1.5" filter="url(#glow-${uid})"/>
-          <text x="${K.rElbow[0]}" y="${K.rElbow[1]+22}" font-size="9" fill="${elbowColor}" text-anchor="middle" font-weight="700" letter-spacing="1">ELBOW</text>
+          <!-- ★ v0.86 — 빨간점 의미 명시: 팔꿈치 부하(UCL) 신호 -->
+          <g>
+            <rect x="${K.rElbow[0]+10}" y="${K.rElbow[1]+10}" width="98" height="32" rx="4" fill="#FFFFFF" stroke="${elbowColor}" stroke-width="1.2" opacity="0.96"/>
+            <text x="${K.rElbow[0]+59}" y="${K.rElbow[1]+22}" font-size="9" fill="${elbowColor}" text-anchor="middle" font-weight="800">팔꿈치 부하 신호</text>
+            <text x="${K.rElbow[0]+59}" y="${K.rElbow[1]+35}" font-size="8.5" fill="#0F1419" text-anchor="middle" font-weight="700">${elbowStatus === 'high' ? '⚠ UCL stress 위험' : elbowStatus === 'low' ? '△ power 부족' : '✓ 정상 범위'}</text>
+          </g>
         </g>
         <circle cx="${K.rWrist[0]}" cy="${K.rWrist[1]}" r="5" fill="#22d3ee" stroke="#FFFFFF" stroke-width="1.5" filter="url(#glow-${uid})"/>
 
         <!-- ★ GRF on each foot — Trail vGRF + Lead vGRF -->
         ${trailVGRF != null ? `
         <g>
-          <rect x="${K.rAnkle[0]-32}" y="${K.rAnkle[1]+18}" width="${trailVGRF >= 1.5 ? 86 : 90}" height="40" rx="5" fill="#FAFAF7" stroke="${driveColors.label}" stroke-width="1.6"/>
-          <text x="${K.rAnkle[0]+11}" y="${K.rAnkle[1]+32}" text-anchor="middle" font-size="9" fill="${driveColors.label}" font-weight="700" letter-spacing="1">TRAIL vGRF</text>
-          <text x="${K.rAnkle[0]+11}" y="${K.rAnkle[1]+50}" text-anchor="middle" font-size="14" fill="#DCD7CF" font-weight="700" font-family="JetBrains Mono">${trailVGRF.toFixed(2)}<tspan font-size="9" fill="#6B6357" font-family="Inter"> BW</tspan></text>
+          <rect x="${K.rAnkle[0]-40}" y="${K.rAnkle[1]+18}" width="100" height="40" rx="5" fill="#FFFFFF" stroke="${driveColors.label}" stroke-width="1.6"/>
+          <text x="${K.rAnkle[0]+10}" y="${K.rAnkle[1]+32}" text-anchor="middle" font-size="10" fill="${driveColors.label}" font-weight="800">뒷다리 추진력</text>
+          <text x="${K.rAnkle[0]+10}" y="${K.rAnkle[1]+50}" text-anchor="middle" font-size="14" fill="#0F1419" font-weight="800" font-family="JetBrains Mono">${trailVGRF.toFixed(2)}<tspan font-size="9" fill="#6B7280" font-family="Inter"> BW</tspan></text>
         </g>` : ''}
         ${leadVGRF != null ? `
         <g>
-          <rect x="${K.lAnkle[0]-58}" y="${K.lAnkle[1]+10}" width="92" height="40" rx="5" fill="#FAFAF7" stroke="${leadVGRF >= 2.0 ? '#4ade80' : '#f59e0b'}" stroke-width="1.6"/>
-          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+24}" text-anchor="middle" font-size="9" fill="${leadVGRF >= 2.0 ? '#4ade80' : '#f59e0b'}" font-weight="700" letter-spacing="1">LEAD vGRF</text>
-          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+42}" text-anchor="middle" font-size="14" fill="#DCD7CF" font-weight="700" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#6B6357" font-family="Inter"> BW</tspan></text>
+          <rect x="${K.lAnkle[0]-62}" y="${K.lAnkle[1]+10}" width="100" height="40" rx="5" fill="#FFFFFF" stroke="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" stroke-width="1.6"/>
+          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+24}" text-anchor="middle" font-size="10" fill="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" font-weight="800">착지발 제동력</text>
+          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+42}" text-anchor="middle" font-size="14" fill="#0F1419" font-weight="800" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#6B7280" font-family="Inter"> BW</tspan></text>
         </g>` : ''}
 
-        <!-- 어깨 power 라벨 (왼쪽 머리 위) — v0.47 둘 다 왼쪽 정렬 -->
+        <!-- 어깨 power 라벨 (왼쪽 머리 위) — ★ v0.85 가독성 강화: 큰 숫자 dark text + 어스톤 status -->
         ${shoulderP != null ? `
         <g>
-          <rect x="42" y="48" width="170" height="50" rx="6" fill="#FAFAF7" stroke="${shoulderP >= 1200 ? '#4ade80' : '#fbbf24'}" stroke-width="1.6"/>
-          <text x="127" y="64" fill="${shoulderP >= 1200 ? '#4ade80' : '#fbbf24'}" font-size="10" font-family="Inter" font-weight="800" text-anchor="middle">★ SHOULDER POWER</text>
-          <text x="127" y="84" fill="#DCD7CF" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${shoulderP >= 1000 ? (shoulderP/1000).toFixed(2)+'k' : shoulderP.toFixed(0)}<tspan font-size="9" fill="#6B6357" font-family="Inter"> W</tspan></text>
+          <rect x="42" y="48" width="170" height="50" rx="6" fill="#FFFFFF" stroke="${shoulderP >= 1200 ? '#3F7D5C' : '#A87333'}" stroke-width="1.6"/>
+          <text x="127" y="64" fill="${shoulderP >= 1200 ? '#3F7D5C' : '#A87333'}" font-size="12" font-family="Inter" font-weight="800" text-anchor="middle">★ 어깨 파워</text>
+          <text x="127" y="86" fill="#0F1419" font-size="15" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${shoulderP >= 1000 ? (shoulderP/1000).toFixed(2)+'k' : shoulderP.toFixed(0)}<tspan font-size="10" fill="#6B7280" font-family="Inter"> W</tspan></text>
         </g>` : ''}
 
-        <!-- ★ 팔꿈치 토크/파워 라벨 — v0.47 왼쪽 어깨 박스 아래로 이동 (마네킹 머리·공 겹침 해소) -->
+        <!-- ★ 팔꿈치 토크/파워 라벨 — ★ v0.85 가독성 강화 -->
         ${elbowP != null ? `
         <g>
           <line x1="${K.rElbow[0]}" y1="${K.rElbow[1]}" x2="212" y2="141" stroke="${elbowColor}" stroke-width="1.4" stroke-dasharray="2 3"/>
-          <rect x="42" y="110" width="170" height="62" rx="6" fill="#FAFAF7" stroke="${elbowColor}" stroke-opacity="0.85" stroke-width="2"/>
-          <text x="127" y="126" fill="${elbowColor}" font-size="10" font-family="Inter" font-weight="800" text-anchor="middle" letter-spacing="1">${elbowStatus === 'high' ? '🚨 ELBOW POWER' : elbowStatus === 'low' ? '△ ELBOW POWER' : '✓ ELBOW POWER'}</text>
-          <text x="127" y="146" fill="#DCD7CF" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${elbowP >= 1000 ? (elbowP/1000).toFixed(2)+'k' : elbowP.toFixed(0)}<tspan font-size="10" fill="#6B6357" font-family="Inter"> W (peak)</tspan></text>
-          <text x="127" y="162" fill="${elbowColor}" font-size="9" font-family="Inter" text-anchor="middle">${elbowStatus === 'high' ? 'UCL stress 위험 (정상 200~500W)' : elbowStatus === 'low' ? '팔꿈치 power 부족' : '정상 (200~500W)'}</text>
+          <rect x="42" y="110" width="170" height="62" rx="6" fill="#FFFFFF" stroke="${elbowColor}" stroke-opacity="0.85" stroke-width="2"/>
+          <text x="127" y="126" fill="${elbowColor}" font-size="12" font-family="Inter" font-weight="800" text-anchor="middle" letter-spacing="0.3">${elbowStatus === 'high' ? '⚠ 팔꿈치 파워' : elbowStatus === 'low' ? '△ 팔꿈치 파워' : '✓ 팔꿈치 파워'}</text>
+          <text x="127" y="148" fill="#0F1419" font-size="15" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${elbowP >= 1000 ? (elbowP/1000).toFixed(2)+'k' : elbowP.toFixed(0)}<tspan font-size="11" fill="#6B7280" font-family="Inter"> W (peak)</tspan></text>
+          <text x="127" y="164" fill="${elbowColor}" font-size="10" font-family="Inter" text-anchor="middle">${elbowStatus === 'high' ? '팔 부하 모니터 (정상 200~500W)' : elbowStatus === 'low' ? '팔꿈치 power 부족' : '정상 (200~500W)'}</text>
         </g>` : ''}
 
         <!-- ★ v0.14 — lag·flying open·knee collapse·drive 라벨 박스 모두 제거.
@@ -553,11 +564,11 @@
              상세 결함 원인은 아래 "결함 진단 + 코칭 처방" 카드에서 확인. -->
       </svg>
 
-      <div class="text-xs mt-2 px-2" style="color: #3F3F46;">
-        <span style="color:#4ade80">●</span> 정상 ·
-        <span style="color:#f59e0b">●</span> 미세 누수 ·
-        <span style="color:#ef4444">●</span> 명확한 누수 — KINETIC_FAULTS 진단. GRF 라벨은 발에 직접 표시.
-        팔꿈치 power(=관절 토크 × 각속도)는 UCL stress 신호.
+      <div class="text-xs mt-2 px-2" style="color: #3F3F46; line-height: 1.6;">
+        <span style="color:#3F7D5C">●</span> 정상 ·
+        <span style="color:#A87333">●</span> 미세 누수 ·
+        <span style="color:#A8443A">●</span> 명확한 누수 — KINETIC_FAULTS 진단. 발 옆 라벨은 지면반력(BW=체중배수).
+        팔꿈치 빨간점 = UCL 부하 신호 (팔꿈치 power = 관절 토크 × 각속도).
       </div>
     </div>`;
   }

@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.82';  // ★ v0.82 — 모바일 반응형: 768px 이하 grid 2col로, 480px 이하 1col stack / 큰 숫자 clamp(24,8vw,48px) / Waterfall·Energy Transfer Bar 행 압축 / 6페이지 nav min-width 축소 (오프라인 패키지·PDF 모두 적용)
+  const ALGORITHM_VERSION = 'v0.86';  // ★ v0.86 — 마네킹 한국어화·재배치: SHOULDER POWER→어깨 파워, ELBOW POWER→팔꿈치 파워, TRAIL vGRF→뒷다리 추진력, LEAD vGRF→착지발 제동력 / 팔 전달 흐름선 어스톤 status (taLeak ∪ elbowStatus) / 팔꿈치 빨간점 callout "팔꿈치 부하 신호" 추가 / 앞다리 블로킹 화살표 → lKnee, 하체 추진 → 뒷다리 골반 / 팔 전달 박스 우측 이동(615→660) / GRF 라벨 dark text 가독성 개선
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
