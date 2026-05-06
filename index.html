@@ -636,11 +636,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.70"></script>
-<script src="metadata_theia.js?v=0.70"></script>
-<script src="theia_app.js?v=0.70"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.70"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.70"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.71"></script>
+<script src="metadata_theia.js?v=0.71"></script>
+<script src="theia_app.js?v=0.71"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.71"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.71"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
@@ -1189,6 +1189,8 @@ function loadSavedPlayer(key) {
   }
   if (r.fitness) window.TheiaApp.setFitnessData(r.fitness, r.fitness_meta);
   if (r.mode) selectMode(r.mode);
+  // ★ v0.71 — 자동 복원 시 LAST_RESULT 갱신 (downloadOfflinePackage·saveCurrentReport·HTML 다운로드 등이 의존)
+  if (r.result && window.TheiaApp.setLastResult) window.TheiaApp.setLastResult(r.result);
   // 결과 영역에 직접 렌더 (c3d.txt 재업로드 없이)
   const html = window.TheiaApp.renderReport(r.result);
   document.getElementById('result-area').innerHTML = `<div class="card p-6">${html}</div>`;

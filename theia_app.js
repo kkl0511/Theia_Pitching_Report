@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.70';  // ★ v0.70 — Chart.js radar grid·label·도메인 색상 KBO Navy 톤 (체력=fitness blue, 메카닉=mechanics red, 제구=control green) + tick·grid·angleLines KBO 토큰화
+  const ALGORITHM_VERSION = 'v0.71';  // ★ v0.71 — Bug fix: 자동 복원 시 LAST_RESULT 갱신 안 됨 → 다운로드 버튼·저장 거부됐던 버그. setLastResult 추가 + loadSavedPlayer에서 호출
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
@@ -1358,6 +1358,8 @@
   function setPlayer(p) { Object.assign(CURRENT_PLAYER, p); }
   function getPlayer() { return Object.assign({}, CURRENT_PLAYER); }
   function getLastResult() { return LAST_RESULT; }
+  // ★ v0.71 — 자동 복원 시 LAST_RESULT 갱신 (downloadOfflinePackage / saveCurrentReport 등이 의존)
+  function setLastResult(r) { LAST_RESULT = r || null; }
   function setFitnessData(fitness, meta) {
     CURRENT_FITNESS = fitness || null;
     CURRENT_FITNESS_META = meta || null;
@@ -1460,7 +1462,7 @@
     ALGORITHM_VERSION,
     parseC3dTxt, extractScalars, aggregateTrials, calculateScores,
     processFiles, renderReport,
-    setMode, getMode, setPlayer, getPlayer, getLastResult,
+    setMode, getMode, setPlayer, getPlayer, getLastResult, setLastResult,
     setFitnessData, getFitnessData, getFitnessMeta,
     saveCurrentReport, listSavedPlayers, loadSavedPlayer, deleteSavedPlayer, recomputeAllSaved,
   };
