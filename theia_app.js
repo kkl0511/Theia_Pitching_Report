@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.69';  // ★ v0.69 — 마네킹 SVG 내부 dark 색상 (#0b1220, #1e293b, #08080c, #0f1a30, #0a1322, #0b1f3a, #0d182b, #1c1d21, #2a3a5a) + slate text (#64748b, #94a3b8, #e2e8f0, #cbd5e1, #475569, #334155, #000) 일괄 KBO 톤으로 전환
+  const ALGORITHM_VERSION = 'v0.70';  // ★ v0.70 — Chart.js radar grid·label·도메인 색상 KBO Navy 톤 (체력=fitness blue, 메카닉=mechanics red, 제구=control green) + tick·grid·angleLines KBO 토큰화
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

@@ -2726,13 +2726,14 @@
           },
           options: {
             responsive: true, maintainAspectRatio: false,
+            // ★ v0.70 — KBO Navy/White 톤 (light grid + navy text + KBO 토큰)
             scales: {
               r: {
                 min: 0, max: 100,
-                ticks: { stepSize: 25, color: 'rgba(120,120,120,0.6)', backdropColor: 'transparent', font: { size: 9 } },
-                grid: { color: 'rgba(120,120,120,0.2)' },
-                angleLines: { color: 'rgba(120,120,120,0.2)' },
-                pointLabels: { color: 'var(--text-secondary)', font: { size: 11 } },
+                ticks: { stepSize: 25, color: '#6B6357', backdropColor: 'transparent', font: { size: 9, family: "'JetBrains Mono', monospace" } },
+                grid: { color: '#DCD7CF' },
+                angleLines: { color: '#DCD7CF' },
+                pointLabels: { color: '#1A1A1A', font: { size: 11, family: "'Inter', 'Noto Sans KR', sans-serif", weight: '600' } },
               },
             },
             plugins: { legend: { display: false } },
@@ -2740,9 +2741,10 @@
         });
       } catch (e) { console.warn('Radar init failed', canvasId, e); }
     };
-    drawRadar('theia-radar-fit', fitDims, '#0070C0');
-    drawRadar('theia-radar-mech', mechDims, '#fb923c');
-    drawRadar('theia-radar-ctrl', ctrlDims, '#7030A0');
+    // ★ v0.70 — KBO 도메인 토큰 (체력=fitness blue, 메카닉=mechanics red, 제구=control green)
+    drawRadar('theia-radar-fit',  fitDims,  '#0070C0');  // fitness
+    drawRadar('theia-radar-mech', mechDims, '#C00000');  // mechanics
+    drawRadar('theia-radar-ctrl', ctrlDims, '#16A34A');  // control (green for consistency)
   }
 
   // ════════════════════════════════════════════════════════════
