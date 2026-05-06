@@ -19,6 +19,120 @@
   const _getFitMeta = () => (window.TheiaApp && window.TheiaApp.getFitnessMeta ? window.TheiaApp.getFitnessMeta() : null);
   const ALGORITHM_VERSION = 'v0.7';  // legacy 참조 호환 (실제로는 _appVer() 사용)
 
+  // ════════════════════════════════════════════════════════════
+  // ★ v0.62 — KBO 디자인 핸드오프 v0.8 (Navy/White) 8 컴포넌트 vanilla JS 헬퍼
+  // 사용 위치: .kbo-scope 래퍼 안에서만 (index.html에 CSS 정의)
+  // ════════════════════════════════════════════════════════════
+  const KBO_T = {
+    navy: '#0F2A4A', navySoft: '#2E75B6',
+    text: '#1A1A1A', text2: '#3F3F46', textMuted: '#6B6357',
+    bgCard: '#FFFFFF', bgElev: '#F3F1EC', border: '#DCD7CF', borderSoft: '#E8E4DD',
+    good: '#16A34A', caution: '#B45309', leak: '#B91C1C', risk: '#7030A0',
+    output: '#C00000', transfer: '#0070C0',
+    fitness: '#0070C0', mechanics: '#C00000', injury: '#D97706',
+  };
+
+  // 1. MetricCard
+  function _kboMetricCard({ label, value, unit, delta, deltaLabel, color = KBO_T.navy, hint, size = 'md' }) {
+    const sizes = { sm: 32, md: 44, lg: 64, xl: 88 };
+    const fontSize = sizes[size] || 44;
+    return `<div style="min-width: 0;">
+      <div class="kbo-eyebrow" style="margin-bottom: 6px;">${label}</div>
+      <div style="display: flex; align-items: baseline; gap: 4px;">
+        <span class="kbo-metric-num" style="font-size: ${fontSize}px; color: ${color};">${value}</span>
+        ${unit ? `<span class="kbo-metric-unit" style="font-size: ${fontSize}px;">${unit}</span>` : ''}
+      </div>
+      ${delta ? `<div class="kbo-mono" style="font-size: 13px; color: ${KBO_T.good}; font-weight: 700; margin-top: 4px;">${delta}${deltaLabel ? `<span style="color: ${KBO_T.textMuted}; font-weight: 400; margin-left: 6px;">${deltaLabel}</span>` : ''}</div>` : ''}
+      ${hint ? `<div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-top: 4px;">${hint}</div>` : ''}
+    </div>`;
+  }
+
+  // 2. ConfidenceBadge
+  function _kboConfidenceBadge({ level = 'm', n, total, label } = {}) {
+    const map = { h: { cls: 'kbo-conf-h', txt: 'High' }, m: { cls: 'kbo-conf-m', txt: 'Medium' }, l: { cls: 'kbo-conf-l', txt: 'Low' } };
+    const m = map[level] || map.m;
+    return `<span class="kbo-conf ${m.cls}">
+      <span style="font-weight: 700;">● ${m.txt}</span>
+      ${n != null ? `<span style="opacity: 0.7;">${n}/${total}</span>` : ''}
+      ${label ? `<span style="opacity: 0.7;">${label}</span>` : ''}
+    </span>`;
+  }
+
+  // 3. StatusPill
+  function _kboStatusPill({ kind = 'good', text = '' }) {
+    const map = { good: 'kbo-pill-good', caution: 'kbo-pill-caution', leak: 'kbo-pill-leak', risk: 'kbo-pill-risk' };
+    return `<span class="kbo-pill ${map[kind] || map.good}">${text}</span>`;
+  }
+
+  // 4. SectionTitle
+  function _kboSectionTitle({ kicker, title, sub, right = '' } = {}) {
+    return `<div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 14px; gap: 12px; flex-wrap: wrap;">
+      <div>
+        ${kicker ? `<div class="kbo-eyebrow" style="margin-bottom: 4px;">${kicker}</div>` : ''}
+        <div class="kbo-display" style="font-size: 18px; color: ${KBO_T.navy}; font-weight: 700;">${title}</div>
+        ${sub ? `<div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 2px;">${sub}</div>` : ''}
+      </div>
+      ${right}
+    </div>`;
+  }
+
+  // 5. PageHeader
+  function _kboPageHeader({ num, en, kr, q }) {
+    return `<div class="kbo-page-head">
+      <span class="kbo-page-num">P${num}</span>
+      <span class="kbo-page-title-en">${en}</span>
+      <span class="kbo-page-title-kr">— ${kr}</span>
+      ${q ? `<span class="kbo-page-q">${q}</span>` : ''}
+    </div>`;
+  }
+
+  // 6. FaultCard
+  function _kboFaultCard({ stage, title, severity = 'high', evidence, result, drill, accent = KBO_T.leak }) {
+    return `<div class="kbo-card" style="padding: 22px; border-top: 3px solid ${accent}; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+        <div>
+          <div class="kbo-eyebrow" style="color: ${accent}; margin-bottom: 4px;">${stage}</div>
+          <div class="kbo-display" style="font-size: 22px; color: ${KBO_T.text}; line-height: 1.2;">${title}</div>
+        </div>
+        ${_kboStatusPill({ kind: severity === 'high' ? 'leak' : 'caution', text: severity === 'high' ? '★★★ 매우 높음' : '★★ 중간' })}
+      </div>
+      <div style="display: grid; grid-template-columns: 88px 1fr; gap: 10px; font-size: 13px; line-height: 1.55;">
+        <div class="kbo-eyebrow" style="padding-top: 2px;">근거</div><div style="color: ${KBO_T.text2};">${evidence}</div>
+        <div class="kbo-eyebrow" style="padding-top: 2px;">결과</div><div style="color: ${KBO_T.text2};">${result}</div>
+        <div class="kbo-eyebrow" style="padding-top: 2px;">처방</div><div style="color: ${KBO_T.text2};">${drill}</div>
+      </div>
+    </div>`;
+  }
+
+  // 7. EvidenceModule
+  function _kboEvidenceModule({ proves, title, conf, footnote, body = '' } = {}) {
+    return `<div class="kbo-card" style="padding: 20px;">
+      <div class="kbo-eyebrow" style="color: ${KBO_T.navySoft}; margin-bottom: 4px;">이것이 증명하는 것</div>
+      <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px;">
+        <div class="kbo-display" style="font-size: 16px; color: ${KBO_T.text};">${proves}</div>
+        ${conf ? _kboConfidenceBadge({ level: conf }) : ''}
+      </div>
+      ${title ? `<div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-bottom: 12px;">${title}</div>` : ''}
+      ${body}
+      ${footnote ? `<div style="font-size: 11px; color: ${KBO_T.textMuted}; margin-top: 12px; padding-top: 10px; border-top: 1px dashed ${KBO_T.borderSoft};">${footnote}</div>` : ''}
+    </div>`;
+  }
+
+  // 8. PilotRoadmap
+  function _kboPilotRoadmap({ weeks }) {
+    const items = (weeks || []).map(w => `<div style="text-align: center;">
+      <div style="width: 56px; height: 56px; margin: 0 auto; border-radius: 50%; background: ${w.milestone ? KBO_T.navy : KBO_T.bgCard}; border: 2px solid ${w.milestone ? KBO_T.navy : KBO_T.border}; display: flex; align-items: center; justify-content: center; color: ${w.milestone ? '#fff' : KBO_T.navy};">
+        <div class="kbo-display" style="font-size: 13px; line-height: 1; text-align: center;">${w.range}</div>
+      </div>
+      <div class="kbo-display" style="font-size: 14px; margin-top: 12px; color: ${KBO_T.text};">${w.title}</div>
+      <div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-top: 4px; line-height: 1.5;">${w.detail || ''}</div>
+    </div>`).join('');
+    return `<div style="position: relative;">
+      <div style="position: absolute; left: 28px; right: 28px; top: 28px; height: 2px; background: ${KBO_T.border}; z-index: 0;"></div>
+      <div style="display: grid; grid-template-columns: repeat(${(weeks||[]).length || 4}, 1fr); gap: 12px; position: relative; z-index: 1;">${items}</div>
+    </div>`;
+  }
+
   // ★ v0.57 — 6페이지 재구조화 (wireframe pack 기반)
   //   P1 한눈에 보는 결론 → P2 Force Generation → P3 Force Transmission
   //   → P4 Root-Cause Timeline → P5 Evidence Dashboard → P6 Action Plan & Retest
@@ -128,15 +242,110 @@
     return { level: 'low', label: '신뢰도 낮음', cls: 'conf-low', icon: '○' };
   }
 
-  // ── P1 Executive Summary ──
+  // ── P1 Executive Summary (★ v0.62 KBO Navy/White 디자인 핸드오프 v0.8 적용) ──
   function _renderP1Summary(result) {
+    const m = result.varScores || {};
+    const meta = result._meta || {};
+    const pred = _predictPotentialVelo(result);
+    const fit = _getFit() || {};
+    const fitN = ['imtp_peak_force_bm','cmj_peak_power_bm','cmj_rsi_modified','bmi'].filter(k => fit[k] != null).length;
+
+    const cur     = pred?.current ?? null;
+    const fitOnly = pred?.fitOnly ?? null;
+    const mechOnly= pred?.mechOnly ?? null;
+    const both    = pred?.both ?? null;
+    const dFit  = (cur != null && fitOnly != null) ? +(fitOnly - cur).toFixed(1) : null;
+    const dMech = (cur != null && mechOnly != null) ? +(mechOnly - cur).toFixed(1) : null;
+    const dBoth = (cur != null && both != null) ? +(both - cur).toFixed(1) : null;
+
+    const hand = meta.handedness || 'right';
+    const handLabel = hand === 'left' ? '좌투' : '우투';
+    const level = meta.level || '프로';
+    const athlete = meta.athlete || '신규 선수';
+    const playerMode = _getPlayerMode(hand, cur);
+    const typeColor = playerMode?.color || KBO_T.injury;
+
+    // Waterfall 4-row
+    const wfRow = (lab, val, w, col, delta, note) => `
+      <div style="display: grid; grid-template-columns: 140px 1fr 80px 1fr; gap: 16px; align-items: center; padding: 10px 0;">
+        <div style="font-size: 14px; color: ${KBO_T.text}; font-weight: 600;">${lab}</div>
+        <div style="background: ${KBO_T.bgElev}; height: 32px; border-radius: 6px; position: relative; overflow: hidden;">
+          <div style="position: absolute; inset: 0 ${100-w}% 0 0; background: ${col}; opacity: 0.92; border-radius: 6px;"></div>
+          <div style="position: absolute; inset: 0; display: flex; align-items: center; padding: 0 14px; font-family: 'Space Grotesk', sans-serif; font-size: 16px; color: #fff; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.25);">
+            ${val != null ? val.toFixed(1) : '—'} <span style="font-size: 11px; margin-left: 4px; opacity: 0.85;">km/h</span>
+          </div>
+        </div>
+        <div class="kbo-mono" style="font-size: 14px; color: ${delta != null && delta > 0 ? KBO_T.good : KBO_T.textMuted}; font-weight: 700; text-align: right;">${delta != null && delta > 0 ? '+'+delta.toFixed(1) : '—'}</div>
+        <div style="font-size: 12px; color: ${KBO_T.textMuted};">${note}</div>
+      </div>`;
+    const maxBoth = Math.max(140, both || 140);
+    const wfRows = [
+      [ '측정 구속',          cur,      cur     ? Math.round(cur     /maxBoth*100) : 65, KBO_T.text2,     null,  `Trial 평균 (n=${result._n_trials || '?'})` ],
+      [ '체력만 발전',        fitOnly,  fitOnly ? Math.round(fitOnly /maxBoth*100) : 67, KBO_T.fitness,   dFit,  '체력 카테고리 점수 부족분 100% 채움' ],
+      [ '메카닉만 발전',      mechOnly, mechOnly? Math.round(mechOnly/maxBoth*100) : 80, KBO_T.mechanics, dMech, 'Output + Transfer 부족분 100% 채움 — 가장 큰 수익' ],
+      [ '동시 발전 (상한)',   both,     both    ? Math.round(both    /maxBoth*100) : 92, KBO_T.injury,    dBoth, '체력·메카닉 동시 향상 시 6주 retest 도달 가능' ],
+    ].map(([l,v,w,c,d,n]) => wfRow(l,v,w,c,d,n)).join('');
+
+    const confLevel = fitN >= 3 ? 'h' : fitN >= 1 ? 'm' : 'l';
+    const confLabel = fitN === 0 ? '체력 미측정' : `체력 ${fitN}/4`;
+
+    // Headline
+    const headline = `
+      <div style="margin-bottom: 32px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">The Theia Take · ${athlete} · ${level} ${handLabel}</div>
+        <div class="kbo-headline">
+          현재 <em>${cur != null ? cur.toFixed(1) : '—'} km/h</em> · 메카닉 정돈만으로 <em>${dMech != null && dMech > 0 ? '+'+dMech.toFixed(1) : '—'} km/h</em>,<br/>
+          체력 동반 발전 시 상한 <em>${both != null ? both.toFixed(1) : '—'} km/h</em>.
+        </div>
+        <div style="font-size: 14px; color: ${KBO_T.textMuted}; margin-top: 12px; max-width: 720px;">
+          유형 — <span style="color: ${typeColor}; font-weight: 700;">${playerMode?.label || '평가'}</span> ·
+          ${playerMode?.desc || '출력·전달·반복성 종합 — 자세한 진단은 P2~P4 참조'}
+        </div>
+      </div>`;
+
+    // Waterfall card
+    const waterfall = `
+      <div class="kbo-card" style="padding: 24px; margin-bottom: 18px;">
+        ${_kboSectionTitle({
+          kicker: 'Velocity Upside · Waterfall',
+          title: '어디를 고치면 어디까지 오르는가',
+          sub: '측정값 대비 체력·메카닉 향상이 가져올 잠재 구속 단계 비교',
+          right: _kboConfidenceBadge({ level: confLevel, label: confLabel }),
+        })}
+        ${wfRows}
+        ${fitN < 3 ? `<div style="margin-top: 14px; padding: 10px 14px; border-left: 3px solid ${KBO_T.caution}; background: rgba(180,83,9,0.05); border-radius: 4px; font-size: 12px; color: ${KBO_T.text2};">
+          체력 측정 변수 ${fitN}/4 — "체력만 발전" 추정치는 placeholder. VALD(SJ/CMJ/IMTP) 입력 후 신뢰도 High로 전환됩니다.
+        </div>` : ''}
+      </div>`;
+
+    // 3 KPI cards
+    const kpis = `
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+        <div class="kbo-card" style="padding: 20px; border-left: 3px solid ${KBO_T.fitness};">
+          ${_kboMetricCard({ label: '체력 (Fitness)', value: fitOnly != null ? fitOnly.toFixed(1) : '—', unit: ' km/h',
+            delta: dFit != null && dFit > 0 ? '+'+dFit.toFixed(1) : null, deltaLabel: 'km/h',
+            color: KBO_T.fitness, size: 'lg', hint: 'VALD 보강 시 신뢰도 향상' })}
+        </div>
+        <div class="kbo-card" style="padding: 20px; border-left: 3px solid ${KBO_T.mechanics};">
+          ${_kboMetricCard({ label: '메카닉 (Mechanics)', value: mechOnly != null ? mechOnly.toFixed(1) : '—', unit: ' km/h',
+            delta: dMech != null && dMech > 0 ? '+'+dMech.toFixed(1) : null, deltaLabel: 'km/h · ★ 가장 큰 수익',
+            color: KBO_T.mechanics, size: 'lg', hint: 'Output + Transfer 회복' })}
+        </div>
+        <div class="kbo-card" style="padding: 20px; border-left: 3px solid ${KBO_T.injury};">
+          ${_kboMetricCard({ label: '동시 발전 상한', value: both != null ? both.toFixed(1) : '—', unit: ' km/h',
+            delta: dBoth != null && dBoth > 0 ? '+'+dBoth.toFixed(1) : null, deltaLabel: 'km/h · 6주 ceiling',
+            color: KBO_T.injury, size: 'lg', hint: '둘 다 향상 시 retest 목표' })}
+        </div>
+      </div>`;
+
     return `
-    <section id="p1" class="report-page">
-      ${_pageBanner('1', '한눈에 보는 결론', 'Executive Summary', '이 선수는 어떤 유형이고 어디를 먼저 고치면 속도가 오르는가?')}
-      ${_renderHeader(result)}
-      ${_renderConfidenceCoverageStrip(result)}
-      ${_renderVeloWaterfall(result)}
-      ${_renderQuadrantDiagnosis(result)}
+    <section id="p1" class="report-page kbo-scope">
+      <div class="kbo-pad">
+        ${_kboPageHeader({ num: '1', en: 'Executive Demo Summary', kr: '한눈에 보는 결론', q: '이 선수는 어떤 유형이고 어디를 먼저 고치면 속도가 오르는가' })}
+        ${headline}
+        ${waterfall}
+        ${kpis}
+      </div>
     </section>`;
   }
 

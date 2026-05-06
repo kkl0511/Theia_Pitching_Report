@@ -259,6 +259,103 @@
   }
 
   .hidden { display: none !important; }
+
+  /* ════════════════════════════════════════════════════════════
+     ★ v0.62 — KBO Navy/White premium 디자인 토큰 (디자인 핸드오프 v0.8)
+     '.kbo-scope' 래퍼 안에서만 적용. 기존 dark 입력 폼과 분리.
+     ════════════════════════════════════════════════════════════ */
+  .kbo-scope {
+    font-family: 'Inter', 'Noto Sans KR', 'Malgun Gothic', -apple-system, system-ui, sans-serif;
+    font-size: 15px; line-height: 1.55;
+    color: #1A1A1A; background: #FAFAF7;
+    box-sizing: border-box;
+    --kbo-navy: #0F2A4A; --kbo-navy-deep: #0A1F38; --kbo-navy-soft: #2E75B6;
+    --kbo-bg: #FAFAF7; --kbo-bg-card: #FFFFFF; --kbo-bg-elev: #F3F1EC;
+    --kbo-border: #DCD7CF; --kbo-border-soft: #E8E4DD;
+    --kbo-text: #1A1A1A; --kbo-text-2: #3F3F46; --kbo-text-muted: #6B6357;
+    --kbo-good: #16A34A; --kbo-caution: #B45309; --kbo-leak: #B91C1C; --kbo-risk: #7030A0;
+    --kbo-output: #C00000; --kbo-transfer: #0070C0;
+    --kbo-fitness: #0070C0; --kbo-mechanics: #C00000; --kbo-injury: #D97706;
+    --kbo-shadow: 0 1px 2px rgba(15,42,74,0.04), 0 4px 12px rgba(15,42,74,0.05);
+    --kbo-shadow-lg: 0 2px 6px rgba(15,42,74,0.06), 0 12px 32px rgba(15,42,74,0.08);
+  }
+  .kbo-scope * { box-sizing: border-box; }
+  .kbo-scope .kbo-display { font-family: 'Space Grotesk', 'Noto Sans KR', system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+  .kbo-scope .kbo-mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+  .kbo-scope .kbo-pad { padding: 40px 48px; }
+
+  /* Page header strip */
+  .kbo-scope .kbo-page-head {
+    display: flex; align-items: baseline; gap: 14px;
+    padding-bottom: 18px; margin-bottom: 28px;
+    border-bottom: 2px solid var(--kbo-navy);
+    flex-wrap: wrap;
+  }
+  .kbo-scope .kbo-page-num {
+    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 12px;
+    letter-spacing: 0.18em; color: var(--kbo-navy);
+    padding: 6px 12px; border: 1.5px solid var(--kbo-navy); border-radius: 4px;
+  }
+  .kbo-scope .kbo-page-title-en {
+    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 26px;
+    color: var(--kbo-navy); letter-spacing: -0.01em;
+  }
+  .kbo-scope .kbo-page-title-kr { font-size: 16px; color: var(--kbo-text-muted); margin-left: 4px; }
+  .kbo-scope .kbo-page-q { margin-left: auto; font-size: 13px; color: var(--kbo-text-muted); }
+
+  /* Headline (P1) */
+  .kbo-scope .kbo-headline {
+    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700;
+    font-size: 32px; line-height: 1.25; letter-spacing: -0.015em;
+    color: var(--kbo-text);
+  }
+  .kbo-scope .kbo-headline em { font-style: normal; color: var(--kbo-navy); }
+
+  /* Cards */
+  .kbo-scope .kbo-card {
+    background: var(--kbo-bg-card); border: 1px solid var(--kbo-border);
+    border-radius: 10px; box-shadow: var(--kbo-shadow);
+  }
+
+  /* Confidence badges */
+  .kbo-scope .kbo-conf {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 999px; letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .kbo-scope .kbo-conf-h { color: var(--kbo-good); background: rgba(22,163,74,0.08); border: 1px solid var(--kbo-good); }
+  .kbo-scope .kbo-conf-m { color: var(--kbo-caution); background: rgba(180,83,9,0.08); border: 1px solid var(--kbo-caution); }
+  .kbo-scope .kbo-conf-l { color: var(--kbo-leak); background: rgba(185,28,28,0.06); border: 1px solid var(--kbo-leak); }
+
+  /* Status pills */
+  .kbo-scope .kbo-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+    padding: 4px 10px; border-radius: 4px; letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .kbo-scope .kbo-pill::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  }
+  .kbo-scope .kbo-pill-good { color: var(--kbo-good); background: rgba(22,163,74,0.08); }
+  .kbo-scope .kbo-pill-caution { color: var(--kbo-caution); background: rgba(180,83,9,0.10); }
+  .kbo-scope .kbo-pill-leak { color: var(--kbo-leak); background: rgba(185,28,28,0.08); }
+  .kbo-scope .kbo-pill-risk { color: var(--kbo-risk); background: rgba(112,48,160,0.08); }
+
+  /* Eyebrow + metric */
+  .kbo-scope .kbo-eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.14em; color: var(--kbo-text-muted); text-transform: uppercase;
+  }
+  .kbo-scope .kbo-metric-num {
+    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; line-height: 0.95;
+    letter-spacing: -0.02em;
+  }
+  .kbo-scope .kbo-metric-unit {
+    font-family: 'Inter', sans-serif; font-weight: 400; color: var(--kbo-text-muted);
+    font-size: 0.4em; margin-left: 4px;
+  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -510,11 +607,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.61"></script>
-<script src="metadata_theia.js?v=0.61"></script>
-<script src="theia_app.js?v=0.61"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.61"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.61"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.62"></script>
+<script src="metadata_theia.js?v=0.62"></script>
+<script src="theia_app.js?v=0.62"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.62"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.62"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>

@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.61';  // ★ v0.61 — PDF §4 모순 #1·#7 + §5 Confidence Coverage Strip (P1) — 코치·프론트 가독성 강화
+  const ALGORITHM_VERSION = 'v0.62';  // ★ v0.62 — 디자인 핸드오프 v0.8 1차 적용 (Navy/White 토큰 + 8 컴포넌트 + P1 새 디자인)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
