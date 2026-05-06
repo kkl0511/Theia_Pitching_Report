@@ -44,8 +44,8 @@
     const taSevere = taLag != null && (taLag < -30 || taLag > 90);
     const ptColor = !ptLeak ? '#60a5fa' : (ptSevere ? '#ef4444' : '#f59e0b');
     const taColor = !taLeak ? '#2563EB' : (taSevere ? '#ef4444' : '#f59e0b');
-    const ptTextColor = !ptLeak ? '#94a3b8' : (ptSevere ? '#ef4444' : '#fcd34d');
-    const taTextColor = !taLeak ? '#94a3b8' : (taSevere ? '#fca5a5' : '#fcd34d');
+    const ptTextColor = !ptLeak ? '#6B6357' : (ptSevere ? '#ef4444' : '#fcd34d');
+    const taTextColor = !taLeak ? '#6B6357' : (taSevere ? '#fca5a5' : '#fcd34d');
 
     // ── 2. Drive leg (Trail) status — Theia: vGRF + Trail Hip Power ──
     const trailVGRF = v('Trail_leg_peak_vertical_GRF');
@@ -60,7 +60,7 @@
       normal: { stop1: '#22d3ee', stop2: '#3b82f6', label: '#3b82f6', text: '✓ 추진 양호' },
       weak:   { stop1: '#fde68a', stop2: '#f59e0b', label: '#f59e0b', text: '△ 추진 약함' },
       leak:   { stop1: '#fca5a5', stop2: '#ef4444', label: '#ef4444', text: '⚠ 추진 부족' },
-      na:     { stop1: '#475569', stop2: '#475569', label: '#64748b', text: '데이터 없음' },
+      na:     { stop1: '#3F3F46', stop2: '#3F3F46', label: '#3F3F46', text: '데이터 없음' },
     }[driveStatus];
 
     // ── 3. Lead leg block — vGRF + knee collapse ──
@@ -197,7 +197,7 @@
     const okCnt = flowEvidences.filter(e => e.ok).length;
     const totalEv = flowEvidences.length;
     let overall, overallColor;
-    if (totalEv === 0) { overall = '데이터 부족 — 평가 불가'; overallColor = '#64748b'; }
+    if (totalEv === 0) { overall = '데이터 부족 — 평가 불가'; overallColor = '#3F3F46'; }
     else if (lossCnt === 0 && surplusCnt === 0) { overall = '✅ 키네틱 체인 정상 — 모든 단계 효율 양호'; overallColor = '#16a34a'; }
     else if (lossCnt > 0) { overall = `⚠ ${lossCnt}개 단계에서 power 손실 — 전달 효율 부족`; overallColor = '#dc2626'; }
     else { overall = `△ ${surplusCnt}개 단계 ratio 과다 — UCL/joint stress 위험 패턴`; overallColor = '#fb923c'; }
@@ -205,12 +205,12 @@
     const evidenceHtml = flowEvidences.map(e => {
       const c = e.loss ? '#dc2626' : e.surplus ? '#fb923c' : '#16a34a';
       const icon = e.loss ? '⚠' : e.surplus ? '△' : '✓';
-      return `<div style="background: var(--bg-elevated, #1c1d21); padding: 8px 10px; margin-bottom: 4px; border-radius: 4px; border-left: 3px solid ${c}; font-size: 11px;">
+      return `<div style="background: var(--bg-elevated, #1A1A1A); padding: 8px 10px; margin-bottom: 4px; border-radius: 4px; border-left: 3px solid ${c}; font-size: 11px;">
         <div class="flex justify-between items-baseline flex-wrap">
           <strong style="color: ${c};">${icon} ${e.label}</strong>
           <span class="mono" style="color: ${c}; font-weight: 700;">ratio ${e.ratio.toFixed(2)}</span>
         </div>
-        <div class="mono text-[10px] mt-1" style="color: var(--text-muted, #64748b);">
+        <div class="mono text-[10px] mt-1" style="color: var(--text-muted, #3F3F46);">
           ${e.up_label} ${e.up_val} → ${e.dn_label} ${e.dn_val} · 이상 ${e.idealMin.toFixed(2)}~${e.idealMax.toFixed(2)} (${e.unit})
         </div>
         ${e.ke_loss_label ? `<div class="text-[10px] mt-1" style="color: ${c};">⚡ ${e.ke_loss_label}</div>` : ''}
@@ -265,19 +265,19 @@
       const measured = eliAreas.filter(a => a.score != null);
       const totalW = measured.reduce((s, a) => s + a.weight, 0);
       eliVal = totalW ? Math.round(measured.reduce((s, a) => s + a.score * a.weight, 0) / totalW) : null;
-      eliGrade = eliVal != null ? TM.getELIGrade(eliVal) : { color: '#94a3b8', label: '미평가', feedback: '' };
+      eliGrade = eliVal != null ? TM.getELIGrade(eliVal) : { color: '#6B6357', label: '미평가', feedback: '' };
 
       // 우상단 큰 ELI 점수 패널 (HTML)
       eliPanel = `
-        <div style="background: #0b1220; border: 2px solid ${eliGrade.color}; border-radius: 8px; padding: 12px 16px; min-width: 220px;">
-          <div class="text-[10px] mono uppercase" style="color: var(--text-muted, #64748b); letter-spacing: 0.1em;">INTEGRATED ELI</div>
-          <div class="display" style="font-size: 42px; color: ${eliGrade.color}; font-weight: 700; line-height: 1;">${eliVal != null ? eliVal : '—'}<span class="text-sm" style="color: var(--text-muted, #64748b);">/100</span></div>
+        <div style="background: #FAFAF7; border: 2px solid ${eliGrade.color}; border-radius: 8px; padding: 12px 16px; min-width: 220px;">
+          <div class="text-[10px] mono uppercase" style="color: var(--text-muted, #3F3F46); letter-spacing: 0.1em;">INTEGRATED ELI</div>
+          <div class="display" style="font-size: 42px; color: ${eliGrade.color}; font-weight: 700; line-height: 1;">${eliVal != null ? eliVal : '—'}<span class="text-sm" style="color: var(--text-muted, #3F3F46);">/100</span></div>
           <div class="text-xs" style="color: ${eliGrade.color}; font-weight: 600; margin-top: 2px;">${eliGrade.label}</div>
           <!-- 5단계 색상 띠 + 본 선수 위치 -->
           <div style="position: relative; height: 8px; margin-top: 6px; border-radius: 2px; overflow: hidden; background: linear-gradient(90deg, #dc2626 0%, #dc2626 40%, #f87171 40%, #f87171 54%, #fb923c 54%, #fb923c 68%, #22d3ee 68%, #22d3ee 84%, #16a34a 84%, #16a34a 100%);">
             ${eliVal != null ? `<div style="position: absolute; left: ${Math.min(100, eliVal)}%; top: -2px; width: 2px; height: 12px; background: white; box-shadow: 0 0 4px white;"></div>` : ''}
           </div>
-          <div class="text-[9px] mono mt-1" style="color: var(--text-muted, #64748b); display: flex; justify-content: space-between;">
+          <div class="text-[9px] mono mt-1" style="color: var(--text-muted, #3F3F46); display: flex; justify-content: space-between;">
             <span>0</span><span>40</span><span>55</span><span>70</span><span>85</span><span>100</span>
           </div>
         </div>`;
@@ -305,7 +305,7 @@
         const pos = labelPositions[i];
         if (!pos) return '';
         const sc = a.score;
-        const c = sc == null ? '#64748b' : sc >= 80 ? '#16a34a' : sc >= 60 ? '#22d3ee' : sc >= 40 ? '#fb923c' : '#dc2626';
+        const c = sc == null ? '#3F3F46' : sc >= 80 ? '#16a34a' : sc >= 60 ? '#22d3ee' : sc >= 40 ? '#fb923c' : '#dc2626';
         const isStarred = a.weight >= 20 ? ' ★' : '';
         const W = 150, H = 46;
         // 화살표 line — 박스 중앙에서 분절 keypoint로
@@ -319,23 +319,23 @@
           <circle cx="${pos.anchorX}" cy="${pos.anchorY}" r="4" fill="${c}" opacity="0.7"/>
           <!-- 박스 -->
           <rect x="${pos.boxX}" y="${pos.boxY}" width="${W}" height="${H}" rx="5"
-                fill="#0b1220" stroke="${c}" stroke-width="1.8" opacity="0.95"/>
+                fill="#FAFAF7" stroke="${c}" stroke-width="1.8" opacity="0.95"/>
           <!-- 영역 이름 -->
           <text x="${pos.boxX + 8}" y="${pos.boxY + 16}" font-size="12" fill="${c}"
                 font-weight="700" letter-spacing="0.3">${a.name}${isStarred}</text>
           <!-- 점수 (큰 폰트) -->
-          <text x="${pos.boxX + 8}" y="${pos.boxY + 38}" font-size="20" fill="#e2e8f0"
-                font-weight="700" font-family="JetBrains Mono">${sc != null ? sc + '점' : '—'}<tspan font-size="11" fill="var(--text-muted, #64748b)" font-family="Inter" font-weight="500"> w=${a.weight}</tspan></text>
+          <text x="${pos.boxX + 8}" y="${pos.boxY + 38}" font-size="20" fill="#DCD7CF"
+                font-weight="700" font-family="JetBrains Mono">${sc != null ? sc + '점' : '—'}<tspan font-size="11" fill="var(--text-muted, #3F3F46)" font-family="Inter" font-weight="500"> w=${a.weight}</tspan></text>
         </g>`;
       }).join('');
     }
 
     return `
-    <div class="cat-card mb-6" style="padding: 16px; background: #0b1220; border: 1px solid #1e293b;">
+    <div class="cat-card mb-6" style="padding: 16px; background: #FAFAF7; border: 1px solid #F3F1EC;">
       <div class="flex justify-between items-start flex-wrap gap-3 mb-2">
         <div>
           <div class="display text-xl mb-1" style="color: #fb923c;">🤸 코칭 세션 — 마네킹 + ELI 통합</div>
-          <div class="text-xs mb-2" style="color: #64748b;">
+          <div class="text-xs mb-2" style="color: #3F3F46;">
             ★ <strong>직관적 진단 hub</strong> — 6영역 Energy Leak Index + KE 기반 흐름 + GRF + 팔꿈치 토크 + lag 누수를 한 그림에 통합.
             마네킹 분절 옆 라벨 = 해당 영역 점수(가중치 ★=20). 우상단 점수 = 통합 ELI.
           </div>
@@ -344,17 +344,17 @@
       </div>
 
       <!-- ★ v0.14 — ELI 등급 기반 통합 판정 (모순 해결: KE 흐름·결함·ELI 일관성) -->
-      <div class="mb-3 p-3 rounded" style="background: ${eliGrade?.color || '#64748b'}15; border: 1px solid ${eliGrade?.color || '#64748b'}; border-left: 3px solid ${eliGrade?.color || '#64748b'};">
-        <div class="display text-base mb-1" style="color: ${eliGrade?.color || '#64748b'};">
+      <div class="mb-3 p-3 rounded" style="background: ${eliGrade?.color || '#3F3F46'}15; border: 1px solid ${eliGrade?.color || '#3F3F46'}; border-left: 3px solid ${eliGrade?.color || '#3F3F46'};">
+        <div class="display text-base mb-1" style="color: ${eliGrade?.color || '#3F3F46'};">
           📊 종합 진단 — <strong>ELI ${eliVal != null ? eliVal + '/100' : '—'}</strong> · ${eliGrade?.label || '미평가'}
         </div>
-        <div class="text-xs mb-2" style="color: var(--text-secondary, #94a3b8);">
+        <div class="text-xs mb-2" style="color: var(--text-secondary, #6B6357);">
           ${eliGrade?.feedback || ''}
           ${result.faults?.length > 0 ? `<span style="color: #fb923c;"> · ⚠ 결함 ${result.faults.length}건 (영역 점수에 패널티 자동 적용)</span>` : ''}
         </div>
         <details>
-          <summary class="cursor-pointer text-[11px]" style="color: var(--text-muted, #64748b);">🔬 KE 기반 단계별 흐름 보조 분석 (펼치기)</summary>
-          <div class="mt-2 text-[11px]" style="color: var(--text-secondary, #94a3b8);">
+          <summary class="cursor-pointer text-[11px]" style="color: var(--text-muted, #3F3F46);">🔬 KE 기반 단계별 흐름 보조 분석 (펼치기)</summary>
+          <div class="mt-2 text-[11px]" style="color: var(--text-secondary, #6B6357);">
             <strong>각 segment KE = 0.5·I·ω²</strong>(Joule), 단계별 ratio = downstream KE / upstream KE.
             <span style="color: #16a34a;">정상</span> elite 범위 (① 발 GRF→골반 KE 0.6~1.8, ② 골반→몸통 1.3~2.4, ③ 몸통→상완 2.5~5.5).
             ⚡ 손실량 = upstream − downstream (J).
@@ -367,9 +367,9 @@
         </details>
       </div>
 
-      <details class="mb-2 text-xs" style="background: #0b1f3a; padding: 6px 10px; border-radius: 4px; border-left: 2px solid #60a5fa;">
+      <details class="mb-2 text-xs" style="background: #0F2A4A; padding: 6px 10px; border-radius: 4px; border-left: 2px solid #60a5fa;">
         <summary class="cursor-pointer" style="color: #93c5fd; font-weight: 600;">📖 어떻게 읽나요? (코치용 가이드)</summary>
-        <div class="mt-2 leading-relaxed" style="color: #cbd5e1;">
+        <div class="mt-2 leading-relaxed" style="color: #E8E4DD;">
           <strong style="color: #22d3ee;">에너지 흐름 — 키네틱 기반</strong>: 발에서 시작한 추진력이 무릎·골반·몸통·어깨·팔꿈치를 거쳐 손목으로 전달되는 power 사슬. 각 분절은 <strong>Joint Power(W)</strong>로 평가되며, 어디서 power 손실이 발생하는지 시각화합니다.<br><br>
           <strong style="color: #fb923c;">Power Transfer Ratio</strong>: 단계별 effective transfer = downstream/upstream. ① GRF→Hip 4~12 (W가 BW의 4~12배 normalized), ② Pelvis→Trunk 1.15~1.45 (속도 1.3배 증폭), ③ Trunk→Arm 4.5~7.0 (5~6배), ④ Shoulder→Elbow 0.15~0.40 (효율적 분배), ⑤ Arm→Wrist 2~3.5.<br><br>
           <strong style="color: #f87171;">손실</strong>: ratio < min → 단절·전달 비효율. <strong style="color: #fb923c;">과다</strong>: ratio > max → 단계 출력이 균형 깨짐 (joint stress↑). <strong style="color: #16a34a;">정상</strong>: ratio가 elite 범위.<br><br>
@@ -383,8 +383,8 @@
         ${eliAreaLabels}
         <defs>
           <linearGradient id="bg-${uid}" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stop-color="#0b1220" stop-opacity="0"/>
-            <stop offset="1" stop-color="#0b1220" stop-opacity="0.35"/>
+            <stop offset="0" stop-color="#FAFAF7" stop-opacity="0"/>
+            <stop offset="1" stop-color="#FAFAF7" stop-opacity="0.35"/>
           </linearGradient>
           <linearGradient id="energy-${uid}" gradientUnits="userSpaceOnUse" x1="${K.lAnkle[0]}" y1="${K.lAnkle[1]}" x2="${K.ball[0]}" y2="${K.ball[1]}">
             <stop offset="0%"  stop-color="${kneeCollapse ? '#fde68a' : '#22d3ee'}"/>
@@ -409,28 +409,28 @@
             <stop offset="100%" stop-color="#7f1d1d" stop-opacity="0"/>
           </radialGradient>
           <radialGradient id="mSphere-${uid}" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stop-color="#f1f5f9"/><stop offset="45%" stop-color="#cbd5e1"/>
-            <stop offset="85%" stop-color="#64748b"/><stop offset="100%" stop-color="#334155"/>
+            <stop offset="0%" stop-color="#f1f5f9"/><stop offset="45%" stop-color="#E8E4DD"/>
+            <stop offset="85%" stop-color="#3F3F46"/><stop offset="100%" stop-color="#3F3F46"/>
           </radialGradient>
           <linearGradient id="mLimb-${uid}" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stop-color="#e2e8f0"/><stop offset="50%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#475569"/>
+            <stop offset="0%" stop-color="#DCD7CF"/><stop offset="50%" stop-color="#6B6357"/><stop offset="100%" stop-color="#3F3F46"/>
           </linearGradient>
           <linearGradient id="mLimbD-${uid}" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stop-color="#94a3b8"/><stop offset="55%" stop-color="#64748b"/><stop offset="100%" stop-color="#1e293b"/>
+            <stop offset="0%" stop-color="#6B6357"/><stop offset="55%" stop-color="#3F3F46"/><stop offset="100%" stop-color="#F3F1EC"/>
           </linearGradient>
           <linearGradient id="mTorso-${uid}" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stop-color="#e2e8f0"/><stop offset="40%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#334155"/>
+            <stop offset="0%" stop-color="#DCD7CF"/><stop offset="40%" stop-color="#6B6357"/><stop offset="100%" stop-color="#3F3F46"/>
           </linearGradient>
           <radialGradient id="mJoint-${uid}" cx="35%" cy="30%" r="70%">
-            <stop offset="0%" stop-color="#f8fafc"/><stop offset="60%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#334155"/>
+            <stop offset="0%" stop-color="#f8fafc"/><stop offset="60%" stop-color="#6B6357"/><stop offset="100%" stop-color="#3F3F46"/>
           </radialGradient>
           <radialGradient id="aoShadow-${uid}" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#000" stop-opacity="0.45"/>
-            <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+            <stop offset="0%" stop-color="#1A1A1A" stop-opacity="0.45"/>
+            <stop offset="100%" stop-color="#1A1A1A" stop-opacity="0"/>
           </radialGradient>
         </defs>
 
-        <line x1="40" y1="485" x2="760" y2="485" stroke="#2a3a5a" stroke-width="1.5" stroke-dasharray="3 6"/>
+        <line x1="40" y1="485" x2="760" y2="485" stroke="#DCD7CF" stroke-width="1.5" stroke-dasharray="3 6"/>
         <rect x="0" y="0" width="800" height="540" fill="url(#bg-${uid})"/>
         <ellipse cx="${(K.lAnkle[0]+K.rAnkle[0])/2}" cy="488" rx="180" ry="12" fill="url(#aoShadow-${uid})"/>
 
@@ -468,14 +468,14 @@
 
         <!-- Torso -->
         <line x1="${K.lShoulder[0]+2}" y1="${K.lShoulder[1]+4}" x2="${K.rShoulder[0]-2}" y2="${K.rShoulder[1]+4}" stroke="url(#mLimb-${uid})" stroke-width="34" stroke-linecap="round"/>
-        <path d="M ${K.lShoulder[0]+4} ${K.lShoulder[1]+8} C ${K.lShoulder[0]-2} ${K.lShoulder[1]+50}, ${K.pelvisL[0]+2} ${K.pelvisL[1]-68}, ${K.pelvisL[0]+6} ${K.pelvisL[1]-20} L ${K.pelvisR[0]-6} ${K.pelvisR[1]-20} C ${K.pelvisR[0]-2} ${K.pelvisR[1]-68}, ${K.rShoulder[0]+2} ${K.rShoulder[1]+50}, ${K.rShoulder[0]-4} ${K.rShoulder[1]+8} Z" fill="url(#mTorso-${uid})" stroke="#1e293b" stroke-width="1.2"/>
-        <path d="M ${K.pelvisL[0]+6} ${K.pelvisL[1]-22} C ${K.pelvisL[0]+2} ${K.pelvisL[1]-12}, ${K.pelvisL[0]-2} ${K.pelvisL[1]-2}, ${K.pelvisL[0]-6} ${K.pelvisL[1]+10} L ${K.pelvisR[0]+6} ${K.pelvisR[1]+10} C ${K.pelvisR[0]+2} ${K.pelvisR[1]-2}, ${K.pelvisR[0]-2} ${K.pelvisR[1]-12}, ${K.pelvisR[0]-6} ${K.pelvisR[1]-22} Z" fill="url(#mTorso-${uid})" stroke="#1e293b" stroke-width="1"/>
+        <path d="M ${K.lShoulder[0]+4} ${K.lShoulder[1]+8} C ${K.lShoulder[0]-2} ${K.lShoulder[1]+50}, ${K.pelvisL[0]+2} ${K.pelvisL[1]-68}, ${K.pelvisL[0]+6} ${K.pelvisL[1]-20} L ${K.pelvisR[0]-6} ${K.pelvisR[1]-20} C ${K.pelvisR[0]-2} ${K.pelvisR[1]-68}, ${K.rShoulder[0]+2} ${K.rShoulder[1]+50}, ${K.rShoulder[0]-4} ${K.rShoulder[1]+8} Z" fill="url(#mTorso-${uid})" stroke="#F3F1EC" stroke-width="1.2"/>
+        <path d="M ${K.pelvisL[0]+6} ${K.pelvisL[1]-22} C ${K.pelvisL[0]+2} ${K.pelvisL[1]-12}, ${K.pelvisL[0]-2} ${K.pelvisL[1]-2}, ${K.pelvisL[0]-6} ${K.pelvisL[1]+10} L ${K.pelvisR[0]+6} ${K.pelvisR[1]+10} C ${K.pelvisR[0]+2} ${K.pelvisR[1]-2}, ${K.pelvisR[0]-2} ${K.pelvisR[1]-12}, ${K.pelvisR[0]-6} ${K.pelvisR[1]-22} Z" fill="url(#mTorso-${uid})" stroke="#F3F1EC" stroke-width="1"/>
         <circle cx="${K.lShoulder[0]}" cy="${K.lShoulder[1]}" r="15" fill="url(#mJoint-${uid})"/>
         <circle cx="${K.rShoulder[0]}" cy="${K.rShoulder[1]}" r="16" fill="url(#mJoint-${uid})"/>
 
         <!-- Neck + head -->
         <line x1="${K.neck[0]-2}" y1="${K.neck[1]-6}" x2="${K.neck[0]+2}" y2="${K.neck[1]+8}" stroke="url(#mLimb-${uid})" stroke-width="16" stroke-linecap="round"/>
-        <circle cx="${K.head[0]}" cy="${K.head[1]}" r="28" fill="url(#mSphere-${uid})" stroke="#1e293b" stroke-width="1"/>
+        <circle cx="${K.head[0]}" cy="${K.head[1]}" r="28" fill="url(#mSphere-${uid})" stroke="#F3F1EC" stroke-width="1"/>
 
         <!-- Throwing arm -->
         <g>
@@ -486,19 +486,19 @@
         </g>
 
         <!-- Ball -->
-        <circle cx="${K.ball[0]}" cy="${K.ball[1]}" r="9" fill="#f8fafc" stroke="#1e293b" stroke-width="1.2"/>
+        <circle cx="${K.ball[0]}" cy="${K.ball[1]}" r="9" fill="#f8fafc" stroke="#F3F1EC" stroke-width="1.2"/>
         <path d="M ${K.ball[0]-6} ${K.ball[1]-3} Q ${K.ball[0]} ${K.ball[1]-8} ${K.ball[0]+6} ${K.ball[1]-3}" stroke="#ef4444" stroke-width="1.2" fill="none"/>
         <path d="M ${K.ball[0]-6} ${K.ball[1]+3} Q ${K.ball[0]} ${K.ball[1]+8} ${K.ball[0]+6} ${K.ball[1]+3}" stroke="#ef4444" stroke-width="1.2" fill="none"/>
 
         <!-- Drive leg energy pipe -->
         ${driveStatus !== 'na' ? `
-        <path d="${driveLegPath}" stroke="#0f1a30" stroke-opacity="0.55" stroke-width="18" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="${driveLegPath}" stroke="#FAFAF7" stroke-opacity="0.55" stroke-width="18" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="${driveLegPath}" stroke="url(#drive-${uid})" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-${uid})" stroke-dasharray="20 12" opacity="0.92">
           <animate attributeName="stroke-dashoffset" from="0" to="-64" dur="1.8s" repeatCount="indefinite"/>
         </path>` : ''}
 
         <!-- Energy pipe (메인 흐름) -->
-        <path d="${energyPath}" stroke="#0f1a30" stroke-opacity="0.6" stroke-width="22" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="${energyPath}" stroke="#FAFAF7" stroke-opacity="0.6" stroke-width="22" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="${energyPath}" stroke="url(#energy-${uid})" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-${uid})" stroke-dasharray="24 14">
           <animate attributeName="stroke-dashoffset" from="0" to="-76" dur="1.6s" repeatCount="indefinite"/>
         </path>
@@ -510,40 +510,40 @@
             <animate attributeName="r" values="9;14;9" dur="1.8s" repeatCount="indefinite"/>
             <animate attributeName="stroke-opacity" values="0.6;0.15;0.6" dur="1.8s" repeatCount="indefinite"/>
           </circle>
-          <circle cx="${K.rElbow[0]}" cy="${K.rElbow[1]}" r="6" fill="${elbowColor}" stroke="#08080c" stroke-width="1.5" filter="url(#glow-${uid})"/>
+          <circle cx="${K.rElbow[0]}" cy="${K.rElbow[1]}" r="6" fill="${elbowColor}" stroke="#FFFFFF" stroke-width="1.5" filter="url(#glow-${uid})"/>
           <text x="${K.rElbow[0]}" y="${K.rElbow[1]+22}" font-size="9" fill="${elbowColor}" text-anchor="middle" font-weight="700" letter-spacing="1">ELBOW</text>
         </g>
-        <circle cx="${K.rWrist[0]}" cy="${K.rWrist[1]}" r="5" fill="#22d3ee" stroke="#08080c" stroke-width="1.5" filter="url(#glow-${uid})"/>
+        <circle cx="${K.rWrist[0]}" cy="${K.rWrist[1]}" r="5" fill="#22d3ee" stroke="#FFFFFF" stroke-width="1.5" filter="url(#glow-${uid})"/>
 
         <!-- ★ GRF on each foot — Trail vGRF + Lead vGRF -->
         ${trailVGRF != null ? `
         <g>
-          <rect x="${K.rAnkle[0]-32}" y="${K.rAnkle[1]+18}" width="${trailVGRF >= 1.5 ? 86 : 90}" height="40" rx="5" fill="#0b1220" stroke="${driveColors.label}" stroke-width="1.6"/>
+          <rect x="${K.rAnkle[0]-32}" y="${K.rAnkle[1]+18}" width="${trailVGRF >= 1.5 ? 86 : 90}" height="40" rx="5" fill="#FAFAF7" stroke="${driveColors.label}" stroke-width="1.6"/>
           <text x="${K.rAnkle[0]+11}" y="${K.rAnkle[1]+32}" text-anchor="middle" font-size="9" fill="${driveColors.label}" font-weight="700" letter-spacing="1">TRAIL vGRF</text>
-          <text x="${K.rAnkle[0]+11}" y="${K.rAnkle[1]+50}" text-anchor="middle" font-size="14" fill="#e2e8f0" font-weight="700" font-family="JetBrains Mono">${trailVGRF.toFixed(2)}<tspan font-size="9" fill="#94a3b8" font-family="Inter"> BW</tspan></text>
+          <text x="${K.rAnkle[0]+11}" y="${K.rAnkle[1]+50}" text-anchor="middle" font-size="14" fill="#DCD7CF" font-weight="700" font-family="JetBrains Mono">${trailVGRF.toFixed(2)}<tspan font-size="9" fill="#6B6357" font-family="Inter"> BW</tspan></text>
         </g>` : ''}
         ${leadVGRF != null ? `
         <g>
-          <rect x="${K.lAnkle[0]-58}" y="${K.lAnkle[1]+10}" width="92" height="40" rx="5" fill="#0b1220" stroke="${leadVGRF >= 2.0 ? '#4ade80' : '#f59e0b'}" stroke-width="1.6"/>
+          <rect x="${K.lAnkle[0]-58}" y="${K.lAnkle[1]+10}" width="92" height="40" rx="5" fill="#FAFAF7" stroke="${leadVGRF >= 2.0 ? '#4ade80' : '#f59e0b'}" stroke-width="1.6"/>
           <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+24}" text-anchor="middle" font-size="9" fill="${leadVGRF >= 2.0 ? '#4ade80' : '#f59e0b'}" font-weight="700" letter-spacing="1">LEAD vGRF</text>
-          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+42}" text-anchor="middle" font-size="14" fill="#e2e8f0" font-weight="700" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#94a3b8" font-family="Inter"> BW</tspan></text>
+          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+42}" text-anchor="middle" font-size="14" fill="#DCD7CF" font-weight="700" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#6B6357" font-family="Inter"> BW</tspan></text>
         </g>` : ''}
 
         <!-- 어깨 power 라벨 (왼쪽 머리 위) — v0.47 둘 다 왼쪽 정렬 -->
         ${shoulderP != null ? `
         <g>
-          <rect x="42" y="48" width="170" height="50" rx="6" fill="#0b1220" stroke="${shoulderP >= 1200 ? '#4ade80' : '#fbbf24'}" stroke-width="1.6"/>
+          <rect x="42" y="48" width="170" height="50" rx="6" fill="#FAFAF7" stroke="${shoulderP >= 1200 ? '#4ade80' : '#fbbf24'}" stroke-width="1.6"/>
           <text x="127" y="64" fill="${shoulderP >= 1200 ? '#4ade80' : '#fbbf24'}" font-size="10" font-family="Inter" font-weight="800" text-anchor="middle">★ SHOULDER POWER</text>
-          <text x="127" y="84" fill="#e2e8f0" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${shoulderP >= 1000 ? (shoulderP/1000).toFixed(2)+'k' : shoulderP.toFixed(0)}<tspan font-size="9" fill="#94a3b8" font-family="Inter"> W</tspan></text>
+          <text x="127" y="84" fill="#DCD7CF" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${shoulderP >= 1000 ? (shoulderP/1000).toFixed(2)+'k' : shoulderP.toFixed(0)}<tspan font-size="9" fill="#6B6357" font-family="Inter"> W</tspan></text>
         </g>` : ''}
 
         <!-- ★ 팔꿈치 토크/파워 라벨 — v0.47 왼쪽 어깨 박스 아래로 이동 (마네킹 머리·공 겹침 해소) -->
         ${elbowP != null ? `
         <g>
           <line x1="${K.rElbow[0]}" y1="${K.rElbow[1]}" x2="212" y2="141" stroke="${elbowColor}" stroke-width="1.4" stroke-dasharray="2 3"/>
-          <rect x="42" y="110" width="170" height="62" rx="6" fill="#0b1220" stroke="${elbowColor}" stroke-opacity="0.85" stroke-width="2"/>
+          <rect x="42" y="110" width="170" height="62" rx="6" fill="#FAFAF7" stroke="${elbowColor}" stroke-opacity="0.85" stroke-width="2"/>
           <text x="127" y="126" fill="${elbowColor}" font-size="10" font-family="Inter" font-weight="800" text-anchor="middle" letter-spacing="1">${elbowStatus === 'high' ? '🚨 ELBOW POWER' : elbowStatus === 'low' ? '△ ELBOW POWER' : '✓ ELBOW POWER'}</text>
-          <text x="127" y="146" fill="#e2e8f0" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${elbowP >= 1000 ? (elbowP/1000).toFixed(2)+'k' : elbowP.toFixed(0)}<tspan font-size="10" fill="#94a3b8" font-family="Inter"> W (peak)</tspan></text>
+          <text x="127" y="146" fill="#DCD7CF" font-size="14" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${elbowP >= 1000 ? (elbowP/1000).toFixed(2)+'k' : elbowP.toFixed(0)}<tspan font-size="10" fill="#6B6357" font-family="Inter"> W (peak)</tspan></text>
           <text x="127" y="162" fill="${elbowColor}" font-size="9" font-family="Inter" text-anchor="middle">${elbowStatus === 'high' ? 'UCL stress 위험 (정상 200~500W)' : elbowStatus === 'low' ? '팔꿈치 power 부족' : '정상 (200~500W)'}</text>
         </g>` : ''}
 
@@ -553,7 +553,7 @@
              상세 결함 원인은 아래 "결함 진단 + 코칭 처방" 카드에서 확인. -->
       </svg>
 
-      <div class="text-xs mt-2 px-2" style="color: #64748b;">
+      <div class="text-xs mt-2 px-2" style="color: #3F3F46;">
         <span style="color:#4ade80">●</span> 정상 ·
         <span style="color:#f59e0b">●</span> 미세 누수 ·
         <span style="color:#ef4444">●</span> 명확한 누수 — KINETIC_FAULTS 진단. GRF 라벨은 발에 직접 표시.
@@ -644,7 +644,7 @@
             <animate attributeName="r" values="8;20;8" dur="1.6s" repeatCount="indefinite" begin="${i * 0.4}s"/>
             <animate attributeName="stroke-opacity" values="0.7;0;0.7" dur="1.6s" repeatCount="indefinite" begin="${i * 0.4}s"/>
           </circle>
-          <circle cx="${peakX}" cy="${peakY}" r="6.5" fill="${s.color}" stroke="#08080c" stroke-width="2" style="filter: url(#peakGlow-${uid})"/>
+          <circle cx="${peakX}" cy="${peakY}" r="6.5" fill="${s.color}" stroke="#FFFFFF" stroke-width="2" style="filter: url(#peakGlow-${uid})"/>
           <text x="${peakX}" y="${peakY - 18}" text-anchor="middle" fill="${s.color}" font-size="11" font-family="JetBrains Mono" font-weight="700">${s.ko} ${s.peakMs}ms</text>
         </g>`;
     }).join('');
@@ -662,14 +662,14 @@
           <line x1="${b.x1 + 2}" x2="${b.x2 - 2}" y1="${b.y}" y2="${b.y}" stroke="${clr}" stroke-width="1.8"/>
           <polygon points="${b.x1 + 8},${b.y - 4} ${b.x1 + 2},${b.y} ${b.x1 + 8},${b.y + 4}" fill="${clr}"/>
           <polygon points="${b.x2 - 8},${b.y - 4} ${b.x2 - 2},${b.y} ${b.x2 - 8},${b.y + 4}" fill="${clr}"/>
-          <rect x="${xmid - 70}" y="${b.y - 22}" width="140" height="18" rx="3" fill="#0b1220" stroke="${clr}" stroke-opacity="0.75"/>
+          <rect x="${xmid - 70}" y="${b.y - 22}" width="140" height="18" rx="3" fill="#FAFAF7" stroke="${clr}" stroke-opacity="0.75"/>
           <text x="${xmid}" y="${b.y - 9}" text-anchor="middle" font-size="11" fill="${clr}" font-weight="700" font-family="JetBrains Mono">Δt ${b.label} ${b.val} ms</text>
         </g>`;
     }).join('');
 
     const ticks = [-180, -150, -120, -90, -60, -30, 0, 30, 60, 90, 120, 150, 180]
       .filter(t => t >= tMin && t <= tMax)
-      .map(t => `<line x1="${toX(t)}" x2="${toX(t)}" y1="${padT}" y2="${padT + plotH}" stroke="#1e293b" stroke-width="1" stroke-dasharray="2 4"/>`)
+      .map(t => `<line x1="${toX(t)}" x2="${toX(t)}" y1="${padT}" y2="${padT + plotH}" stroke="#F3F1EC" stroke-width="1" stroke-dasharray="2 4"/>`)
       .join('');
 
     const detectionParts = [];
@@ -690,7 +690,7 @@
       <div class="text-xs mb-3 p-2 rounded" style="background: rgba(96,165,250,0.08); border-left: 2px solid var(--accent-soft, #60a5fa); color: var(--text-secondary);">
         💡 <strong>다음 카드 (마네킹 + ELI)</strong>는 같은 키네틱 체인을 <strong>분절별 ELI 점수</strong>로 직접 진단합니다 — 시퀀스 그래프의 정량적 해석.
       </div>
-      <div class="card p-3" style="background: #0a1322;">
+      <div class="card p-3" style="background: #FAFAF7;">
         <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMidYMid meet">
           <defs>
             <filter id="curveGlow-${uid}" x="-20%" y="-20%" width="140%" height="140%">
@@ -702,7 +702,7 @@
               <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
             </filter>
             <linearGradient id="plotBg-${uid}" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0" stop-color="#0a1322"/><stop offset="1" stop-color="#0d182b"/>
+              <stop offset="0" stop-color="#FAFAF7"/><stop offset="1" stop-color="#FAFAF7"/>
             </linearGradient>
             ${curveDefs}
           </defs>
@@ -710,10 +710,10 @@
           <rect x="${toX(30)}" y="${padT}" width="${toX(60) - toX(30)}" height="${plotH}" fill="rgba(74,222,128,0.05)"/>
           <rect x="${toX(60)}" y="${padT}" width="${toX(120) - toX(60)}" height="${plotH}" fill="rgba(74,222,128,0.04)"/>
           ${ticks}
-          <line x1="${toX(0)}" x2="${toX(0)}" y1="${padT}" y2="${padT + plotH}" stroke="#475569" stroke-width="1.5" stroke-opacity="0.6"/>
+          <line x1="${toX(0)}" x2="${toX(0)}" y1="${padT}" y2="${padT + plotH}" stroke="#3F3F46" stroke-width="1.5" stroke-opacity="0.6"/>
           ${curveGroups}
           ${dtBars}
-          <text x="${padL + 6}" y="${padT + 14}" fill="#64748b" font-size="9" font-family="Inter">↑ 정규화 회전 속도 (이상 lag 30~60 ms 영역 음영)</text>
+          <text x="${padL + 6}" y="${padT + 14}" fill="#3F3F46" font-size="9" font-family="Inter">↑ 정규화 회전 속도 (이상 lag 30~60 ms 영역 음영)</text>
         </svg>
         ${errNote}
       </div>
