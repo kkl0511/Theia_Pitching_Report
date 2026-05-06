@@ -1008,11 +1008,11 @@
       },
       {
         id: 'separation',
-        title: '골반-상체 분리 (X-팩터)',
+        title: '골반-상체 분리각 (스트레치 효과)',
         causes: [
-          { key: 'peak_trunk_CounterRotation', name: '와인드업 counter-rotation', target: 30, unit: '°' },
-          { key: 'peak_xfactor', name: '최대 분리 각도', target: 40, unit: '°' },
-          { key: 'fc_xfactor', name: '앞발 착지 시점 분리 각도', target: 25, unit: '°' },
+          { key: 'peak_trunk_CounterRotation', name: '와인드업 골반 역회전', target: 30, unit: '°' },
+          { key: 'peak_xfactor', name: '골반-상체 최대 분리각', target: 40, unit: '°' },
+          { key: 'fc_xfactor', name: '착지 시점 골반-상체 분리각', target: 25, unit: '°' },
         ],
         effects: ['ETE_pelvis_to_trunk', 'dE_trunk_KH_FC'],
         narrative_low: '골반과 상체 분리 부족 → 고무줄처럼 당겨놓고 놓는 효과 약함',
@@ -1020,13 +1020,15 @@
       },
       {
         id: 'lead_block',
-        title: '앞발 받쳐주기 (블로킹)',
+        title: '앞발 받쳐주기 (블로킹) — 두 단계 분리',
+        // ★ v0.63 PDF §4 #6 fix — FC→MER (전반: 무릎 신전 양호) vs MER→BR (후반: 지지·브레이킹 유지) 분리
+        phaseLabel: '🦵 phase 1 (착지~외회전): 무릎 신전이 잘 들어왔는가  |  phase 2 (외회전~릴리스): 끝까지 지지가 유지되는가',
         causes: [
-          { key: 'knee_flexion_change_FC_to_MER', name: '착지 → 외회전 시점 무릎 변화', target: -10, unit: '°', polarity: 'lower' },
-          { key: 'knee_flexion_change_MER_to_BR', name: '외회전 → 릴리스 시점 무릎 변화', target: -3, unit: '°', polarity: 'lower' },
+          { key: 'knee_flexion_change_FC_to_MER', name: 'phase 1 — 착지~외회전 무릎 변화', target: -10, unit: '°', polarity: 'lower', hint: '음수=신전 양호 (앞발 펴면서 받침)' },
+          { key: 'knee_flexion_change_MER_to_BR', name: 'phase 2 — 외회전~릴리스 무릎 변화', target: -3, unit: '°', polarity: 'lower', hint: '0 근처=지지 유지 (무릎 무너짐 없음)' },
         ],
         effects: ['lead_vGRF_impulse', 'lead_leg_braking_impulse', 'lead_knee_W_pos', 'lead_hip_W_pos'],
-        narrative_low: '앞발이 무너짐 → 앞으로 가던 힘이 회전으로 안 바뀌고 그대로 흘러감',
+        narrative_low: '앞발이 무너짐 → 앞으로 가던 힘이 회전으로 안 바뀌고 흘러감 (특히 phase 2 약점이면 릴리스 직전 power 누수)',
         narrative_high: '앞발 단단히 받쳐줌 → 회전축 형성, block power 정상',
       },
       {
@@ -1144,6 +1146,7 @@
           <div class="display" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">🔗 ${ch.title}</div>
           <div class="text-xs" style="color: ${chainColor}; font-weight: 600;">종합 ${chainScore != null ? Math.round(chainScore) + '점' : '—'}</div>
         </div>
+        ${ch.phaseLabel ? `<div class="text-[10px] mb-2 mono" style="color: var(--text-muted); padding: 6px 10px; border-left: 2px solid var(--accent-soft); background: rgba(96,165,250,0.05); border-radius: 0 4px 4px 0;">${ch.phaseLabel}</div>` : ''}
         <div class="text-xs mb-3" style="color: ${chainColor}; font-style: italic;">${narrative}</div>
         <div class="grid" style="grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch;">
           <div class="p-3" style="background: rgba(96,165,250,0.05); border-radius: 6px; border: 1px solid rgba(96,165,250,0.15);">
