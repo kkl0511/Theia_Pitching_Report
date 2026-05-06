@@ -1779,21 +1779,23 @@
   function _render3ColumnRadars(result) {
     const cats = result.catScores || {};
 
-    // 체력 (fitness 데이터 있으면 표시 — 4 dim)
+    // 체력 (fitness 데이터 있으면 표시 — 4 dim) — ★ v0.59 mode-aware 임계값
     const fitness = _getFit() || {};
+    const _fT = _fitThresholds();
+    const _isPro = (window.TheiaApp && window.TheiaApp.getMode && window.TheiaApp.getMode() === 'pro');
     const fitDims = [
-      { label: '체중당 근력', val: _fitnessScore(fitness.imtp_peak_force_bm, 25, 35), raw: fitness.imtp_peak_force_bm, unit: 'N/kg', desc: '체중 정규화 최대 근력',
-        formula: 'IMTP Peak Force / Body Mass (N/kg)', threshold_text: 'Elite ≥35 N/kg · 평균 25 · <20 부족',
-        mlb_avg: '34 N/kg (Driveline)', coaching: '체중당 근력 부족 시 GRF 생성 능력 제한 — vGRF·trail drive 약화로 직결.', drill: 'Trap Bar Deadlift 3×5, Back Squat 4×5, IMTP holds 3×5s' },
-      { label: '체중당 파워', val: _fitnessScore(fitness.cmj_peak_power_bm, 50, 70), raw: fitness.cmj_peak_power_bm, unit: 'W/kg', desc: '체중 정규화 폭발력',
-        formula: 'CMJ Peak Power / Body Mass (W/kg)', threshold_text: 'Elite ≥70 W/kg · 평균 55 · <40 부족',
-        mlb_avg: '68 W/kg (Driveline)', coaching: '체중당 파워는 vGRF rate of force development와 직결 — 키네틱 체인 출력 baseline.', drill: 'Box Jump 3×5, Depth Jump 3×5, Olympic Lift Variations' },
-      { label: '반응성 (SSC)', val: _fitnessScore(fitness.cmj_rsi_modified, 0.5, 1.0), raw: fitness.cmj_rsi_modified, unit: 'm/s', desc: '신장단축주기 효율',
-        formula: 'CMJ RSI-modified = Jump Height / Contact Time', threshold_text: 'Elite ≥1.0 m/s · 평균 0.7 · <0.5 부족',
-        mlb_avg: '0.95 m/s (Driveline)', coaching: 'Stretch-shortening cycle 효율 — block leg ecc→con 전환의 직접 지표.', drill: 'Drop Jump 3×5, Pogo Jump 3×10, Bounding 3×20m' },
+      { label: '체중당 근력', val: _fitnessScore(fitness.imtp_peak_force_bm, _fT.imtp_bm[0], _fT.imtp_bm[1]), raw: fitness.imtp_peak_force_bm, unit: 'N/kg', desc: '체중 정규화 최대 근력',
+        formula: 'IMTP Peak Force / Body Mass (N/kg)', threshold_text: _isPro ? 'VALD MLB 50th 36.3 N/kg · 75th 41.1 · 99th 53.7' : 'Elite ≥35 N/kg · 평균 25 · <20 부족',
+        mlb_avg: _isPro ? '36.3 N/kg (VALD Baseball 2024 50th)' : '34 N/kg (Driveline)', coaching: '체중당 근력 부족 시 GRF 생성 능력 제한 — vGRF·trail drive 약화로 직결.', drill: 'Trap Bar Deadlift 3×5, Back Squat 4×5, IMTP holds 3×5s' },
+      { label: '체중당 파워', val: _fitnessScore(fitness.cmj_peak_power_bm, _fT.cmj_pwr_bm[0], _fT.cmj_pwr_bm[1]), raw: fitness.cmj_peak_power_bm, unit: 'W/kg', desc: '체중 정규화 폭발력',
+        formula: 'CMJ Peak Power / Body Mass (W/kg)', threshold_text: _isPro ? 'VALD MLB 50th 60 W/kg · 75th 65 · 99th 78' : 'Elite ≥70 W/kg · 평균 55 · <40 부족',
+        mlb_avg: _isPro ? '60 W/kg (VALD Baseball 2024 50th)' : '68 W/kg (Driveline)', coaching: '체중당 파워는 vGRF rate of force development와 직결 — 키네틱 체인 출력 baseline.', drill: 'Box Jump 3×5, Depth Jump 3×5, Olympic Lift Variations' },
+      { label: '반응성 (SSC)', val: _fitnessScore(fitness.cmj_rsi_modified, _fT.cmj_rsi[0], _fT.cmj_rsi[1]), raw: fitness.cmj_rsi_modified, unit: 'm/s', desc: '신장단축주기 효율',
+        formula: 'CMJ RSI-modified = Jump Height / Contact Time', threshold_text: _isPro ? 'VALD MLB 50th 0.65 m/s · 75th 0.74 · 99th 0.97' : 'Elite ≥1.0 m/s · 평균 0.7 · <0.5 부족',
+        mlb_avg: _isPro ? '0.65 m/s (VALD Baseball 2024 50th)' : '0.95 m/s (Driveline)', coaching: 'Stretch-shortening cycle 효율 — block leg ecc→con 전환의 직접 지표.', drill: 'Drop Jump 3×5, Pogo Jump 3×10, Bounding 3×20m' },
       { label: '체격 (BMI)', val: fitness.bmi != null ? _bmiScore(fitness.bmi) : null, raw: fitness.bmi, unit: '', desc: '신체 구성 (BMI 기반)',
-        formula: 'BMI = Mass(kg) / Height(m)²', threshold_text: 'Optimal 22~25 (피칭 elite) · <19 또는 >28 = 발전 권장',
-        mlb_avg: '23 (MLB Combine)', coaching: 'BMI 적정 범위는 라인레버리지·체질량 조합. 너무 낮으면 출력 부족, 너무 높으면 가동 제한.', drill: '단백질 1.6~2.0 g/kg, Compound 리프트, 수면 8h+' },
+        formula: 'BMI = Mass(kg) / Height(m)²', threshold_text: _isPro ? 'MLB Pro target 26.5 (25~28 안정) — 라인레버리지+근육량' : 'Optimal 22~25 (피칭 elite) · <19 또는 >28 = 발전 권장',
+        mlb_avg: _isPro ? '26.5 (MLB pro avg)' : '23 (MLB Combine)', coaching: 'BMI 적정 범위는 라인레버리지·체질량 조합. 너무 낮으면 출력 부족, 너무 높으면 가동 제한.', drill: '단백질 1.6~2.0 g/kg, Compound 리프트, 수면 8h+' },
     ];
     const fitMeasured = fitDims.filter(d => d.val != null).length;
     const fitAvg = fitMeasured > 0 ? Math.round(fitDims.filter(d => d.val != null).reduce((s,d) => s+d.val, 0) / fitMeasured) : null;
@@ -1965,20 +1967,45 @@
     if (raw >= hi) return 100;
     return Math.round((raw - lo) / (hi - lo) * 100);
   }
-  // BMI score — 22.5가 elite, 18.5/27.5 양 끝이 0점
+  // ★ v0.59 — 모드별 체력 임계값 (Pro=VALD Baseball 2024 normative, HS=Driveline)
+  function _fitThresholds() {
+    const mode = (window.TheiaApp && window.TheiaApp.getMode) ? window.TheiaApp.getMode() : 'hs_top10';
+    if (mode === 'pro') {
+      // VALD Baseball 2024: 50th ≈ 60점, 99th = 100점 매핑
+      return {
+        imtp_bm:    [24, 42],     // VALD 50th 36.3 N/kg → 68점, 99th 53.7 → 100점
+        cmj_pwr_bm: [45, 70],     // VALD 50th 60 W/kg → 60점, 99th 78 → 100점
+        cmj_rsi:    [0.40, 0.85], // VALD 50th 0.65 m/s → 56점, 99th 0.97 → 100점
+        bmi_target: 26.5,         // MLB pro 평균 BMI 26~27
+        bmi_dev_mult: 14,         // BMI 편차 ×14 → 25/28에서 ~80점 유지 (HS보다 관대)
+      };
+    }
+    // hs_top10 — 기존 Driveline 기준
+    return {
+      imtp_bm:    [25, 35],
+      cmj_pwr_bm: [50, 70],
+      cmj_rsi:    [0.50, 1.00],
+      bmi_target: 22.5,
+      bmi_dev_mult: 20,
+    };
+  }
+  // BMI score — 모드별 target / dev_mult 사용 (★ v0.59 mode-aware)
   function _bmiScore(bmi) {
     if (bmi == null) return null;
-    const dev = Math.abs(bmi - 22.5);
-    return Math.max(0, Math.round(100 - dev * 20));
+    const t = _fitThresholds();
+    const dev = Math.abs(bmi - t.bmi_target);
+    return Math.max(0, Math.round(100 - dev * t.bmi_dev_mult));
   }
 
   // 3-column radar charts init (Chart.js)
   function _initRadarCharts(result) {
     if (typeof Chart === 'undefined') return;
+    // ★ v0.59 mode-aware 임계값
+    const _fTr = _fitThresholds();
     const fitDims = [
-      { label: '체중당 근력', val: _fitnessScore((_getFit() && _getFit().imtp_peak_force_bm), 25, 35) },
-      { label: '체중당 파워', val: _fitnessScore((_getFit() && _getFit().cmj_peak_power_bm), 50, 70) },
-      { label: '반응성 (SSC)', val: _fitnessScore((_getFit() && _getFit().cmj_rsi_modified), 0.5, 1.0) },
+      { label: '체중당 근력', val: _fitnessScore((_getFit() && _getFit().imtp_peak_force_bm), _fTr.imtp_bm[0], _fTr.imtp_bm[1]) },
+      { label: '체중당 파워', val: _fitnessScore((_getFit() && _getFit().cmj_peak_power_bm), _fTr.cmj_pwr_bm[0], _fTr.cmj_pwr_bm[1]) },
+      { label: '반응성 (SSC)', val: _fitnessScore((_getFit() && _getFit().cmj_rsi_modified), _fTr.cmj_rsi[0], _fTr.cmj_rsi[1]) },
       { label: '체격 (BMI)',   val: (_getFit() && _getFit().bmi) != null ? _bmiScore((_getFit() || {}).bmi) : null },
     ];
     const mechDims = _compute6axisMech(result);
@@ -2202,13 +2229,20 @@
     // 체력 — fitness 변수 ((_getFit() || {}))
     const fitness = _getFit() || {};
     const fitnessVarsExtra = [];
-    if (fitness.cmj_rsi_modified != null) fitnessVarsExtra.push({ key: 'CMJ_RSI', name: 'CMJ RSI-mod', score: _fitnessScore(fitness.cmj_rsi_modified, 0.5, 1.0) });
-    if (fitness.cmj_peak_power_bm != null) fitnessVarsExtra.push({ key: 'CMJ_PB', name: 'CMJ 단위파워', score: _fitnessScore(fitness.cmj_peak_power_bm, 50, 70) });
-    if (fitness.sj_peak_power_bm != null) fitnessVarsExtra.push({ key: 'SJ_PB', name: 'SJ 단위파워', score: _fitnessScore(fitness.sj_peak_power_bm, 30, 50) });
-    if (fitness.eur != null) fitnessVarsExtra.push({ key: 'EUR', name: 'EUR (CMJ/SJ 비)', score: _fitnessScore(fitness.eur, 1.0, 1.3) });
-    if (fitness.imtp_peak_force_bm != null) fitnessVarsExtra.push({ key: 'IMTP_BM', name: 'IMTP/체중', score: _fitnessScore(fitness.imtp_peak_force_bm, 25, 35) });
+    // ★ v0.59 mode-aware 임계값 (Pro=VALD, HS=Driveline)
+    const _fTx = _fitThresholds();
+    const _isProEx = (window.TheiaApp && window.TheiaApp.getMode && window.TheiaApp.getMode() === 'pro');
+    // 추가 변수 (SJ/EUR/Grip)는 VALD 직접 데이터 있으면 그것 적용
+    const sjPbThr  = _isProEx ? [44, 75]  : [30, 50];   // VALD SJ Power/BM 1st 44, 99th 75
+    const eurThr   = _isProEx ? [0.95, 1.10] : [1.0, 1.3];  // VALD CMJ_PP/SJ_PP ≈ 1.02
+    const gripThr  = _isProEx ? [55, 75]  : [35, 55];   // VALD Grip 50th 64.4 kg
+    if (fitness.cmj_rsi_modified != null) fitnessVarsExtra.push({ key: 'CMJ_RSI', name: 'CMJ RSI-mod', score: _fitnessScore(fitness.cmj_rsi_modified, _fTx.cmj_rsi[0], _fTx.cmj_rsi[1]) });
+    if (fitness.cmj_peak_power_bm != null) fitnessVarsExtra.push({ key: 'CMJ_PB', name: 'CMJ 단위파워', score: _fitnessScore(fitness.cmj_peak_power_bm, _fTx.cmj_pwr_bm[0], _fTx.cmj_pwr_bm[1]) });
+    if (fitness.sj_peak_power_bm != null) fitnessVarsExtra.push({ key: 'SJ_PB', name: 'SJ 단위파워', score: _fitnessScore(fitness.sj_peak_power_bm, sjPbThr[0], sjPbThr[1]) });
+    if (fitness.eur != null) fitnessVarsExtra.push({ key: 'EUR', name: 'EUR (CMJ/SJ 비)', score: _fitnessScore(fitness.eur, eurThr[0], eurThr[1]) });
+    if (fitness.imtp_peak_force_bm != null) fitnessVarsExtra.push({ key: 'IMTP_BM', name: 'IMTP/체중', score: _fitnessScore(fitness.imtp_peak_force_bm, _fTx.imtp_bm[0], _fTx.imtp_bm[1]) });
     if (fitness.bmi != null) fitnessVarsExtra.push({ key: 'BMI', name: 'BMI', score: _bmiScore(fitness.bmi) });
-    if (fitness.grip_strength_kg != null) fitnessVarsExtra.push({ key: 'GRIP', name: 'Grip 근력', score: _fitnessScore(fitness.grip_strength_kg, 35, 55) });
+    if (fitness.grip_strength_kg != null) fitnessVarsExtra.push({ key: 'GRIP', name: 'Grip 근력', score: _fitnessScore(fitness.grip_strength_kg, gripThr[0], gripThr[1]) });
 
     const strengths = { '체력': [], '메카닉': [], '제구': [] };
     const weaknesses = { '체력': [], '메카닉': [], '제구': [] };

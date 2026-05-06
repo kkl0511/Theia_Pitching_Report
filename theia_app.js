@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.58';  // ★ v0.58 — Polish A·B·D (4사분면 라벨 / Event Timeline fallback / Pro 자가비교 안내)
+  const ALGORITHM_VERSION = 'v0.59';  // ★ v0.59 — VALD Baseball 2024 normative 기반 Pro 체력 임계값 (mode-aware _fitnessScore)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

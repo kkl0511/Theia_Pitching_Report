@@ -3,6 +3,7 @@
 
 # 선수 데이터 (개인정보 보호 — repo 외부로 격리)
 leeyoungha/
+leeyoungha_anon/
 *.bak
 
 # 임시 작업 폴더 / 다른 시스템 자료
