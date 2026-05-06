@@ -889,22 +889,75 @@
     </section>`;
   }
 
-  // ── P3 Kinetic Chain Map (★ v0.67 KBO 디자인 핸드오프 — 헤더/헤드라인 적용, 본문 시각화는 점진 전환) ──
+  // ── P3 Kinetic Chain Map (★ v0.93 — 보는 페이지로 단순화: 마네킹 + Primary Leak 한 문장 + 3 핵심 수치) ──
+  // 상세 ELI 분해·ETE·Energy Transfer Bar·Coach Delivery는 모두 펼침 details로 격리
+  function _p3KeyMetricCards(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const s = (k) => m[k]?.score;
+    const eli = _calculateELI(result);
+    const areaById = {};
+    if (eli?.areas) eli.areas.forEach(a => { areaById[a.id] = a; });
+    const fmt = (val, dec = 1) => val == null ? '—' : (typeof val === 'number' ? val.toFixed(dec) : val);
+
+    // 1) Lead-leg block — ELI 영역 점수
+    const leadBlockScore = areaById.lead_block?.score;
+    const leadBlockSt = leadBlockScore == null ? { c: KBO_T.textMuted, lbl: '—' }
+      : leadBlockScore >= 70 ? { c: KBO_T.good,   lbl: '양호' }
+      : leadBlockScore >= 50 ? { c: KBO_T.gold,   lbl: '보통' }
+      : leadBlockScore >= 30 ? { c: KBO_T.caution, lbl: '개선 필요' }
+      : { c: KBO_T.leak, lbl: '우선 보강' };
+    // 2) Pelvis → Trunk transfer (ETE %)
+    const ete_p2t = v('ETE_pelvis_to_trunk');
+    const transferPct = ete_p2t != null ? Math.round(ete_p2t * 100) : null;
+    const transferSt = transferPct == null ? { c: KBO_T.textMuted, lbl: '—' }
+      : transferPct >= 50 ? { c: KBO_T.good,   lbl: '양호' }
+      : transferPct >= 35 ? { c: KBO_T.caution, lbl: '개선 필요' }
+      : { c: KBO_T.leak, lbl: '우선 보강' };
+    // 3) Arm load monitor — 팔꿈치 power (W). 200~500W = 정상, >500 = UCL 위험, <200 = power 부족
+    const elbowP = v('Pitching_Elbow_Power_peak');
+    const elbowSt = elbowP == null ? { c: KBO_T.textMuted, lbl: '—', note: '데이터 없음' }
+      : elbowP > 500 ? { c: KBO_T.leak, lbl: '관찰 필요', note: '정상 200~500W 초과 — UCL 부하 모니터' }
+      : elbowP > 200 ? { c: KBO_T.good, lbl: '정상',     note: '정상 200~500W 범위' }
+      : { c: KBO_T.caution, lbl: '낮음', note: '정상 200~500W 미만 — 팔 power 부족' };
+
+    const card = ({ kicker, title, val, unit, status, note }) => `
+      <div class="kbo-card" style="padding: 20px; flex: 1; min-width: 220px; border-left: 3px solid ${status.c};">
+        <div class="kbo-eyebrow" style="margin-bottom: 6px; color: ${status.c};">${kicker}</div>
+        <div style="font-size: 13px; color: ${KBO_T.text}; line-height: 1.4; margin-bottom: 8px;">${title}</div>
+        <div style="display: flex; align-items: baseline; gap: 4px; margin-bottom: 4px;">
+          <span class="kbo-metric-num" style="font-size: 36px; color: ${status.c}; font-weight: 800;">${val}</span>
+          <span style="font-size: 12px; color: ${KBO_T.textMuted};">${unit}</span>
+          <span style="margin-left: auto; font-size: 11px; color: ${status.c}; font-weight: 700;">${status.lbl}</span>
+        </div>
+        ${note ? `<div style="font-size: 11px; color: ${KBO_T.textMuted}; line-height: 1.5;">${note}</div>` : ''}
+      </div>`;
+
+    return `<div style="display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0;">
+      ${card({ kicker: 'Lead-leg Block', title: '앞다리 블로킹 유지력', val: leadBlockScore != null ? leadBlockScore : '—', unit: '/100', status: leadBlockSt, note: 'ELI 분절 점수 (P4 인과 구조의 1차 원인 후보)' })}
+      ${card({ kicker: 'Pelvis → Trunk Transfer', title: '골반 → 몸통 전달율', val: transferPct != null ? transferPct : '—', unit: '%', status: transferSt, note: 'ETE 골반→몸통 비율 — 50%+ Elite' })}
+      ${card({ kicker: 'Arm Load Monitor', title: '팔꿈치 부하 모니터', val: fmt(elbowP, 0), unit: 'W (peak)', status: elbowSt, note: elbowSt.note })}
+    </div>`;
+  }
+
   function _renderP3Transmission(result) {
-    const cs = result.catScores || {};
-    const tr = cs.TRANSFER?.score ?? 50;
     const eliResult = _calculateELI(result);
     const eli = eliResult?.eli;
     const weakArea = eliResult?.areas?.filter(a => a.score != null && a.score < 50).sort((a,b) => a.score - b.score)[0];
+
+    // Primary Leak 한 문장 — 가장 약한 분절을 친근한 코칭 언어로 압축
+    const primaryLeakLine = weakArea
+      ? `<strong>주요 손실 구간 — ${weakArea.name} (${Math.round(weakArea.score)}점)</strong>. ${weakArea.name === '앞다리 블로킹' ? '앞발 착지 후 버티는 힘이 부족해 전진 에너지가 회전으로 충분히 바뀌지 않습니다.' : weakArea.name === '골반→몸통 연결' ? '골반과 몸통의 시간차가 짧아 채찍 효과가 약해집니다.' : weakArea.name === '몸통 파워' ? '몸통 회전이 충분히 가속되지 못해 팔 의존이 커질 수 있습니다.' : weakArea.name === '팔 전달' ? '몸통→팔 전달이 약해 마지막 가속이 부족합니다.' : weakArea.name === '하체 추진' ? '뒷다리 추진력이 부족해 시작 에너지가 낮습니다.' : '이 분절에서 에너지 누수가 가장 크게 발생합니다.'}`
+      : `<strong>전달 효율 종합 ${eli != null ? Math.round(eli) : '—'}점</strong> · 큰 누수 지점 없음 — 이 패턴을 유지하는 방향으로 코칭합니다.`;
+
     const headline = `
-      <div style="margin-bottom: 24px;">
+      <div style="margin-bottom: 18px;">
         <div class="kbo-eyebrow" style="margin-bottom: 10px;">발 → 골반 → 몸통 → 팔 → 공</div>
-        <div class="kbo-headline">
-          ${weakArea ? `점수가 가장 낮은 분절 — <em>${weakArea.name}</em> ${Math.round(weakArea.score)}점.` : `전달 효율 종합 <em>${eli != null ? Math.round(eli) : '—'}점</em> · 큰 누수 지점 없음.`}
+        <div class="kbo-headline" style="line-height: 1.4;">
+          ${primaryLeakLine}
         </div>
-        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
-          ★ 5축 중 <strong>Transmission(에너지 전달)</strong> 축 하위 진단. ELI는 이 축을 분해하는 도구 — 별도 종합점수 아님.
-          이 페이지는 <em>분절 단위(공간) 분포</em>를 보여주며, <strong>1차 원인 vs 주요 손실 구간</strong>의 인과 구조는 <a href="#p4" style="color: ${KBO_T.navy}; font-weight: 700;">P4</a>에서 정리합니다.
+        <div style="font-size: 12.5px; color: ${KBO_T.textMuted}; margin-top: 10px;">
+          분절 단위(공간) 분포 — 1차 원인 vs 주요 손실 구간 인과 구조는 <a href="#p4" style="color: ${KBO_T.navy}; font-weight: 700;">P4</a>, 진단 근거 4 카드는 <a href="#p5" style="color: ${KBO_T.navy}; font-weight: 700;">P5</a>.
         </div>
       </div>`;
     return `
@@ -912,24 +965,21 @@
       <div class="kbo-pad">
         ${_kboPageHeader({ num: '3', en: 'Kinetic Chain Map', kr: '에너지 전달 능력 (분절 단위)', q: '발-골반-몸통-팔-공 — 어느 분절(공간)에서 누수가 가장 큰가' })}
         ${headline}
-        <!-- ★ v0.88 — Dynamic Kinematic Sequence는 P4(시간 흐름별)로 이동 — P3는 분절(공간) 단위 분석에 집중 -->
-        <!-- ★ v0.79 — Energy Flow Mannequin 메인 위치: 어느 분절에서 누수가 발생했는지 직관 시각화 -->
+        ${_p3KeyMetricCards(result)}
+        <!-- ★ v0.93 — 메인 시각화: Energy Flow Mannequin (보는 페이지) -->
         <div style="margin: 24px 0;">
           <div class="kbo-eyebrow" style="margin-bottom: 8px; color: ${KBO_T.navySoft};">Energy Flow Mannequin · 키네틱 체인 누수 위치</div>
-          <div style="font-size: 13px; color: ${KBO_T.text2}; margin-bottom: 12px; line-height: 1.6;">
-            발에서 만든 힘이 골반·몸통·팔로 어떻게 흐르고, 어느 분절에서 새는지 한 눈에 표시. <em>색상이 짙은 구간이 누수 발생 지점</em>입니다.
-          </div>
           ${_renderMannequinUplift(result)}
         </div>
-        ${_renderEnergyTransferBar(result)}
-        ${_renderCoachDeliveryBox(result, 'p3')}
       </div>
-      <!-- 상세 진단 — ELI + ETE 분해 (펼침 격리. 마네킹은 메인으로 이동) -->
+      <!-- 상세 — Energy Transfer Bar · Coach Delivery · ELI 6영역 분해 · ETE 영역별 (펼침 격리) -->
       <details style="background: var(--bg-card); margin-top: 16px;">
         <summary style="padding: 16px 28px; cursor: pointer; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); list-style: none;">
-          ▼ 상세 진단 — ELI 6영역 분해 + ETE 영역별 (펼치기)
+          ▼ 상세 진단 — Energy Transfer Bar · ELI 6영역 분해 · ETE 영역별 · Coach Delivery (펼치기)
         </summary>
         <div style="padding: 28px;">
+          ${_renderEnergyTransferBar(result)}
+          ${_renderCoachDeliveryBox(result, 'p3')}
           ${_renderELISection(result)}
           ${_renderETESection(result)}
         </div>
