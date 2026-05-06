@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.73';  // ★ v0.73 — KBO 의사결정자 데모 신뢰도 리스크 7개 fix (Load Safety→Arm Load Monitor / 전달율·누수율 분모 통일 / 앞무릎 무너짐→블로킹 유지 부족 / 낭비형→전달 개선 타입 / 체력 Demo 표시 / +5.5 보장표현 완화 / Transfer Score 메인·ELI sub)
+  const ALGORITHM_VERSION = 'v0.74';  // ★ v0.74 — 디자인 검토 의견 A·B·C·D 반영: 디폴트 Day 모드 / 시스템 alert 숨김 / Output Red→Navy / Page1 5축 보드 P2 이동
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

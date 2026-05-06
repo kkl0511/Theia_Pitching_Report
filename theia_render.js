@@ -23,13 +23,14 @@
   // ★ v0.62 — KBO 디자인 핸드오프 v0.8 (Navy/White) 8 컴포넌트 vanilla JS 헬퍼
   // 사용 위치: .kbo-scope 래퍼 안에서만 (index.html에 CSS 정의)
   // ════════════════════════════════════════════════════════════
+  // ★ v0.74 — 색상 의미 단순화 (검토 의견 C): Generation=Navy, Transmission=Blue, Leak=Red, Load=Amber, Good=Green
   const KBO_T = {
     navy: '#0F2A4A', navySoft: '#2E75B6',
     text: '#1A1A1A', text2: '#3F3F46', textMuted: '#6B6357',
     bgCard: '#FFFFFF', bgElev: '#F3F1EC', border: '#DCD7CF', borderSoft: '#E8E4DD',
     good: '#16A34A', caution: '#B45309', leak: '#B91C1C', risk: '#7030A0',
-    output: '#C00000', transfer: '#0070C0',
-    fitness: '#0070C0', mechanics: '#C00000', injury: '#D97706',
+    output: '#0F2A4A', transfer: '#0070C0',     // Output Red→Navy
+    fitness: '#0070C0', mechanics: '#0F2A4A', injury: '#D97706',  // Mechanics Red→Navy
   };
 
   // 1. MetricCard
@@ -547,6 +548,7 @@
         </div>
       </div>`;
 
+    // ★ v0.74 검토 의견 D — Page 1 단순화: 5축 보드를 P2로 이동, P1은 Executive 메시지만
     return `
     <section id="p1" class="report-page kbo-scope">
       <div class="kbo-pad">
@@ -554,7 +556,6 @@
         ${headline}
         ${waterfall}
         ${kpis}
-        ${_render5AxisBoard(result)}
       </div>
     </section>`;
   }
@@ -733,12 +734,14 @@
         </div>
       </div>`;
 
+    // ★ v0.74 — 5축 보드를 P1에서 P2로 이동 (검토 의견 D)
     return `
     <section id="p2" class="report-page kbo-scope">
       <div class="kbo-pad">
         ${_kboPageHeader({ num: '2', en: 'Opportunity Map', kr: '힘 생성 vs 힘 전달', q: '출력과 전달은 다르다 — 어느 쪽이 약하면 코칭 효과가 큰가' })}
         ${headline}
         ${main}
+        ${_render5AxisBoard(result)}
       </div>
       <!-- 기존 보조 시각화 (3-col radar, segment generation stack) — 페이지 하단 보존 -->
       <div style="background: var(--bg-card); margin-top: 32px; padding: 28px; border-top: 1px solid var(--border);">
@@ -812,31 +815,106 @@
     </section>`;
   }
 
-  // ── P5 Evidence Dashboard (★ v0.67 KBO 디자인 핸드오프) ──
+  // ★ v0.75 — 검토 의견 E: 4 evidence card 압축 (지표명 / 값 / 기준 / 해석 한 줄)
+  function _renderEvidenceCompact(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const s = (k) => m[k]?.score;
+    const fmt = (val, dec = 1) => val == null ? '—' : (typeof val === 'number' ? val.toFixed(dec) : val);
+
+    // 4개 카드 데이터
+    const ete_p2t = v('ETE_pelvis_to_trunk');
+    const ete_t2a = v('ETE_trunk_to_arm');
+    const lag = v('pelvis_to_trunk');
+    const lagMs = lag != null && Math.abs(lag) < 1 ? lag * 1000 : lag;
+    const brake = v('lead_leg_braking_impulse');
+    const brakeScore = s('lead_leg_braking_impulse');
+    const releaseSd = v('release_point_consistency');
+    const releaseScore = s('release_point_consistency');
+
+    const card = ({ kicker, title, val, unit, target, interp, conf, color }) => `
+      <div class="kbo-card" style="padding: 22px; display: flex; flex-direction: column; gap: 8px;">
+        <div class="kbo-eyebrow" style="color: ${KBO_T.navySoft};">이것이 증명하는 것</div>
+        <div class="kbo-display" style="font-size: 16px; color: ${KBO_T.text}; line-height: 1.3;">${title}</div>
+        <div class="kbo-eyebrow" style="margin-top: 8px;">${kicker}</div>
+        <div style="display: flex; align-items: baseline; gap: 6px;">
+          <span class="kbo-metric-num" style="font-size: 44px; color: ${color};">${val}</span>
+          <span style="font-size: 14px; color: ${KBO_T.textMuted};">${unit}</span>
+        </div>
+        <div class="kbo-mono" style="font-size: 11px; color: ${KBO_T.text2};">기준: ${target}</div>
+        <div style="font-size: 12px; color: ${KBO_T.text2}; line-height: 1.5; margin-top: 6px;">${interp}</div>
+      </div>`;
+
+    const c1 = card({
+      kicker: 'Sequence Timing · 분절 순서',
+      title: '골반과 몸통이 한 번에 열렸나, 순서대로 열렸나',
+      val: lagMs != null ? Math.round(lagMs) : '—', unit: 'ms',
+      target: 'Target 40~50 ms',
+      interp: lagMs == null ? '데이터 없음' : Math.abs(lagMs) < 25 ? '너무 빠르게 함께 열려 몸통에 힘이 모일 시간이 부족' : Math.abs(lagMs) > 70 ? '몸통이 너무 늦게 열려 팔 의존 증가' : '적정 lag — 채찍처럼 순차 가속',
+      color: lagMs != null && Math.abs(lagMs - 45) < 15 ? KBO_T.good : KBO_T.caution,
+    });
+    const c2 = card({
+      kicker: 'Lead-leg Braking · 디딤발',
+      title: '앞발이 닿은 뒤 끝까지 버텨주는가',
+      val: fmt(brake, 4), unit: 'BW·s',
+      target: brakeScore != null ? `점수 ${brakeScore}/100` : '높을수록 양호',
+      interp: brakeScore == null ? '데이터 없음' : brakeScore >= 70 ? '디딤발 단단히 받쳐줌 — 회전축 형성' : brakeScore >= 40 ? '브레이킹 부분 부족 — 릴리스 직전 누수' : '앞으로 가던 힘이 회전으로 안 바뀌고 흘러감',
+      color: brakeScore == null ? KBO_T.textMuted : brakeScore >= 70 ? KBO_T.good : brakeScore >= 40 ? KBO_T.caution : KBO_T.leak,
+    });
+    const c3 = card({
+      kicker: 'Energy Transfer Rate · 전달율',
+      title: '하체에서 만든 힘이 팔까지 도달하는 비율',
+      val: ete_p2t != null && ete_t2a != null ? `${(ete_p2t*100).toFixed(0)}·${(ete_t2a*100).toFixed(0)}` : ete_p2t != null ? `${(ete_p2t*100).toFixed(0)}` : '—',
+      unit: '%',
+      target: 'Target 50%+ (각 단계)',
+      interp: ete_p2t == null ? '데이터 없음' : (ete_p2t < 0.5 || (ete_t2a != null && ete_t2a < 0.5)) ? '한 단계 이상에서 50% 미만 — 메카닉 코칭 1순위' : '각 단계 50% 이상 — 양호',
+      color: ete_p2t != null && ete_t2a != null && ete_p2t >= 0.5 && ete_t2a >= 0.5 ? KBO_T.good : KBO_T.caution,
+    });
+    const c4 = card({
+      kicker: 'Consistency · 반복성',
+      title: '같은 동작을 얼마나 일관되게 반복하는가',
+      val: releaseScore != null ? releaseScore : '—', unit: '/100',
+      target: 'Target 70+ · 80+ Elite',
+      interp: releaseScore == null ? '데이터 없음' : releaseScore >= 80 ? '릴리스·자세 흩어짐 매우 작음 — 제구 안정' : releaseScore >= 60 ? '평균 수준 — 미세 조정 단계' : '흩어짐 큼 — drill 반복 학습 필요',
+      color: releaseScore == null ? KBO_T.textMuted : releaseScore >= 70 ? KBO_T.good : releaseScore >= 50 ? KBO_T.caution : KBO_T.leak,
+    });
+
+    return `<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 18px 0;">
+      ${c1}${c2}${c3}${c4}
+    </div>`;
+  }
+
+  // ── P5 Evidence Dashboard (★ v0.75 검토의견 E — 4 카드 압축) ──
   function _renderP5Evidence(result) {
     const headline = `
-      <div style="margin-bottom: 24px;">
-        <div class="kbo-eyebrow" style="margin-bottom: 10px;">분석가 근거 자료</div>
+      <div style="margin-bottom: 18px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">진단 근거 4 핵심</div>
         <div class="kbo-headline">
-          위 진단의 <em>근거 수치</em>.<br/>
-          반복성(Stability)과 최적성(Quality)은 다른 개념 — 두 축으로 분리.
-        </div>
-        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
-          이 페이지는 <strong>분석가·의사결정자가 신뢰할 수 있는 근거</strong>만 모아 제시. 학술 인용·통계 용어는 펼침 카드 안에만.
+          위 진단을 만드는 <em>핵심 데이터 4가지</em>.<br/>
+          시퀀스 timing · 디딤발 브레이킹 · 전달율 · 반복성.
         </div>
       </div>`;
     return `
     <section id="p5" class="report-page kbo-scope">
       <div class="kbo-pad">
-        ${_kboPageHeader({ num: '5', en: 'Evidence Dashboard', kr: '진단 근거', q: '위 진단을 만드는 핵심 데이터는 어떻게 읽히는가' })}
+        ${_kboPageHeader({ num: '5', en: 'Evidence Dashboard', kr: '진단 근거', q: '위 진단을 만드는 핵심 데이터는 무엇인가' })}
         ${headline}
+        ${_renderEvidenceCompact(result)}
+        <div style="font-size: 11px; color: ${KBO_T.textMuted}; font-style: italic; margin-top: 8px;">
+          ※ 학술 인용·산식·연구 footnote는 아래 보조 영역의 펼침 카드 안에 격리되어 있습니다.
+        </div>
       </div>
-      <!-- 기존 Evidence — 점진 전환 -->
-      <div style="background: var(--bg-card); padding: 28px;">
-        ${_renderKinematicBellUplift(result)}
-        ${_renderGRFSection(result)}
-        ${_renderConsistencyQualityMatrix(result)}
-      </div>
+      <!-- 보조 영역 — 분석가용 상세 시각화 (Bell·GRF·Consistency Matrix) -->
+      <details style="background: var(--bg-card); margin-top: 20px;">
+        <summary style="padding: 16px 28px; cursor: pointer; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); list-style: none;">
+          ▼ 분석가용 상세 시각화 — 키네매틱 Bell · GRF 5단계 · Consistency × Quality Matrix (펼치기)
+        </summary>
+        <div style="padding: 28px;">
+          ${_renderKinematicBellUplift(result)}
+          ${_renderGRFSection(result)}
+          ${_renderConsistencyQualityMatrix(result)}
+        </div>
+      </details>
     </section>`;
   }
 
@@ -2747,10 +2825,10 @@
         });
       } catch (e) { console.warn('Radar init failed', canvasId, e); }
     };
-    // ★ v0.70 — KBO 도메인 토큰 (체력=fitness blue, 메카닉=mechanics red, 제구=control green)
-    drawRadar('theia-radar-fit',  fitDims,  '#0070C0');  // fitness
-    drawRadar('theia-radar-mech', mechDims, '#C00000');  // mechanics
-    drawRadar('theia-radar-ctrl', ctrlDims, '#16A34A');  // control (green for consistency)
+    // ★ v0.74 — KBO 도메인 토큰 (체력=fitness blue, 메카닉=navy, 제구=control green) — Red는 Leak에만
+    drawRadar('theia-radar-fit',  fitDims,  '#0070C0');  // fitness blue
+    drawRadar('theia-radar-mech', mechDims, '#0F2A4A');  // mechanics navy
+    drawRadar('theia-radar-ctrl', ctrlDims, '#16A34A');  // control green
   }
 
   // ════════════════════════════════════════════════════════════

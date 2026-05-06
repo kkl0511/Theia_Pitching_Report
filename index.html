@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="ko" data-theme="night">
+<html lang="ko" data-theme="day">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
+<!-- ★ v0.74 — KBO 영업 데모용 light premium 톤 디폴트 (검토 의견 A) -->
+
 <!-- ★ v0.42 — 캐시 무효화: 항상 최신 빌드 로드 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -274,8 +276,11 @@
     --kbo-border: #DCD7CF; --kbo-border-soft: #E8E4DD;
     --kbo-text: #1A1A1A; --kbo-text-2: #3F3F46; --kbo-text-muted: #6B6357;
     --kbo-good: #16A34A; --kbo-caution: #B45309; --kbo-leak: #B91C1C; --kbo-risk: #7030A0;
-    --kbo-output: #C00000; --kbo-transfer: #0070C0;
-    --kbo-fitness: #0070C0; --kbo-mechanics: #C00000; --kbo-injury: #D97706;
+    /* ★ v0.74 — 색상 의미 단순화 (검토 의견 C):
+       Output/Generation은 'Red'로 쓰면 결함처럼 읽힘 → Navy/Dark Gray로 변경.
+       Red는 Leak/Fault에만 사용. Generation=Navy, Transmission=Blue, Leak=Red, Load=Amber, Good=Green */
+    --kbo-output: #0F2A4A; --kbo-transfer: #0070C0;
+    --kbo-fitness: #0070C0; --kbo-mechanics: #0F2A4A; --kbo-injury: #D97706;
     --kbo-shadow: 0 1px 2px rgba(15,42,74,0.04), 0 4px 12px rgba(15,42,74,0.05);
     --kbo-shadow-lg: 0 2px 6px rgba(15,42,74,0.06), 0 12px 32px rgba(15,42,74,0.08);
 
@@ -292,7 +297,7 @@
     --text-muted: #6B6357;
     --accent: #0F2A4A;       /* navy */
     --accent-soft: #2E75B6;  /* navy soft */
-    --output: #C00000;
+    --output: #0F2A4A;       /* Generation = Navy (★ v0.74 — Red는 Leak에만) */
     --transfer: #0070C0;
     --leak: #B91C1C;
     --control: #16A34A;
@@ -300,7 +305,7 @@
     --warn: #B45309;
     --bad: #B91C1C;
     --fitness: #0070C0;
-    --mechanics: #C00000;
+    --mechanics: #0F2A4A;    /* Mechanics = Navy (★ v0.74 — Generation 의미 일관) */
     --injury: #D97706;
     --risk: #7030A0;
   }
@@ -636,11 +641,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.73"></script>
-<script src="metadata_theia.js?v=0.73"></script>
-<script src="theia_app.js?v=0.73"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.73"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.73"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.74"></script>
+<script src="metadata_theia.js?v=0.74"></script>
+<script src="theia_app.js?v=0.74"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.74"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.74"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
@@ -1195,7 +1200,8 @@ function loadSavedPlayer(key) {
   const html = window.TheiaApp.renderReport(r.result);
   document.getElementById('result-area').innerHTML = `<div class="card p-6">${html}</div>`;
   hideInputSections();
-  showAlert(`✓ ${r.player?.name || '저장된 선수'} 불러옴 (${r.version})`, 'success');
+  // ★ v0.74 — KBO 영업 데모에서 시스템 alert 숨김 (검토 의견 B). 콘솔에만 기록.
+  console.log(`✓ ${r.player?.name || '저장된 선수'} 불러옴 (${r.version})`);
 }
 
 function deleteSelectedSavedPlayer() {
