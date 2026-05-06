@@ -53,15 +53,16 @@
     gold: '#E8C77A',         // navy 위 핵심 수치 강조 (선택)
   };
 
-  // 1. MetricCard
+  // 1. MetricCard — ★ v0.98 P1 KPI 카드 모바일 overflow 수정: unit 크기를 number의 40%로 inline 고정 (em 기반 ambient 환경 의존성 제거)
   function _kboMetricCard({ label, value, unit, delta, deltaLabel, color = KBO_T.navy, hint, size = 'md' }) {
     const sizes = { sm: 32, md: 44, lg: 64, xl: 88 };
     const fontSize = sizes[size] || 44;
-    return `<div style="min-width: 0;">
+    const unitSize = Math.max(11, Math.round(fontSize * 0.4));  // unit always smaller (e.g., lg=64→26)
+    return `<div style="min-width: 0; overflow-wrap: break-word; word-break: keep-all;">
       <div class="kbo-eyebrow" style="margin-bottom: 6px;">${label}</div>
-      <div style="display: flex; align-items: baseline; gap: 4px;">
-        <span class="kbo-metric-num" style="font-size: ${fontSize}px; color: ${color};">${value}</span>
-        ${unit ? `<span class="kbo-metric-unit" style="font-size: ${fontSize}px;">${unit}</span>` : ''}
+      <div style="display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap;">
+        <span class="kbo-metric-num" style="font-size: ${fontSize}px; color: ${color}; min-width: 0;">${value}</span>
+        ${unit ? `<span class="kbo-metric-unit" style="font-size: ${unitSize}px;">${unit}</span>` : ''}
       </div>
       ${delta ? `<div class="kbo-mono" style="font-size: 13px; color: ${KBO_T.good}; font-weight: 700; margin-top: 4px;">${delta}${deltaLabel ? `<span style="color: ${KBO_T.textMuted}; font-weight: 400; margin-left: 6px;">${deltaLabel}</span>` : ''}</div>` : ''}
       ${hint ? `<div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-top: 4px;">${hint}</div>` : ''}

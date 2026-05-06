@@ -443,8 +443,11 @@
     .kbo-scope .kbo-pad { padding: 18px 14px 32px; }
     .kbo-scope .kbo-headline { font-size: 19px; line-height: 1.32; }
     .kbo-scope .kbo-page-title-en { font-size: 18px; }
-    .kbo-scope .kbo-metric-num { font-size: clamp(24px, 8vw, 48px) !important; }
-    .kbo-scope .kbo-metric-unit { font-size: 0.45em !important; }
+    .kbo-scope .kbo-metric-num { font-size: clamp(24px, 8vw, 44px) !important; }
+    /* ★ v0.98 — unit 모바일 clamp: 인라인 26px이 그대로 적용되어 큰 숫자 옆에 너무 큰 unit이 따라가지 않도록 */
+    .kbo-scope .kbo-metric-unit { font-size: clamp(11px, 3.2vw, 18px) !important; }
+    /* ★ v0.98 — grid item overflow 방어 (긴 km/h 결합이 셀 폭 초과하지 않도록) */
+    .kbo-scope div[style*="grid-template-columns: repeat"] > * { min-width: 0 !important; }
     /* 3·4·5 컬럼 grid → 2 컬럼으로 */
     .kbo-scope div[style*="grid-template-columns: repeat(3"],
     .kbo-scope div[style*="grid-template-columns: repeat(4"],
@@ -769,11 +772,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.97"></script>
-<script src="metadata_theia.js?v=0.97"></script>
-<script src="theia_app.js?v=0.97"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.97"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.97"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.98"></script>
+<script src="metadata_theia.js?v=0.98"></script>
+<script src="theia_app.js?v=0.98"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.98"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.98"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
