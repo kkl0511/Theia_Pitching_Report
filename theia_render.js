@@ -23,14 +23,18 @@
   // ★ v0.62 — KBO 디자인 핸드오프 v0.8 (Navy/White) 8 컴포넌트 vanilla JS 헬퍼
   // 사용 위치: .kbo-scope 래퍼 안에서만 (index.html에 CSS 정의)
   // ════════════════════════════════════════════════════════════
-  // ★ v0.74 — 색상 의미 단순화 (검토 의견 C): Generation=Navy, Transmission=Blue, Leak=Red, Load=Amber, Good=Green
+  // ★ v0.81 — 디자인 v0.9 적용: Navy 1색 + 어스톤 status (sage/amber/rust)
   const KBO_T = {
-    navy: '#0F2A4A', navySoft: '#2E75B6',
-    text: '#1A1A1A', text2: '#3F3F46', textMuted: '#6B6357',
-    bgCard: '#FFFFFF', bgElev: '#F3F1EC', border: '#DCD7CF', borderSoft: '#E8E4DD',
-    good: '#16A34A', caution: '#B45309', leak: '#B91C1C', risk: '#7030A0',
-    output: '#0F2A4A', transfer: '#0070C0',     // Output Red→Navy
-    fitness: '#0070C0', mechanics: '#0F2A4A', injury: '#D97706',  // Mechanics Red→Navy
+    navy: '#0F2A4A', navySoft: '#3B5A82', navyTint: '#EAF0F7',
+    text: '#0F1419', text2: '#3F4651', textMuted: '#6B7280',
+    bgCard: '#FFFFFF', bgElev: '#F6F7F9', border: '#E1E5EB', borderSoft: '#EEF1F5',
+    good: '#3F7D5C',         // sage green (less saturated)
+    caution: '#A87333',      // burnt amber
+    leak: '#A8443A',         // rust red
+    risk: '#A8443A',
+    output: '#0F2A4A', transfer: '#3B5A82',     // navy 1색 패밀리
+    fitness: '#3B5A82', mechanics: '#0F2A4A', injury: '#A87333',
+    gold: '#E8C77A',         // navy 위 핵심 수치 강조 (선택)
   };
 
   // 1. MetricCard
@@ -275,20 +279,24 @@
       },
     };
     const msg = messages[page] || messages.p1;
+    // ★ v0.81 — 디자인 v0.9 .plain 스타일 적용 (navy-tint 배경 + 작은 plain-tag)
     return `
-    <div style="margin-top: 18px; padding: 18px 22px; background: rgba(15,42,74,0.04); border-left: 4px solid ${KBO_T.navy}; border-radius: 0 8px 8px 0;">
-      <div class="kbo-eyebrow" style="color: ${KBO_T.navy}; margin-bottom: 8px;">${msg.kicker}</div>
-      <div style="font-size: 14px; color: ${KBO_T.text}; line-height: 1.6; margin-bottom: 10px;">
-        <strong>선수에게 한 문장으로 설명</strong>: ${msg.explain}
+    <div class="kbo-plain" style="flex-direction: column; gap: 8px; padding: 14px 16px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="kbo-plain-tag">Coach Delivery</span>
+        <span style="font-size: 11px; color: ${KBO_T.textMuted}; font-style: italic;">${msg.kicker.replace(/^Coach Delivery · /, '')}</span>
       </div>
-      <div style="font-size: 14px; color: ${KBO_T.text}; line-height: 1.6; margin-bottom: ${msg.videoCheck ? '10px' : '0'};">
-        <strong>선수에게 줄 큐</strong>: <em style="color: ${KBO_T.navy};">${msg.cue}</em>
+      <div class="kbo-plain-text">
+        <b>선수에게 한 문장으로 설명</b>: ${msg.explain}
       </div>
-      ${msg.videoCheck ? `<div style="font-size: 12px; color: ${KBO_T.text2}; line-height: 1.5; margin-top: 8px; padding-top: 8px; border-top: 1px dashed ${KBO_T.borderSoft};">
-        <strong>확인할 영상 포인트</strong>: ${msg.videoCheck}
+      <div class="kbo-plain-text">
+        <b>선수에게 줄 큐</b>: <em style="font-style: italic;">${msg.cue}</em>
+      </div>
+      ${msg.videoCheck ? `<div class="kbo-plain-text" style="font-size: 12.5px; color: ${KBO_T.text2}; padding-top: 6px; border-top: 1px solid ${KBO_T.border};">
+        <b>확인할 영상 포인트</b>: ${msg.videoCheck}
       </div>` : ''}
-      ${msg.kpi ? `<div style="font-size: 12px; color: ${KBO_T.text2}; line-height: 1.5;">
-        <strong>재측정 KPI</strong>: ${msg.kpi}
+      ${msg.kpi ? `<div class="kbo-plain-text" style="font-size: 12.5px; color: ${KBO_T.text2};">
+        <b>재측정 KPI</b>: ${msg.kpi}
       </div>` : ''}
     </div>`;
   }
@@ -754,7 +762,7 @@
         <div class="kbo-eyebrow" style="margin-bottom: 10px;">The opportunity</div>
         <div class="kbo-headline">
           출력은 <em>${px >= 50 ? '충분' : '부족'}</em>, 전달 효율이 <em>${py >= 50 ? '양호' : '약함'}</em>.<br/>
-          ${dMech != null && dMech > 3 ? `→ 메카닉 코칭으로 <em>+${dMech.toFixed(1)} km/h</em> 회수 가능.` : '→ 5축 점수 종합으로 진단 우선순위 결정.'}
+          ${dMech != null && dMech > 3 ? `→ 모델 기반 메카닉 개선 여지 <em>+${dMech.toFixed(1)} km/h</em> · 6주 재측정으로 검증.` : '→ 5축 점수 종합으로 진단 우선순위 결정.'}
         </div>
       </div>`;
 
@@ -2168,20 +2176,20 @@
     const injRisk = injScore != null ? (100 - injScore) : 50;
     const dotColor = injRisk >= 80 ? '#dc2626' : injRisk >= 50 ? '#fb923c' : '#16a34a';
 
-    // 4사분면 분류 — Elite 상대 용어 (아마 = Amateur)
+    // ★ v0.80 — 사분면 라벨 통일 (정상급/전달 개선/효율형/개선 필요), 영업적 표현 정돈
     let quadrant, qLabel, qColor, qPriority, qMessage;
     if (outScore >= 50 && trScore >= 50) {
-      quadrant = 1; qLabel = '① Elite'; qColor = '#16a34a'; qPriority = '유지';
-      qMessage = '출력·에너지 효율 모두 코호트 평균 이상. 현재 메카닉 유지 + 부상 모니터링.';
+      quadrant = 1; qLabel = '① 정상급'; qColor = '#16a34a'; qPriority = '유지·세부 조정';
+      qMessage = '출력·에너지 효율 모두 코호트 평균 이상. 현재 메카닉 유지 + 부하 모니터링.';
     } else if (outScore >= 50 && trScore < 50) {
-      quadrant = 2; qLabel = '② 낭비형 (Inefficient)'; qColor = '#fb923c'; qPriority = '★ 코칭 효과 가장 큼';
-      qMessage = '출력은 잘 만드는데 에너지 효율이 낮아 손실. <strong>시퀀싱·증폭 최적화로 즉시 구속 향상 가능</strong> — 메카닉 코칭이 가장 큰 수익을 내는 유형.';
+      quadrant = 2; qLabel = '② 전달 개선 타입'; qColor = '#D97706'; qPriority = '메카닉 코칭 우선순위';
+      qMessage = '출력은 잘 만드는데 전달 효율이 낮아 손실 — <strong>현재 구속 대비 메카닉 개선 여지가 확인</strong>됩니다. 메카닉 코칭 개입 여지가 큰 유형.';
     } else if (outScore < 50 && trScore >= 50) {
-      quadrant = 3; qLabel = '③ 효율형 (Underpowered)'; qColor = '#0070C0'; qPriority = '체력 강화';
-      qMessage = '메카닉 효율은 좋은데 <strong>출력 자체가 부족</strong>. 체력(파워·근력)으로 출력을 끌어올리면 elite로 점프 가능.';
+      quadrant = 3; qLabel = '③ 효율형'; qColor = '#0070C0'; qPriority = '체력·출력 보강';
+      qMessage = '메카닉 효율은 좋은데 <strong>출력 자체가 부족</strong>. 체력(파워·근력)으로 출력을 끌어올리는 단계.';
     } else {
-      quadrant = 4; qLabel = '④ 아마 (Amateur)'; qColor = '#94a3b8'; qPriority = '기초';
-      qMessage = '둘 다 평균 미만 — Amateur 수준. 체력·시퀀싱 기초 동시 향상 — 인내심 있게 단계별 발전.';
+      quadrant = 4; qLabel = '④ 개선 필요'; qColor = '#94a3b8'; qPriority = '기초부터 단계적';
+      qMessage = '둘 다 평균 미만. 체력·시퀀싱 기초를 단계별로 발전시킬 단계.';
     }
 
     // SVG 4사분면 (pos: outScore=x, trScore=y)
@@ -2203,13 +2211,13 @@
       <line x1="${xs(0)}" y1="${ys(0)}" x2="${xs(100)}" y2="${ys(0)}" stroke="var(--text-muted)"/>
       <line x1="${xs(0)}" y1="${ys(0)}" x2="${xs(0)}" y2="${ys(100)}" stroke="var(--text-muted)"/>
       <!-- 사분면 라벨 -->
-      <text x="${xs(75)}" y="${ys(85)}" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="bold">① Elite</text>
-      <text x="${xs(75)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#fb923c" font-weight="bold">② 낭비형</text>
+      <text x="${xs(75)}" y="${ys(85)}" text-anchor="middle" font-size="10" fill="#16a34a" font-weight="bold">① 정상급</text>
+      <text x="${xs(75)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#D97706" font-weight="bold">② 전달 개선</text>
       <text x="${xs(25)}" y="${ys(85)}" text-anchor="middle" font-size="10" fill="#0070C0" font-weight="bold">③ 효율형</text>
-      <text x="${xs(25)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="bold">④ 아마</text>
-      <!-- 축 라벨 — % 표시 -->
-      <text x="${W/2}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600">출력 Output (%)</text>
-      <text x="14" y="${H/2}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600" transform="rotate(-90 14 ${H/2})">에너지 효율 Energy Efficiency (%)</text>
+      <text x="${xs(25)}" y="${ys(15)}" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="bold">④ 개선 필요</text>
+      <!-- 축 라벨 — % 표시 (영어 제거, 한국어만) -->
+      <text x="${W/2}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600">출력 (%)</text>
+      <text x="14" y="${H/2}" text-anchor="middle" font-size="11" fill="var(--text-secondary)" font-weight="600" transform="rotate(-90 14 ${H/2})">전달 효율 (%)</text>
       <!-- 0/50/100 눈금 -->
       <text x="${xs(0)}" y="${ys(0)+14}" text-anchor="middle" font-size="9" fill="var(--text-muted)">0</text>
       <text x="${xs(50)}" y="${ys(0)+14}" text-anchor="middle" font-size="9" fill="var(--text-muted)">50</text>

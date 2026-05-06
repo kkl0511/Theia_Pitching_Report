@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.79';  // ★ v0.79 — Energy Flow Mannequin P3 메인 visual 복원 (Dynamic Sequence 다음, Energy Transfer Bar 사이). ELI·ETE 상세는 펼침 카드 유지
+  const ALGORITHM_VERSION = 'v0.81';  // ★ v0.81 — 디자인 v0.9 핸드오프 적용: Navy 1색 + 어스톤 status (sage/amber/rust) + Headline 22px (모바일) + .plain 박스 + 그림자 제거 + Coach Delivery를 plain 스타일로
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

@@ -267,80 +267,99 @@
      '.kbo-scope' 래퍼 안에서만 적용. 기존 dark 입력 폼과 분리.
      ════════════════════════════════════════════════════════════ */
   .kbo-scope {
+    /* ★ v0.81 — 디자인 v0.9 적용: Navy 1색 + 어스톤 status (sage/amber/rust) */
     font-family: 'Inter', 'Noto Sans KR', 'Malgun Gothic', -apple-system, system-ui, sans-serif;
     font-size: 15px; line-height: 1.55;
-    color: #1A1A1A; background: #FAFAF7;
+    color: #0F1419; background: #FFFFFF;
     box-sizing: border-box;
-    --kbo-navy: #0F2A4A; --kbo-navy-deep: #0A1F38; --kbo-navy-soft: #2E75B6;
-    --kbo-bg: #FAFAF7; --kbo-bg-card: #FFFFFF; --kbo-bg-elev: #F3F1EC;
-    --kbo-border: #DCD7CF; --kbo-border-soft: #E8E4DD;
-    --kbo-text: #1A1A1A; --kbo-text-2: #3F3F46; --kbo-text-muted: #6B6357;
-    --kbo-good: #16A34A; --kbo-caution: #B45309; --kbo-leak: #B91C1C; --kbo-risk: #7030A0;
-    /* ★ v0.74 — 색상 의미 단순화 (검토 의견 C):
-       Output/Generation은 'Red'로 쓰면 결함처럼 읽힘 → Navy/Dark Gray로 변경.
-       Red는 Leak/Fault에만 사용. Generation=Navy, Transmission=Blue, Leak=Red, Load=Amber, Good=Green */
-    --kbo-output: #0F2A4A; --kbo-transfer: #0070C0;
-    --kbo-fitness: #0070C0; --kbo-mechanics: #0F2A4A; --kbo-injury: #D97706;
-    --kbo-shadow: 0 1px 2px rgba(15,42,74,0.04), 0 4px 12px rgba(15,42,74,0.05);
-    --kbo-shadow-lg: 0 2px 6px rgba(15,42,74,0.06), 0 12px 32px rgba(15,42,74,0.08);
+    --kbo-navy: #0F2A4A; --kbo-navy-deep: #0A1F38; --kbo-navy-soft: #3B5A82;
+    --kbo-navy-tint: #EAF0F7;     /* plain-language 박스 배경 */
+    --kbo-bg: #FFFFFF; --kbo-bg-card: #FFFFFF; --kbo-bg-elev: #F6F7F9;
+    --kbo-bg-tinted: #F2F5FA;
+    --kbo-border: #E1E5EB; --kbo-border-soft: #EEF1F5;
+    --kbo-text: #0F1419; --kbo-text-2: #3F4651; --kbo-text-muted: #6B7280;
+    /* Status — 어스톤 (무채도 낮춤) */
+    --kbo-good: #3F7D5C;          /* sage green */
+    --kbo-caution: #A87333;       /* burnt amber */
+    --kbo-leak: #A8443A;          /* rust red */
+    --kbo-risk: #A8443A;
+    /* Domain — Navy 1색 통일 (rainbow 방지) */
+    --kbo-output: #0F2A4A; --kbo-transfer: #3B5A82;
+    --kbo-fitness: #3B5A82; --kbo-mechanics: #0F2A4A; --kbo-injury: #A87333;
+    --kbo-gold: #E8C77A;          /* navy 위 핵심 수치 강조 */
+    --kbo-shadow: none;           /* v0.9 — 그림자 거의 사용 안 함 */
+    --kbo-shadow-lg: 0 2px 6px rgba(15,42,74,0.04);
 
-    /* ★ v0.68 — 기존 dark/light 변수들을 KBO 톤으로 강제 override
-       그러면 .kbo-scope 안의 모든 var(--bg-card), var(--text-primary) 등이
-       자동 Navy/White로 전환되어 마네킹·ELI 카드·인과 카드·GRF·Matrix
-       기존 마크업이 그대로 light 테마에 동작함 */
-    --bg-primary: #FAFAF7;
+    /* ★ v0.68 — 기존 dark/light 변수들을 KBO v0.9 톤으로 override */
+    --bg-primary: #FFFFFF;
     --bg-card: #FFFFFF;
-    --bg-elevated: #F3F1EC;
-    --border: #DCD7CF;
-    --text-primary: #1A1A1A;
-    --text-secondary: #3F3F46;
-    --text-muted: #6B6357;
-    --accent: #0F2A4A;       /* navy */
-    --accent-soft: #2E75B6;  /* navy soft */
-    --output: #0F2A4A;       /* Generation = Navy (★ v0.74 — Red는 Leak에만) */
-    --transfer: #0070C0;
-    --leak: #B91C1C;
-    --control: #16A34A;
-    --good: #16A34A;
-    --warn: #B45309;
-    --bad: #B91C1C;
-    --fitness: #0070C0;
-    --mechanics: #0F2A4A;    /* Mechanics = Navy (★ v0.74 — Generation 의미 일관) */
-    --injury: #D97706;
-    --risk: #7030A0;
+    --bg-elevated: #F6F7F9;
+    --border: #E1E5EB;
+    --text-primary: #0F1419;
+    --text-secondary: #3F4651;
+    --text-muted: #6B7280;
+    --accent: #0F2A4A;
+    --accent-soft: #3B5A82;
+    --output: #0F2A4A;
+    --transfer: #3B5A82;
+    --leak: #A8443A;
+    --control: #3F7D5C;
+    --good: #3F7D5C;       /* v0.81 — sage green */
+    --warn: #A87333;       /* v0.81 — burnt amber */
+    --bad: #A8443A;        /* v0.81 — rust red */
+    --fitness: #3B5A82;
+    --mechanics: #0F2A4A;
+    --injury: #A87333;
+    --risk: #A8443A;
   }
-  /* 기존 dark 영역의 일부 inline 색상(#0f172a 등)은 hardcoded — KBO 안에서 light로 강제 */
   .kbo-scope .card-elev,
-  .kbo-scope .cat-card { background: #FFFFFF !important; border-color: #DCD7CF !important; }
-  .kbo-scope details { background: #F3F1EC !important; }
+  .kbo-scope .cat-card { background: #FFFFFF !important; border-color: #E1E5EB !important; box-shadow: none !important; }
+  .kbo-scope details { background: #F6F7F9 !important; }
   .kbo-scope * { box-sizing: border-box; }
   .kbo-scope .kbo-display { font-family: 'Space Grotesk', 'Noto Sans KR', system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; }
   .kbo-scope .kbo-mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
-  .kbo-scope .kbo-pad { padding: 40px 48px; }
+  .kbo-scope .kbo-pad { padding: 24px 20px 40px; }  /* ★ v0.81 — 모바일 친화 패딩 */
+  /* ★ v0.81 — Plain-language 박스 (Coach Delivery 톤) */
+  .kbo-scope .kbo-plain {
+    background: #EAF0F7; border-radius: 10px;
+    padding: 12px 14px; margin-top: 14px;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .kbo-scope .kbo-plain-tag {
+    flex: 0 0 auto; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700; color: #0F2A4A;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    background: #fff; border: 1px solid #0F2A4A;
+    padding: 3px 7px; border-radius: 4px; line-height: 1; margin-top: 1px;
+  }
+  .kbo-scope .kbo-plain-text {
+    font-size: 13.5px; color: #0F1419; line-height: 1.55;
+  }
+  .kbo-scope .kbo-plain-text b { font-weight: 700; color: #0F2A4A; }
 
-  /* Page header strip */
+  /* Page header strip — ★ v0.81 모바일 친화 사이즈 다운 */
   .kbo-scope .kbo-page-head {
-    display: flex; align-items: baseline; gap: 14px;
-    padding-bottom: 18px; margin-bottom: 28px;
+    display: flex; align-items: baseline; gap: 8px;
+    padding-bottom: 14px; margin-bottom: 20px;
     border-bottom: 2px solid var(--kbo-navy);
     flex-wrap: wrap;
   }
   .kbo-scope .kbo-page-num {
-    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 12px;
-    letter-spacing: 0.18em; color: var(--kbo-navy);
-    padding: 6px 12px; border: 1.5px solid var(--kbo-navy); border-radius: 4px;
+    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 11px;
+    letter-spacing: 0.16em; color: var(--kbo-navy);
+    padding: 4px 9px; border: 1.5px solid var(--kbo-navy); border-radius: 4px;
   }
   .kbo-scope .kbo-page-title-en {
-    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 26px;
+    font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700; font-size: 20px;
     color: var(--kbo-navy); letter-spacing: -0.01em;
   }
-  .kbo-scope .kbo-page-title-kr { font-size: 16px; color: var(--kbo-text-muted); margin-left: 4px; }
-  .kbo-scope .kbo-page-q { margin-left: auto; font-size: 13px; color: var(--kbo-text-muted); }
+  .kbo-scope .kbo-page-title-kr { font-size: 13px; color: var(--kbo-text-muted); margin-left: 2px; }
+  .kbo-scope .kbo-page-q { flex-basis: 100%; font-size: 12px; color: var(--kbo-text-muted); margin-top: 4px; }
 
-  /* Headline (P1) */
+  /* Headline — ★ v0.81 22px (모바일 우선) */
   .kbo-scope .kbo-headline {
     font-family: 'Space Grotesk', system-ui, sans-serif; font-weight: 700;
-    font-size: 32px; line-height: 1.25; letter-spacing: -0.015em;
+    font-size: 22px; line-height: 1.32; letter-spacing: -0.012em;
     color: var(--kbo-text);
   }
   .kbo-scope .kbo-headline em { font-style: normal; color: var(--kbo-navy); }
@@ -641,11 +660,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.79"></script>
-<script src="metadata_theia.js?v=0.79"></script>
-<script src="theia_app.js?v=0.79"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.79"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.79"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.81"></script>
+<script src="metadata_theia.js?v=0.81"></script>
+<script src="theia_app.js?v=0.81"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.81"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.81"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
