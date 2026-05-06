@@ -243,6 +243,56 @@
     return { level: 'low', label: '신뢰도 낮음', cls: 'conf-low', icon: '○' };
   }
 
+  // ★ v0.77 — Coach Delivery 박스: 코치가 선수에게 할 말 + 큐 + 영상 포인트 + 재측정 KPI
+  // 페이지별 메시지가 데이터(weakArea·점수)에 따라 자동 변환
+  function _renderCoachDeliveryBox(result, page = 'p1') {
+    const cs = result.catScores || {};
+    const tr = cs.TRANSFER?.score ?? 50;
+    const out = cs.OUTPUT?.score ?? 50;
+    const isLeakDom = tr < out;  // 전달이 출력보다 약하면 = Transfer-Limited
+
+    const messages = {
+      p1: {
+        kicker: 'Coach Delivery · 코치가 선수에게 전달할 한 문장',
+        explain: isLeakDom
+          ? '힘은 충분히 만들고 있는데, 앞발이 닿은 뒤 끝까지 버티지 못해 힘이 공까지 다 가지 못한다.'
+          : '힘 자체가 부족한 단계 — 출력 보강이 우선 필요한 유형.',
+        cue: isLeakDom ? '"앞발이 닿으면 몸을 더 밀고 나가지 말고, 그 자리에서 버티며 돌자."' : '"하체로 마운드를 더 강하게 밀어내자."',
+      },
+      p3: {
+        kicker: 'Coach Delivery · 분절 순서 코칭',
+        explain: '몸통이 골반 뒤에서 충분히 기다리지 못하면 힘이 모이지 않고 팔이 빨리 개입합니다.',
+        cue: '"골반 먼저 돌리고, 몸통은 한 박자 늦게 따라가자."',
+        videoCheck: 'FC → MER 사이에 골반·몸통이 같이 열리는지, 분리되는지 확인',
+        kpi: 'Pelvis→Trunk lag · Trunk→Arm lag · Transfer rate',
+      },
+      p4: {
+        kicker: 'Coach Delivery · 결함 → 코칭 연결',
+        explain: '앞발이 닿은 뒤 끝까지 버티는 시간이 짧아, 앞으로 가던 힘이 회전으로 바뀌지 못합니다.',
+        cue: '"앞발이 닿으면, 몸을 밀고 나가지 말고 그 자리에서 돌자."',
+        videoCheck: 'MER ~ Release 구간에서 앞다리 지지가 유지되는가? 앞무릎 굴곡이 더 깊어지는지 확인',
+        kpi: 'Lead braking impulse · Lead knee 각도 변화 (MER→BR)',
+      },
+    };
+    const msg = messages[page] || messages.p1;
+    return `
+    <div style="margin-top: 18px; padding: 18px 22px; background: rgba(15,42,74,0.04); border-left: 4px solid ${KBO_T.navy}; border-radius: 0 8px 8px 0;">
+      <div class="kbo-eyebrow" style="color: ${KBO_T.navy}; margin-bottom: 8px;">${msg.kicker}</div>
+      <div style="font-size: 14px; color: ${KBO_T.text}; line-height: 1.6; margin-bottom: 10px;">
+        <strong>선수에게 한 문장으로 설명</strong>: ${msg.explain}
+      </div>
+      <div style="font-size: 14px; color: ${KBO_T.text}; line-height: 1.6; margin-bottom: ${msg.videoCheck ? '10px' : '0'};">
+        <strong>선수에게 줄 큐</strong>: <em style="color: ${KBO_T.navy};">${msg.cue}</em>
+      </div>
+      ${msg.videoCheck ? `<div style="font-size: 12px; color: ${KBO_T.text2}; line-height: 1.5; margin-top: 8px; padding-top: 8px; border-top: 1px dashed ${KBO_T.borderSoft};">
+        <strong>확인할 영상 포인트</strong>: ${msg.videoCheck}
+      </div>` : ''}
+      ${msg.kpi ? `<div style="font-size: 12px; color: ${KBO_T.text2}; line-height: 1.5;">
+        <strong>재측정 KPI</strong>: ${msg.kpi}
+      </div>` : ''}
+    </div>`;
+  }
+
   // ★ v0.65 — PDF §5 신규 시각화 #3: Energy Transfer Bar
   // 골반 work → 몸통 받은 에너지 → 팔 받은 에너지 — 단계별 절대값 + ETE 비율
   function _renderEnergyTransferBar(result) {
@@ -350,7 +400,68 @@
         ${flow}
       </div>
       <div style="margin-top: 12px; padding: 10px 14px; background: ${KBO_T.bgElev}; border-radius: 4px; font-size: 12px; color: ${KBO_T.text2}; line-height: 1.6;">
-        💡 <strong>해석</strong>: 첫 박스(<span style="color: ${KBO_T.leak}; font-weight: 700;">결함</span>)가 가장 빠르게 고칠 수 있는 지점. 마지막 박스(<span style="color: ${KBO_T.injury}; font-weight: 700;">팔 의존</span>)는 팔 부하 모니터 신호 — 결함을 고치면 팔 의존이 자동 감소하며 부하 부담도 줄어듭니다.
+        💡 <strong>해석</strong>: 첫 박스(<span style="color: ${KBO_T.leak}; font-weight: 700;">결함</span>)가 가장 빠르게 고칠 수 있는 지점. 앞다리 블로킹과 몸통 전달 효율이 개선되면 <span style="color: ${KBO_T.injury}; font-weight: 700;">팔 의존</span>을 낮추는 방향으로 코칭할 수 있으며, 팔 부하 관련 지표도 함께 모니터링합니다.
+      </div>
+    </div>`;
+  }
+
+  // ★ v0.77 권고 ③ — Athlete Card: 선수에게 보여줄 1장짜리 요약
+  function _renderAthleteCard(result) {
+    const cs = result.catScores || {};
+    const tr = cs.TRANSFER?.score ?? 50;
+    const out = cs.OUTPUT?.score ?? 50;
+    const isLeakDom = tr < out;
+    const meta = result._meta || {};
+    const athlete = meta.athlete || '선수';
+    const handLabel = (meta.handedness === 'left' ? '좌투' : '우투');
+
+    return `
+    <div style="margin-top: 24px; padding: 28px; background: linear-gradient(135deg, ${KBO_T.navy}, ${KBO_T.navySoft}); color: #fff; border-radius: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 18px;">
+        <div>
+          <div class="kbo-eyebrow" style="color: rgba(255,255,255,0.6); margin-bottom: 4px;">Athlete Card · 선수 전달용 1장 요약</div>
+          <div class="kbo-display" style="font-size: 26px; line-height: 1.2;">${athlete} · ${handLabel}</div>
+        </div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.5);">코치가 인쇄해서 선수에게 전달 가능</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
+        <div style="padding: 16px; background: rgba(255,255,255,0.07); border-radius: 8px;">
+          <div class="kbo-eyebrow" style="color: #FFD166; margin-bottom: 6px;">오늘의 핵심 진단</div>
+          <div style="font-size: 14px; line-height: 1.6;">
+            ${isLeakDom
+              ? '힘은 충분히 만들지만, 앞발 착지 후 버티는 힘이 부족해 공까지 전달되는 힘이 줄어듭니다.'
+              : '하체 출력 자체가 부족합니다. 마운드를 더 강하게 밀어내는 훈련이 우선입니다.'}
+          </div>
+        </div>
+        <div style="padding: 16px; background: rgba(255,255,255,0.07); border-radius: 8px;">
+          <div class="kbo-eyebrow" style="color: #FFD166; margin-bottom: 6px;">오늘의 코칭 큐</div>
+          <div style="font-size: 14px; line-height: 1.6; font-style: italic;">
+            ${isLeakDom ? '"앞발이 닿으면 앞으로 더 밀고 나가지 말고, 그 자리에서 버티며 돌자."' : '"하체로 마운드를 더 강하게 밀어내자. 골반 회전 속도를 올리자."'}
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 18px; padding: 16px; background: rgba(255,255,255,0.07); border-radius: 8px;">
+        <div class="kbo-eyebrow" style="color: #FFD166; margin-bottom: 8px;">오늘의 훈련 (4 drill)</div>
+        <ol style="font-size: 13px; line-height: 1.8; margin: 0; padding-left: 22px;">
+          ${isLeakDom
+            ? `<li>Eccentric step-down (5초 hold)</li>
+               <li>Single-leg RDL</li>
+               <li>Drop landing</li>
+               <li>Connected throw drill</li>`
+            : `<li>Trap bar deadlift (5×3)</li>
+               <li>Box jump (3×5)</li>
+               <li>Med ball rotational throw</li>
+               <li>Plyo single-leg jump</li>`}
+        </ol>
+      </div>
+
+      <div style="margin-top: 18px; padding: 14px 16px; background: rgba(255,255,255,0.04); border-left: 3px solid #FFD166; border-radius: 0 6px 6px 0;">
+        <div class="kbo-eyebrow" style="color: #FFD166; margin-bottom: 6px;">6주 후 확인할 것</div>
+        <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.85);">
+          앞발 브레이킹 지표 · 골반→몸통 전달율 · 릴리스 일관성 · (그리고 측정 구속의 변화)
+        </div>
       </div>
     </div>`;
   }
@@ -400,7 +511,7 @@
         ${slots.map(slotCard).join('')}
       </div>
       <div style="margin-top: 14px; padding: 10px 14px; border-left: 3px solid ${KBO_T.navy}; background: rgba(15,42,74,0.04); border-radius: 4px; font-size: 12px; color: ${KBO_T.text2};">
-        🎯 <strong>서비스 클로징</strong>: 6주 파일럿 후 Before/After 리포트 제공 · 개선 여부를 동일 지표로 검증 · 결과에 따라 다음 사이클 우선순위 재설정.
+        🎯 <strong>재측정 운영안</strong>: 6주 후 동일 지표로 재측정하여 구속 변화뿐 아니라 전달 효율·블로킹·릴리스 일관성의 변화를 함께 확인합니다. 결과에 따라 다음 훈련 우선순위를 재설정합니다.
       </div>
     </div>`;
   }
@@ -549,6 +660,7 @@
       </div>`;
 
     // ★ v0.74 검토 의견 D — Page 1 단순화: 5축 보드를 P2로 이동, P1은 Executive 메시지만
+    // ★ v0.77 권고 ② — Coach Delivery 박스 추가 (코치가 선수에게 전달할 한 문장)
     return `
     <section id="p1" class="report-page kbo-scope">
       <div class="kbo-pad">
@@ -556,6 +668,7 @@
         ${headline}
         ${waterfall}
         ${kpis}
+        ${_renderCoachDeliveryBox(result, 'p1')}
       </div>
     </section>`;
   }
@@ -722,13 +835,13 @@
               <div style="width: ${py}%; height: 100%; background: ${py < 50 ? KBO_T.injury : KBO_T.good};"></div>
             </div>
             <div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-top: 10px; line-height: 1.5;">
-              ${py < 50 ? `시퀀싱·증폭률·관절 간 전달율 ${py < 30 ? '하위' : '평균 미만'} — <strong style="color: ${KBO_T.text};">여기서 ${dMech != null ? dMech.toFixed(1) : '+'}km/h가 새고 있음</strong>.` : '시퀀싱·증폭률·전달율 양호. 세부 타이밍 조정 단계.'}
+              ${py < 50 ? `시퀀싱·증폭률·관절 간 전달율이 ${py < 30 ? '하위' : '평균 미만'} — <strong style="color: ${KBO_T.text};">현재 구속 대비 메카닉 개선 여지가 확인됩니다</strong>.` : '시퀀싱·증폭률·전달율 양호. 세부 타이밍 조정 단계.'}
             </div>
           </div>
           <div style="padding: 14px 18px; background: ${KBO_T.navy}; color: #fff; border-radius: 10px;">
-            <div class="kbo-eyebrow" style="color: rgba(255,255,255,0.6); margin-bottom: 4px;">Coaching ROI</div>
+            <div class="kbo-eyebrow" style="color: rgba(255,255,255,0.6); margin-bottom: 4px;">Development Opportunity</div>
             <div class="kbo-display" style="font-size: 18px; line-height: 1.4;">
-              ${py < 50 ? `전달 효율을 <span style="color: #FFD166;">50%까지 회복</span>하면<br/>즉시 <span style="color: #FFD166;">+${dMech != null ? dMech.toFixed(1) : '?'} km/h</span> 회수` : `현재 균형 양호 — <span style="color: #FFD166;">세부 타이밍 정밀화</span>가 다음 단계`}
+              ${py < 50 ? `출력보다 <span style="color: #FFD166;">전달 효율 개선</span>에 코칭 개입 여지가 큼.<br/><span style="font-size: 13px; opacity: 0.8;">모델 기반 메카닉 upside <span style="color: #FFD166;">+${dMech != null ? dMech.toFixed(1) : '?'} km/h</span> · 재측정으로 검증.</span>` : `현재 균형 양호 — <span style="color: #FFD166;">세부 타이밍 정밀화</span>가 다음 단계.`}
             </div>
           </div>
         </div>
@@ -774,16 +887,74 @@
       <div class="kbo-pad">
         ${_kboPageHeader({ num: '3', en: 'Kinetic Chain Map', kr: '힘이 어디서 새는가', q: '발-골반-몸통-팔-공 흐름 어디서 누수가 가장 큰가' })}
         ${headline}
+        <!-- ★ v0.77 권고 ① — Dynamic Kinematic Sequence를 P3 메인 visual로 복원 -->
+        <div style="margin: 18px 0;">
+          <div class="kbo-eyebrow" style="margin-bottom: 8px; color: ${KBO_T.navySoft};">Dynamic Kinematic Sequence · 분절 순서 동적 시각화</div>
+          <div style="font-size: 13px; color: ${KBO_T.text2}; margin-bottom: 12px; line-height: 1.6;">
+            분절이 순서대로 열려야 힘이 모입니다. 골반 → 몸통 → 팔의 peak timing과 lag을 시각화 — <em>"몸통이 골반 뒤에서 충분히 기다리는가"</em>가 핵심.
+          </div>
+          ${_renderKinematicBellUplift(result)}
+        </div>
         ${_renderEnergyTransferBar(result)}
+        ${_renderCoachDeliveryBox(result, 'p3')}
       </div>
-      <!-- 기존 마네킹 + ELI + ETE — 점진 전환 (현재 dark 테마 유지) -->
-      <div style="background: var(--bg-card); margin-top: 16px; padding: 28px; border-top: 1px solid var(--border);">
-        <div class="text-xs mb-3" style="color: var(--text-muted); font-style: italic;">▼ 상세 진단 — 마네킹 + ELI 6영역 + ETE 분해</div>
-        ${_renderMannequinUplift(result)}
-        ${_renderELISection(result)}
-        ${_renderETESection(result)}
-      </div>
+      <!-- 상세 진단 — 마네킹 + ELI + ETE 분해 (펼침 격리) -->
+      <details style="background: var(--bg-card); margin-top: 16px;">
+        <summary style="padding: 16px 28px; cursor: pointer; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); list-style: none;">
+          ▼ 상세 진단 — 마네킹 + ELI 6영역 + ETE 분해 (펼치기)
+        </summary>
+        <div style="padding: 28px;">
+          ${_renderMannequinUplift(result)}
+          ${_renderELISection(result)}
+          ${_renderETESection(result)}
+        </div>
+      </details>
     </section>`;
+  }
+
+  // ★ v0.77 권고 ⑦ — 3-Frame Coaching Strip (FC / MER / Release 시점별 봐야 할 부위)
+  function _render3FrameCoachingStrip(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const phase1 = v('knee_flexion_change_FC_to_MER');  // FC→MER 무릎 변화
+    const phase2 = v('knee_flexion_change_MER_to_BR');  // MER→BR 무릎 변화
+    const fcTilt = v('fc_trunk_forward_tilt');           // FC 시점 몸통 기울기
+    const xfac = v('fc_xfactor');                        // FC 시점 골반-상체 분리각
+
+    const frame = (label, eyebrow, points) => `
+      <div style="flex: 1; min-width: 200px; padding: 16px; background: ${KBO_T.bgCard}; border-radius: 8px; border: 1px solid ${KBO_T.border};">
+        <div class="kbo-eyebrow" style="color: ${KBO_T.navy}; margin-bottom: 6px;">${eyebrow}</div>
+        <div class="kbo-display" style="font-size: 18px; color: ${KBO_T.text}; margin-bottom: 12px;">${label}</div>
+        <div style="font-size: 12px; color: ${KBO_T.text2}; line-height: 1.7;">
+          ${points.map(p => `<div style="margin-bottom: 6px;"><strong style="color: ${KBO_T.navy};">${p.k}</strong> · ${p.v}</div>`).join('')}
+        </div>
+      </div>`;
+
+    return `
+    <div style="margin: 20px 0; padding: 22px; background: ${KBO_T.bgElev}; border-radius: 10px;">
+      ${_kboSectionTitle({
+        kicker: '3-Frame Coaching Strip · 영상 확인 포인트',
+        title: '코치가 영상에서 봐야 할 3 시점',
+        sub: 'FC(앞발 착지) → MER(최대 외회전) → Release(릴리스). 각 시점에서 어떤 부위를 보고 무엇을 확인하는가.',
+      })}
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        ${frame('FC · 앞발 착지', 'Frame 1', [
+          { k: '봐야 할 부위', v: '디딤발 무릎 각도, 몸통 기울기, 골반-상체 분리' },
+          { k: '좋은 패턴', v: '디딤발 펴며 받침, 약간 뒤로 굴곡, 충분한 분리각' },
+          { k: '본 선수', v: `몸통 기울기 ${fcTilt != null ? fcTilt.toFixed(1)+'°' : '—'} · 분리각 ${xfac != null ? xfac.toFixed(1)+'°' : '—'}` },
+        ])}
+        ${frame('MER · 최대 외회전', 'Frame 2', [
+          { k: '봐야 할 부위', v: '앞다리 지지·골반 감속·몸통 회전 시작' },
+          { k: '좋은 패턴', v: '앞다리 펴진 채 단단히 받침, 골반 감속 완료' },
+          { k: '본 선수', v: `FC→MER 무릎 변화 ${phase1 != null ? phase1.toFixed(1)+'°' : '—'} (음수=신전 양호)` },
+        ])}
+        ${frame('Release · 릴리스', 'Frame 3', [
+          { k: '봐야 할 부위', v: '앞다리 지지 유지, 몸통 자세, 팔 슬롯' },
+          { k: '좋은 패턴', v: '앞다리 무너지지 않음, 몸통이 앞으로 흘러가지 않음' },
+          { k: '본 선수', v: `MER→BR 무릎 변화 ${phase2 != null ? phase2.toFixed(1)+'°' : '—'} (음수=지지 유지)` },
+        ])}
+      </div>
+    </div>`;
   }
 
   // ── P4 Root Cause Analysis (★ v0.67 KBO 디자인 핸드오프) ──
@@ -805,6 +976,8 @@
         ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '어떤 동작이 막는가', q: '결함이 어느 phase에서 발생하고 어떤 전달 손실을 만드는가' })}
         ${headline}
         ${_renderFaultLossCausalChain(result)}
+        ${_render3FrameCoachingStrip(result)}
+        ${_renderCoachDeliveryBox(result, 'p4')}
       </div>
       <!-- 기존 Event Timeline + 인과 분석 카드 — 점진 전환 -->
       <div style="background: var(--bg-card); margin-top: 16px; padding: 28px; border-top: 1px solid var(--border);">
@@ -920,15 +1093,19 @@
 
   // ── P6 Action & Pilot Plan (★ v0.67 KBO 디자인 핸드오프) ──
   function _renderP6Action(result) {
+    // ★ v0.76 — 검토 의견 2순위 ⑩: Page 6 상단을 코칭 큐 중심으로 (현장 언어)
     const headline = `
       <div style="margin-bottom: 24px;">
-        <div class="kbo-eyebrow" style="margin-bottom: 10px;">6주 코칭 → retest → 검증</div>
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">코칭 목표 · 선수에게 줄 큐 · 재측정 KPI</div>
         <div class="kbo-headline">
-          <em>6주 후 같은 리포트로</em> 재측정 검증.<br/>
-          개선이 수치로 증명되는 결과 기반 도입.
+          앞발이 닿은 뒤 몸이 계속 흘러가지 않도록,<br/>
+          <em>디딤발로 버티며 회전하는 패턴</em>을 만든다.
         </div>
-        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
-          각 drill은 측정 가능한 KPI 한 개에 묶입니다. 도입 → 6주 → retest → 다음 사이클 결정 흐름.
+        <div style="margin-top: 14px; padding: 12px 16px; background: rgba(15,42,74,0.04); border-left: 3px solid ${KBO_T.navy}; border-radius: 4px; font-size: 13px; color: ${KBO_T.text}; line-height: 1.6;">
+          <strong>선수에게 줄 큐</strong>: "앞발이 닿으면, 몸을 밀고 나가지 말고 그 자리에서 돌자."
+        </div>
+        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 12px;">
+          재측정 KPI — Lead braking impulse · 골반→몸통 전달율 · 릴리스 일관성. 6주 운영 → 재측정 → 다음 우선순위.
         </div>
       </div>`;
     // 6-Week Roadmap (PDF §2 P6 핵심)
@@ -948,6 +1125,7 @@
           ${roadmap}
         </div>
         ${_renderBeforeAfterRetestSlots(result)}
+        ${_renderAthleteCard(result)}
       </div>
       <!-- 기존 결함+drill + 종합 + Retest KPI 표 — 점진 전환 -->
       <div style="background: var(--bg-card); margin-top: 16px; padding: 28px; border-top: 1px solid var(--border);">
@@ -1097,12 +1275,12 @@
           </div>
         </div>` : '';
       return `<div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin: 16px 0;">
-        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">⏱️ Event Timeline — 부분 결측</div>
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">⏱️ Event Timeline — Event confidence: Partial</div>
         <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.7;">
           측정됨: ${presentList}<br>
           결측: ${missingList}
         </div>
-        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">trial별 자동 검출 실패. 평균에서 KH·FC·MER·BR 중 <strong>2개 이상</strong> 있어야 시계열 표시 가능. trial별 결측 분포는 콘솔 result._meta·varScores._n에서 확인.</div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">일부 이벤트는 자동 검출 신뢰도가 낮아 보정값을 사용했습니다. 최종 리포트에서는 영상 검수 후 이벤트를 확정합니다.</div>
         ${singleDot}
       </div>`;
     }
@@ -1323,9 +1501,9 @@
         // load_eff: INJURY 카테고리 점수 그대로
         breakdownHtml = `
           <div class="text-xs" style="color: var(--text-secondary); line-height: 1.6;">
-            <strong>산식</strong>: 부하 대비 효율 = INJURY 카테고리 안전도 점수 (UCL stress·knee stress 변수 평균)
+            <strong>산식</strong>: 팔 부하 모니터 = 팔꿈치·어깨 부담 신호 평균 (UCL stress·knee stress 등) — 부상 진단 지표는 아닌 참고 지표
             <br>
-            <strong>점수</strong>: <span class="mono" style="color: ${c};">${sc != null ? sc + '점' : '미측정'}</span> (높을수록 안전)
+            <strong>점수</strong>: <span class="mono" style="color: ${c};">${sc != null ? sc + '점' : '미측정'}</span> (높을수록 부하 적음 — 모니터링 신호)
             ${a.matchedFaults?.length > 0 ? `<br><strong style="color: #dc2626;">검출 결함</strong>: ${a.matchedFaults.map(f => `[${f.severity}] ${f.label}`).join(', ')}` : ''}
           </div>`;
       } else {
@@ -2345,7 +2523,7 @@
             </tbody>
           </table>
           <div class="text-xs mt-2" style="color: var(--text-muted); line-height: 1.5;">
-            KBO 프로(이영하) 평균: 축발 전진 ~0.020, 디딤발 브레이킹 ~0.001 BW·s
+            ※ 내부 프로 reference 기준: 축발 전진 약 0.020 BW·s, 디딤발 브레이킹 약 0.001 BW·s. reference cohort는 도입 구단 데이터 축적 후 팀 기준으로 재보정 가능합니다.
           </div>
         </div>
       </div>

@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.75';  // ★ v0.75 — 검토 의견 E: Page 5 Evidence Dashboard 4 카드 압축 (Sequence Timing / Lead-leg Braking / Transfer Rate / Consistency) + 기존 Bell·GRF·Matrix 펼침 카드로 격리
+  const ALGORITHM_VERSION = 'v0.77';  // ★ v0.77 — 코칭 전달 레이어: Dynamic Kinematic Sequence를 P3 메인 visual로 복원 + Coach Delivery 박스 (P1·P3·P4) + 3-Frame Coaching Strip (P4) + Athlete Card (P6 끝, 선수 1장 요약)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

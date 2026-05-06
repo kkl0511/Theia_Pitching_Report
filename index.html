@@ -641,11 +641,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.75"></script>
-<script src="metadata_theia.js?v=0.75"></script>
-<script src="theia_app.js?v=0.75"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.75"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.75"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.77"></script>
+<script src="metadata_theia.js?v=0.77"></script>
+<script src="theia_app.js?v=0.77"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.77"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.77"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>
@@ -1288,11 +1288,10 @@ ${inlineStyles}
     <div class="offline-meta">생성: ${new Date().toLocaleString('ko-KR')} · 버전 ${window.TheiaApp.ALGORITHM_VERSION} · ${result._n_trials || '?'} trial · ${result._mode === 'pro' ? '프로' : '고교 1학년 상위 10%'} 모드</div>
   </div>
   <div id="result-area">${reportHtml}</div>
-  <div class="offline-json-wrap">
-    <details>
-      <summary>📊 raw 결과 JSON (디버깅·재분석용 데이터 백업)</summary>
-      <pre>${json.replace(/[<>&]/g, m => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[m])}</pre>
-    </details>
+  <!-- ★ v0.76 — 검토 의견 1순위 ⑤: raw JSON 데모 화면에서 숨김 (관리자 모드에서만)
+       원자료와 산식 로그는 내부 검수용으로 별도 보관 -->
+  <div style="margin-top: 32px; padding-top: 16px; border-top: 1px dashed var(--border, #DCD7CF); font-size: 11px; color: var(--text-muted, #6B6357); font-style: italic;">
+    원자료와 산식 로그는 내부 검수용으로 별도 보관됩니다.
   </div>
 </div>
 </body></html>`;
