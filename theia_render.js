@@ -954,9 +954,10 @@
     const eli = eliResult?.eli;
     const weakArea = eliResult?.areas?.filter(a => a.score != null && a.score < 50).sort((a,b) => a.score - b.score)[0];
 
-    // Primary Leak 한 문장 — 가장 약한 분절을 친근한 코칭 언어로 압축
+    // Primary Leak 한 문장 — ★ v0.96 wording 정렬: "주요 손실 구간"은 P4의 Result 라벨과 충돌
+    //   → P3는 분절(공간) 분포의 "가장 약한 분절"로 중립 표현. 인과(원인 vs 결과)는 P4에서 정리.
     const primaryLeakLine = weakArea
-      ? `<strong>주요 손실 구간 — ${weakArea.name} (${Math.round(weakArea.score)}점)</strong>. ${weakArea.name === '앞다리 블로킹' ? '앞발 착지 후 버티는 힘이 부족해 전진 에너지가 회전으로 충분히 바뀌지 않습니다.' : weakArea.name === '골반→몸통 연결' ? '골반과 몸통의 시간차가 짧아 채찍 효과가 약해집니다.' : weakArea.name === '몸통 파워' ? '몸통 회전이 충분히 가속되지 못해 팔 의존이 커질 수 있습니다.' : weakArea.name === '팔 전달' ? '몸통→팔 전달이 약해 마지막 가속이 부족합니다.' : weakArea.name === '하체 추진' ? '뒷다리 추진력이 부족해 시작 에너지가 낮습니다.' : '이 분절에서 에너지 누수가 가장 크게 발생합니다.'}`
+      ? `<strong>가장 약한 분절 — ${weakArea.name} (${Math.round(weakArea.score)}점)</strong>. ${weakArea.name === '앞다리 블로킹' ? '앞발 착지 후 버티는 힘이 부족해 전진 에너지가 회전으로 충분히 바뀌지 않습니다.' : weakArea.name === '골반→몸통 연결' ? '골반과 몸통의 시간차가 짧아 채찍 효과가 약해집니다.' : weakArea.name === '몸통 파워' ? '몸통 회전이 충분히 가속되지 못해 팔 의존이 커질 수 있습니다.' : weakArea.name === '팔 전달' ? '몸통→팔 전달이 약해 마지막 가속이 부족합니다.' : weakArea.name === '하체 추진' ? '뒷다리 추진력이 부족해 시작 에너지가 낮습니다.' : '이 분절에서 에너지 누수가 가장 크게 발생합니다.'}`
       : `<strong>전달 효율 종합 ${eli != null ? Math.round(eli) : '—'}점</strong> · 큰 누수 지점 없음 — 이 패턴을 유지하는 방향으로 코칭합니다.`;
 
     const headline = `
@@ -1092,7 +1093,7 @@
       good:    { diag: '앞발이 닿은 뒤 단단히 버텨, 회전축이 잘 형성됩니다.',     cue: '"앞발 닿으면 그 자리에서 버티며 돌자."',           drills: ['Lead-leg brace', 'Connected throw'] },
       okay:    { diag: '브레이킹은 되지만 끝까지 버티는 힘이 조금 부족.',         cue: '"착지하면 무릎이 더 무너지지 않게 버티자."',        drills: ['Eccentric step-down', 'Drop landing'] },
       caution: { diag: '앞발 착지 후 버티는 힘이 부족 — 몸이 계속 앞으로 흘러갑니다.', cue: '"앞발이 닿으면 더 밀고 나가지 말고, 그 자리에서 버텨."', drills: ['Eccentric step-down', 'Drop landing', 'Lead-leg brace'] },
-      leak:    { diag: '디딤발 블로킹 부족이 가장 큰 누수 — 전진 에너지가 회전으로 안 바뀜.', cue: '"앞발 착지 후 무릎 무너뜨리지 말고, 버티며 돌자."',  drills: ['Eccentric step-down (5초 hold)', 'Drop landing', 'Single-leg RDL'] },
+      leak:    { diag: '디딤발 블로킹 부족이 가장 큰 원인 — 전진 에너지가 회전으로 안 바뀝니다.', cue: '"앞발 착지 후 무릎 무너뜨리지 말고, 버티며 돌자."',  drills: ['Eccentric step-down (5초 hold)', 'Drop landing', 'Single-leg RDL'] },
       na:      { diag: '데이터 부족 — Landing 단계 평가 보류.',                  cue: '—',                                              drills: [] },
     },
     torso: {

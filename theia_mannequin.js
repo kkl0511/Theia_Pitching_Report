@@ -64,11 +64,24 @@
       na:     { stop1: '#6B7280', stop2: '#6B7280', label: '#6B7280', text: '데이터 없음' },
     }[driveStatus];
 
-    // ── 3. Lead leg block — vGRF + knee collapse ──
+    // ── 3. Lead leg block — vGRF + knee collapse + 종합 (★ v0.95 — ELI lead_block 영역 점수 종합) ──
     const leadVGRF = v('Lead_leg_peak_vertical_GRF');
     const kneeChange = v('lead_knee_ext_change_fc_to_br');
     const kneeCollapse = kneeChange != null && kneeChange < -10;
     const kneeCollapseSevere = kneeChange != null && kneeChange < -22;
+    // ★ v0.95 — 마네킹 색상이 P3/P4 콘텐츠(앞다리 블로킹 점수)와 일치하도록 종합 판정
+    //   ELI lead_block 영역의 핵심 변수 점수 평균을 사용 (ELI_AREA_VARS.lead_block 와 동일 원천)
+    const leadBlockScores = [
+      sc('lead_leg_braking_impulse'),
+      sc('knee_flexion_change_MER_to_BR'),
+      sc('lead_knee_ext_change_fc_to_br'),
+      sc('Lead_leg_peak_vertical_GRF'),
+      sc('br_lead_leg_knee_flexion'),
+    ].filter(x => x != null);
+    const leadBlockAvg = leadBlockScores.length > 0
+      ? leadBlockScores.reduce((a, b) => a + b, 0) / leadBlockScores.length : null;
+    const leadBlockIssue = kneeCollapse || (leadBlockAvg != null && leadBlockAvg < 50);
+    const leadBlockSevere = kneeCollapseSevere || (leadBlockAvg != null && leadBlockAvg < 30);
 
     // ── 4. Flying open (X-factor at FC) ──
     const xFactor = v('fc_xfactor');
@@ -103,9 +116,11 @@
     const energyPath = `M ${K.lAnkle[0]} ${K.lAnkle[1]} L ${K.lKnee[0]} ${K.lKnee[1]} L ${K.pelvisL[0]} ${K.pelvisL[1]} L ${K.pelvisC[0]} ${K.pelvisC[1]} L ${K.rShoulder[0]} ${K.rShoulder[1]} L ${K.rElbow[0]} ${K.rElbow[1]} L ${K.rWrist[0]} ${K.rWrist[1]} L ${K.ball[0]} ${K.ball[1]}`;
     const driveLegPath = `M ${K.rAnkle[0]-12} ${K.rAnkle[1]-2} L ${K.rKnee[0]} ${K.rKnee[1]} L ${K.pelvisR[0]+2} ${K.pelvisR[1]+2}`;
 
-    const leakBurst = taLeak ? `
+    // ★ v0.95 — leakBurst 위치를 가장 큰 누수 영역에 동적 배치 (lead_block severe 우선, 그 외 taLeak)
+    //   기존: taLeak일 때 항상 어깨-팔꿈치 사이 빨간 burst (앞다리 누수 시 시각화 누락)
+    const leakBurst = (leadBlockSevere || taLeak) ? `
       <g>
-        <circle cx="${(K.rShoulder[0]+K.rElbow[0])/2}" cy="${(K.rShoulder[1]+K.rElbow[1])/2}" r="38" fill="url(#leak-${uid})">
+        <circle cx="${leadBlockSevere ? K.lKnee[0] : (K.rShoulder[0]+K.rElbow[0])/2}" cy="${leadBlockSevere ? K.lKnee[1] : (K.rShoulder[1]+K.rElbow[1])/2}" r="38" fill="url(#leak-${uid})">
           <animate attributeName="r" values="28;44;28" dur="1.2s" repeatCount="indefinite"/>
           <animate attributeName="opacity" values="0.9;0.4;0.9" dur="1.2s" repeatCount="indefinite"/>
         </circle>
@@ -393,9 +408,10 @@
             <stop offset="1" stop-color="#FAFAF7" stop-opacity="0.35"/>
           </linearGradient>
           <linearGradient id="energy-${uid}" gradientUnits="userSpaceOnUse" x1="${K.lAnkle[0]}" y1="${K.lAnkle[1]}" x2="${K.ball[0]}" y2="${K.ball[1]}">
-            <stop offset="0%"  stop-color="${kneeCollapse ? '#fde68a' : '#22d3ee'}"/>
-            <stop offset="17%" stop-color="${kneeCollapse ? '#fbbf24' : '#60a5fa'}"/>
-            <stop offset="30%" stop-color="${kneeCollapse ? '#f59e0b' : '#60a5fa'}"/>
+            <!-- ★ v0.95 — 0~30% lead-leg 영역도 어스톤 톤 + leadBlockIssue 기반 (lead_block ELI 점수와 일치) -->
+            <stop offset="0%"  stop-color="${leadBlockIssue ? (leadBlockSevere ? '#7F1D1D' : '#A87333') : '#3B5A82'}"/>
+            <stop offset="17%" stop-color="${leadBlockIssue ? (leadBlockSevere ? '#A8443A' : '#A87333') : '#3B5A82'}"/>
+            <stop offset="30%" stop-color="${leadBlockIssue ? (leadBlockSevere ? '#A8443A' : '#A87333') : '#3B5A82'}"/>
             <stop offset="50%" stop-color="${ptLeak ? (ptSevere ? '#A8443A' : '#A87333') : '#3B5A82'}"/>
             <stop offset="72%" stop-color="${armIssue ? (armSevere ? '#A8443A' : '#A87333') : '#3B5A82'}"/>
             <stop offset="86%" stop-color="${armIssue ? (armSevere ? '#7F1D1D' : '#8B5A29') : '#2A4566'}"/>
@@ -410,9 +426,10 @@
             <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
           <radialGradient id="leak-${uid}">
-            <stop offset="0%" stop-color="#fee2e2" stop-opacity="0.95"/>
-            <stop offset="40%" stop-color="#ef4444" stop-opacity="0.7"/>
-            <stop offset="100%" stop-color="#7f1d1d" stop-opacity="0"/>
+            <!-- ★ v0.95 — 어스톤 톤 통일 (rust 계열) -->
+            <stop offset="0%" stop-color="#FCE7E2" stop-opacity="0.95"/>
+            <stop offset="40%" stop-color="#A8443A" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#7F1D1D" stop-opacity="0"/>
           </radialGradient>
           <radialGradient id="mSphere-${uid}" cx="35%" cy="30%" r="75%">
             <stop offset="0%" stop-color="#f1f5f9"/><stop offset="45%" stop-color="#E8E4DD"/>
@@ -457,15 +474,15 @@
           <path d="M ${K.rAnkle[0]-8} ${K.rAnkle[1]+4} Q ${K.rAnkle[0]-4} ${K.rAnkle[1]+18} ${K.rToe[0]-6} ${K.rToe[1]+10} L ${K.rToe[0]+4} ${K.rToe[1]+2} Q ${K.rToe[0]-2} ${K.rAnkle[1]-2} ${K.rAnkle[0]+6} ${K.rAnkle[1]-4} Z" fill="url(#mLimb-${uid})"/>
         </g>
 
-        <!-- Front leg (Lead/braced) -->
+        <!-- Front leg (Lead/braced) — ★ v0.95 어스톤 톤 + leadBlockIssue 종합 (kneeCollapse + lead_block 평균 점수) -->
         <g>
-          <line x1="${K.pelvisL[0]+2}" y1="${K.pelvisL[1]}" x2="${K.lKnee[0]}" y2="${K.lKnee[1]}" stroke="${kneeCollapse ? (kneeCollapseSevere ? '#ef4444' : '#f59e0b') : 'url(#mLimb-' + uid + ')'}" stroke-width="34" stroke-linecap="round" ${kneeCollapse ? 'opacity="0.85"' : ''}/>
-          <circle cx="${K.lKnee[0]}" cy="${K.lKnee[1]}" r="17" fill="${kneeCollapse ? (kneeCollapseSevere ? '#ef4444' : '#f59e0b') : 'url(#mJoint-' + uid + ')'}"/>
-          <line x1="${K.lKnee[0]}" y1="${K.lKnee[1]}" x2="${K.lAnkle[0]}" y2="${K.lAnkle[1]}" stroke="${kneeCollapse ? (kneeCollapseSevere ? '#f97316' : '#fbbf24') : 'url(#mLimb-' + uid + ')'}" stroke-width="26" stroke-linecap="round" ${kneeCollapse ? 'opacity="0.85"' : ''}/>
-          <circle cx="${K.lAnkle[0]}" cy="${K.lAnkle[1]}" r="12" fill="${kneeCollapse ? '#fbbf24' : 'url(#mJoint-' + uid + ')'}"/>
-          <path d="M ${K.lAnkle[0]-12} ${K.lAnkle[1]+2} Q ${K.lToe[0]-4} ${K.lToe[1]-8} ${K.lToe[0]-12} ${K.lToe[1]+8} L ${K.lAnkle[0]-4} ${K.lAnkle[1]+14} Z" fill="${kneeCollapse ? '#fbbf24' : 'url(#mLimb-' + uid + ')'}"/>
-          ${kneeCollapse ? `<g>
-            <circle cx="${K.lKnee[0]}" cy="${K.lKnee[1]}" r="22" fill="none" stroke="${kneeCollapseSevere ? '#ef4444' : '#f59e0b'}" stroke-width="2" opacity="0.6">
+          <line x1="${K.pelvisL[0]+2}" y1="${K.pelvisL[1]}" x2="${K.lKnee[0]}" y2="${K.lKnee[1]}" stroke="${leadBlockIssue ? (leadBlockSevere ? '#A8443A' : '#A87333') : 'url(#mLimb-' + uid + ')'}" stroke-width="34" stroke-linecap="round" ${leadBlockIssue ? 'opacity="0.85"' : ''}/>
+          <circle cx="${K.lKnee[0]}" cy="${K.lKnee[1]}" r="17" fill="${leadBlockIssue ? (leadBlockSevere ? '#A8443A' : '#A87333') : 'url(#mJoint-' + uid + ')'}"/>
+          <line x1="${K.lKnee[0]}" y1="${K.lKnee[1]}" x2="${K.lAnkle[0]}" y2="${K.lAnkle[1]}" stroke="${leadBlockIssue ? (leadBlockSevere ? '#A8443A' : '#A87333') : 'url(#mLimb-' + uid + ')'}" stroke-width="26" stroke-linecap="round" ${leadBlockIssue ? 'opacity="0.85"' : ''}/>
+          <circle cx="${K.lAnkle[0]}" cy="${K.lAnkle[1]}" r="12" fill="${leadBlockIssue ? '#A87333' : 'url(#mJoint-' + uid + ')'}"/>
+          <path d="M ${K.lAnkle[0]-12} ${K.lAnkle[1]+2} Q ${K.lToe[0]-4} ${K.lToe[1]-8} ${K.lToe[0]-12} ${K.lToe[1]+8} L ${K.lAnkle[0]-4} ${K.lAnkle[1]+14} Z" fill="${leadBlockIssue ? '#A87333' : 'url(#mLimb-' + uid + ')'}"/>
+          ${leadBlockIssue ? `<g>
+            <circle cx="${K.lKnee[0]}" cy="${K.lKnee[1]}" r="22" fill="none" stroke="${leadBlockSevere ? '#A8443A' : '#A87333'}" stroke-width="2" opacity="0.6">
               <animate attributeName="r" values="20;30;20" dur="1.4s" repeatCount="indefinite"/>
               <animate attributeName="opacity" values="0.7;0.2;0.7" dur="1.4s" repeatCount="indefinite"/>
             </circle>
@@ -526,51 +543,20 @@
         </g>
         <circle cx="${K.rWrist[0]}" cy="${K.rWrist[1]}" r="5" fill="#22d3ee" stroke="#FFFFFF" stroke-width="1.5" filter="url(#glow-${uid})"/>
 
-        <!-- ★ GRF on each foot — Trail vGRF + Lead vGRF -->
-        ${trailVGRF != null ? `
-        <g>
-          <rect x="${K.rAnkle[0]-40}" y="${K.rAnkle[1]+18}" width="100" height="40" rx="5" fill="#FFFFFF" stroke="${driveColors.label}" stroke-width="1.6"/>
-          <text x="${K.rAnkle[0]+10}" y="${K.rAnkle[1]+32}" text-anchor="middle" font-size="10" fill="${driveColors.label}" font-weight="800">뒷다리 추진력</text>
-          <text x="${K.rAnkle[0]+10}" y="${K.rAnkle[1]+50}" text-anchor="middle" font-size="14" fill="#0F1419" font-weight="800" font-family="JetBrains Mono">${trailVGRF.toFixed(2)}<tspan font-size="9" fill="#6B7280" font-family="Inter"> BW</tspan></text>
-        </g>` : ''}
-        ${leadVGRF != null ? `
-        <g>
-          <!-- ★ v0.90 — 착지발 제동력: 마네킹 발과 겹침 해소 → 왼쪽·위로 이동 (lToe 290/lAnkle 332 좌측, knee 라벨 위 빈 공간) -->
-          <rect x="${K.lAnkle[0]-138}" y="${K.lAnkle[1]-52}" width="106" height="40" rx="5" fill="#FFFFFF" stroke="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" stroke-width="1.6"/>
-          <text x="${K.lAnkle[0]-85}" y="${K.lAnkle[1]-37}" text-anchor="middle" font-size="10" fill="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" font-weight="800">착지발 제동력</text>
-          <text x="${K.lAnkle[0]-85}" y="${K.lAnkle[1]-19}" text-anchor="middle" font-size="14" fill="#0F1419" font-weight="800" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#6B7280" font-family="Inter"> BW</tspan></text>
-          <line x1="${K.lAnkle[0]-32}" y1="${K.lAnkle[1]-32}" x2="${K.lAnkle[0]-4}" y2="${K.lAnkle[1]+4}" stroke="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" stroke-width="1" stroke-dasharray="2 2" opacity="0.6"/>
-        </g>` : ''}
-
-        <!-- 어깨 power 라벨 (왼쪽 머리 위) — ★ v0.85 가독성 강화: 큰 숫자 dark text + 어스톤 status -->
-        ${shoulderP != null ? `
-        <g>
-          <rect x="42" y="48" width="170" height="50" rx="6" fill="#FFFFFF" stroke="${shoulderP >= 1200 ? '#3F7D5C' : '#A87333'}" stroke-width="1.6"/>
-          <text x="127" y="64" fill="${shoulderP >= 1200 ? '#3F7D5C' : '#A87333'}" font-size="12" font-family="Inter" font-weight="800" text-anchor="middle">★ 어깨 파워</text>
-          <text x="127" y="86" fill="#0F1419" font-size="15" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${shoulderP >= 1000 ? (shoulderP/1000).toFixed(2)+'k' : shoulderP.toFixed(0)}<tspan font-size="10" fill="#6B7280" font-family="Inter"> W</tspan></text>
-        </g>` : ''}
-
-        <!-- ★ 팔꿈치 토크/파워 라벨 — ★ v0.85 가독성 강화 -->
-        ${elbowP != null ? `
-        <g>
-          <line x1="${K.rElbow[0]}" y1="${K.rElbow[1]}" x2="212" y2="141" stroke="${elbowColor}" stroke-width="1.4" stroke-dasharray="2 3"/>
-          <rect x="42" y="110" width="170" height="62" rx="6" fill="#FFFFFF" stroke="${elbowColor}" stroke-opacity="0.85" stroke-width="2"/>
-          <text x="127" y="126" fill="${elbowColor}" font-size="12" font-family="Inter" font-weight="800" text-anchor="middle" letter-spacing="0.3">${elbowStatus === 'high' ? '⚠ 팔꿈치 파워' : elbowStatus === 'low' ? '△ 팔꿈치 파워' : '✓ 팔꿈치 파워'}</text>
-          <text x="127" y="148" fill="#0F1419" font-size="15" font-family="JetBrains Mono" font-weight="800" text-anchor="middle">${elbowP >= 1000 ? (elbowP/1000).toFixed(2)+'k' : elbowP.toFixed(0)}<tspan font-size="11" fill="#6B7280" font-family="Inter"> W (peak)</tspan></text>
-          <text x="127" y="164" fill="${elbowColor}" font-size="10" font-family="Inter" text-anchor="middle">${elbowStatus === 'high' ? '팔 부하 모니터 (정상 200~500W)' : elbowStatus === 'low' ? '팔꿈치 power 부족' : '정상 (200~500W)'}</text>
-        </g>` : ''}
-
-        <!-- ★ v0.14 — lag·flying open·knee collapse·drive 라벨 박스 모두 제거.
-             결함 정보는 ELI 영역 라벨 박스(${eliAreaLabels})에 점수로 통합 표시되며,
-             결함 검출 시 영역 점수에 패널티가 적용되어 일관성 보장.
-             상세 결함 원인은 아래 "결함 진단 + 코칭 처방" 카드에서 확인. -->
+        <!-- ★ v0.96 — 중복 라벨 제거 (단순화):
+             ① TRAIL vGRF "뒷다리 추진력" → lower_drive ELI 박스와 개념 중복
+             ② LEAD vGRF "착지발 제동력"  → lead_block ELI 박스와 개념 중복
+             ③ SHOULDER POWER "어깨 파워" → arm_transfer ELI 박스와 개념 중복
+             ④ ELBOW POWER "팔꿈치 파워" → load_eff ELI 박스 및 elbow callout과 중복
+             ELI 6영역 박스(${eliAreaLabels})가 "어디서·왜 누수 발생"의 통합 표시이므로 충분.
+             팔꿈치 빨간점 + "팔꿈치 부하 신호" callout만 유지 (UCL 부상 신호는 ELI에 없는 별도 진단). -->
       </svg>
 
       <div class="text-xs mt-2 px-2" style="color: #3F3F46; line-height: 1.6;">
         <span style="color:#3F7D5C">●</span> 정상 ·
         <span style="color:#A87333">●</span> 미세 누수 ·
-        <span style="color:#A8443A">●</span> 명확한 누수 — KINETIC_FAULTS 진단. 발 옆 라벨은 지면반력(BW=체중배수).
-        팔꿈치 빨간점 = UCL 부하 신호 (팔꿈치 power = 관절 토크 × 각속도).
+        <span style="color:#A8443A">●</span> 명확한 누수 — 어느 분절에서 에너지가 새고 있는지 점수와 함께 표시.
+        팔꿈치 빨간점 = UCL 부하 신호 (별도 부상 진단).
       </div>
     </div>`;
   }
