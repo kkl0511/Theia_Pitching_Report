@@ -1006,6 +1006,12 @@ async function runAnalysis() {
     document.getElementById('result-area').innerHTML = `<div class="card p-6">${html}</div>`;
     // ★ v0.14 — 결과 생성 후 입력 섹션 4개 collapse (자동 입력 정보 숨김)
     hideInputSections();
+    // ★ v0.59 — 분석 완료 즉시 자동 저장 (label=선수 이름 → 같은 이름 덮어쓰기, 검증 워크플로우 단순화)
+    try {
+      window.TheiaApp.saveCurrentReport(name);
+      refreshSavedPlayerSelector();
+      console.log('✓ 자동 저장:', name);
+    } catch (e) { console.warn('auto-save 실패', e); }
   } catch (e) {
     console.error(e);
     document.getElementById('result-area').innerHTML = '';
@@ -1282,6 +1288,24 @@ function showAlert(msg, type='info') {
   selectLevel('프로');
   // 저장된 선수 dropdown
   refreshSavedPlayerSelector();
+  // ★ v0.59 — 자동 복원: 저장된 선수 있으면 가장 최근 1명 자동 로드 + 버전 다르면 자동 재계산
+  try {
+    const saved = window.TheiaApp.listSavedPlayers();
+    if (saved && saved.length > 0) {
+      const stale = saved.some(p => p.version !== window.TheiaApp.ALGORITHM_VERSION);
+      if (stale) {
+        const n = window.TheiaApp.recomputeAllSaved();
+        console.log(`✓ 자동 재계산: ${n}명 → ${window.TheiaApp.ALGORITHM_VERSION} 산식`);
+        refreshSavedPlayerSelector();
+      }
+      const latest = window.TheiaApp.listSavedPlayers()[0];
+      const sel = document.getElementById('saved-player-select');
+      if (sel) sel.value = latest.key;
+      // dropdown onchange 동작 그대로 호출 — Step 1 자동 입력 + 결과 즉시 렌더
+      loadSavedPlayer(latest.key);
+      console.log('✓ 자동 복원:', latest.name, latest.version);
+    }
+  } catch (e) { console.warn('auto-restore 실패', e); }
 })();
 </script>
 
