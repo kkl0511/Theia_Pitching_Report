@@ -871,7 +871,9 @@
         </div>
       </div>`;
 
-    // ★ v0.74 — 5축 보드를 P1에서 P2로 이동 (검토 의견 D)
+    // ★ v0.94 — P2 단순화: 메인은 사분면·점수·Development Opportunity·5축 보드만 노출.
+    //   체력/메카닉/제구 세부 카드 (산식·임계·MLB 평균·코칭·drill)는 펼침 details로 격리.
+    //   의사결정자가 처음 볼 때 "어떤 유형인가"가 즉시 보이도록 정보량 압축.
     return `
     <section id="p2" class="report-page kbo-scope">
       <div class="kbo-pad">
@@ -879,13 +881,20 @@
         ${headline}
         ${main}
         ${_render5AxisBoard(result)}
+        <div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-top: 14px; padding: 10px 14px; border-left: 3px solid ${KBO_T.borderSoft}; background: ${KBO_T.bgElev}; border-radius: 4px;">
+          체력·메카닉·제구 세부 점수와 산식·임계·코칭·drill은 아래 펼침 카드에서 확인. 처음 데모에서는 위 사분면·5축 점수가 우선.
+        </div>
       </div>
-      <!-- 기존 보조 시각화 (3-col radar, segment generation stack) — 페이지 하단 보존 -->
-      <div style="background: var(--bg-card); margin-top: 32px; padding: 28px; border-top: 1px solid var(--border);">
-        <div class="text-xs mb-3" style="color: var(--text-muted); font-style: italic;">▼ 보조 시각화 — 카테고리별 점수 + 분절별 출력 스택</div>
-        ${_render3ColumnRadars(result)}
-        ${_renderSegmentGenerationStack(result)}
-      </div>
+      <!-- ★ v0.94 — 보조 시각화 펼침 격리: 의사결정자 데모에서 정보 과부하 방지 -->
+      <details style="background: var(--bg-card); margin-top: 16px;">
+        <summary style="padding: 16px 28px; cursor: pointer; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); list-style: none;">
+          ▼ 카테고리별 세부 점수 — 체력·메카닉·제구 (산식·임계·코칭·drill 포함) + 분절별 출력 스택 (펼치기)
+        </summary>
+        <div style="padding: 28px;">
+          ${_render3ColumnRadars(result)}
+          ${_renderSegmentGenerationStack(result)}
+        </div>
+      </details>
     </section>`;
   }
 

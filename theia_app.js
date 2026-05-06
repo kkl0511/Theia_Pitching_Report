@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.93';  // ★ v0.93 — P3 단순화 (보는 페이지로 정렬): Primary Leak 한 문장 + 3 핵심 수치 카드 (Lead-leg Block · Pelvis→Trunk Transfer · Arm Load Monitor) + Energy Flow Mannequin / Energy Transfer Bar·Coach Delivery·ELI 6영역·ETE 영역별 모두 펼침 details로 격리 / P5 cross-ref 안내 추가
+  const ALGORITHM_VERSION = 'v0.94';  // ★ v0.94 — P2 단순화 (의사결정자 데모 정보 과부하 해소): 메인 영역은 사분면·Generation/Transmission 점수 카드·Development Opportunity·5축 보드만 노출 / 체력·메카닉·제구 세부 카드 (산식·임계·MLB 평균·코칭·drill)와 분절별 출력 스택은 펼침 details로 격리 + 안내 한 문장 추가  // ★ v0.93 — P3 단순화 (보는 페이지로 정렬): Primary Leak 한 문장 + 3 핵심 수치 카드 (Lead-leg Block · Pelvis→Trunk Transfer · Arm Load Monitor) + Energy Flow Mannequin / Energy Transfer Bar·Coach Delivery·ELI 6영역·ETE 영역별 모두 펼침 details로 격리 / P5 cross-ref 안내 추가
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
