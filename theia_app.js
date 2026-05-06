@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.74';  // ★ v0.74 — 디자인 검토 의견 A·B·C·D 반영: 디폴트 Day 모드 / 시스템 alert 숨김 / Output Red→Navy / Page1 5축 보드 P2 이동
+  const ALGORITHM_VERSION = 'v0.75';  // ★ v0.75 — 검토 의견 E: Page 5 Evidence Dashboard 4 카드 압축 (Sequence Timing / Lead-leg Braking / Transfer Rate / Consistency) + 기존 Bell·GRF·Matrix 펼침 카드로 격리
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
