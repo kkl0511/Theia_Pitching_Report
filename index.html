@@ -278,7 +278,36 @@
     --kbo-fitness: #0070C0; --kbo-mechanics: #C00000; --kbo-injury: #D97706;
     --kbo-shadow: 0 1px 2px rgba(15,42,74,0.04), 0 4px 12px rgba(15,42,74,0.05);
     --kbo-shadow-lg: 0 2px 6px rgba(15,42,74,0.06), 0 12px 32px rgba(15,42,74,0.08);
+
+    /* ★ v0.68 — 기존 dark/light 변수들을 KBO 톤으로 강제 override
+       그러면 .kbo-scope 안의 모든 var(--bg-card), var(--text-primary) 등이
+       자동 Navy/White로 전환되어 마네킹·ELI 카드·인과 카드·GRF·Matrix
+       기존 마크업이 그대로 light 테마에 동작함 */
+    --bg-primary: #FAFAF7;
+    --bg-card: #FFFFFF;
+    --bg-elevated: #F3F1EC;
+    --border: #DCD7CF;
+    --text-primary: #1A1A1A;
+    --text-secondary: #3F3F46;
+    --text-muted: #6B6357;
+    --accent: #0F2A4A;       /* navy */
+    --accent-soft: #2E75B6;  /* navy soft */
+    --output: #C00000;
+    --transfer: #0070C0;
+    --leak: #B91C1C;
+    --control: #16A34A;
+    --good: #16A34A;
+    --warn: #B45309;
+    --bad: #B91C1C;
+    --fitness: #0070C0;
+    --mechanics: #C00000;
+    --injury: #D97706;
+    --risk: #7030A0;
   }
+  /* 기존 dark 영역의 일부 inline 색상(#0f172a 등)은 hardcoded — KBO 안에서 light로 강제 */
+  .kbo-scope .card-elev,
+  .kbo-scope .cat-card { background: #FFFFFF !important; border-color: #DCD7CF !important; }
+  .kbo-scope details { background: #F3F1EC !important; }
   .kbo-scope * { box-sizing: border-box; }
   .kbo-scope .kbo-display { font-family: 'Space Grotesk', 'Noto Sans KR', system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; }
   .kbo-scope .kbo-mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
@@ -607,11 +636,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.67"></script>
-<script src="metadata_theia.js?v=0.67"></script>
-<script src="theia_app.js?v=0.67"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.67"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.67"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.68"></script>
+<script src="metadata_theia.js?v=0.68"></script>
+<script src="theia_app.js?v=0.68"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.68"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.68"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>

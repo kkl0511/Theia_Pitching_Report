@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.67';  // ★ v0.67 — 디자인 핸드오프 v0.8 P2~P6 적용 (사분면·헤드라인·6주 로드맵 등 — 본문 상세는 점진 전환)
+  const ALGORITHM_VERSION = 'v0.68';  // ★ v0.68 — P3·P4·P5 본문 상세 시각화 Navy 톤 전환 (.kbo-scope에서 dark 변수 light override + dark rgba light화)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

@@ -1547,7 +1547,7 @@
         </div>`;
       }).join('');
 
-      return `<div class="card-elev p-4 mb-3" style="background: rgba(15,23,42,0.4); border-left: 3px solid ${chainColor};">
+      return `<div class="card-elev p-4 mb-3" style="background: rgba(15,42,74,0.04); border-left: 3px solid ${chainColor};">
         <div class="flex items-baseline justify-between mb-3 flex-wrap" style="gap: 8px;">
           <div class="display" style="font-size: 16px; font-weight: 700; color: var(--text-primary);">🔗 ${ch.title}</div>
           <div class="text-xs" style="color: ${chainColor}; font-weight: 600;">종합 ${chainScore != null ? Math.round(chainScore) + '점' : '—'}</div>
@@ -1616,7 +1616,7 @@
     const eteCard = (label, ete, score, formula, dist) => {
       const pct = ete == null ? null : Math.round(ete * 100);
       const c = score == null ? '#94a3b8' : score >= 75 ? '#16a34a' : score >= 50 ? '#22d3ee' : score >= 30 ? '#fb923c' : '#dc2626';
-      return `<div class="card-elev p-4" style="background: rgba(15,23,42,0.4); border-left: 3px solid ${c};">
+      return `<div class="card-elev p-4" style="background: rgba(15,42,74,0.04); border-left: 3px solid ${c};">
         <div class="text-xs mb-1" style="color: var(--text-muted); letter-spacing: 0.05em;">${label}</div>
         <div class="display flex items-baseline" style="gap: 8px;">
           <span style="font-size: 36px; color: ${c}; font-weight: 700; line-height: 1;">${pct == null ? '—' : pct}</span>
@@ -2403,7 +2403,7 @@
           <div class="mt-4">
             <div class="text-xs mb-2" style="color: var(--text-primary); font-weight: 600;">🩺 투수 유형 자동 진단</div>
             ${diagnoses.map(d => `
-              <div class="p-3 mb-2" style="background: rgba(15,23,42,0.4); border-radius: 6px; border-left: 3px solid ${d.color};">
+              <div class="p-3 mb-2" style="background: rgba(15,42,74,0.04); border-radius: 6px; border-left: 3px solid ${d.color};">
                 <div class="text-xs mb-1" style="color: ${d.color}; font-weight: 700;">${d.icon} ${d.title}</div>
                 <div class="text-xs" style="color: var(--text-secondary); line-height: 1.6;">${d.narrative}</div>
               </div>
