@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.91';  // ★ v0.91 — 모바일 추가 overflow fix: P1 6-page nav strip 슬림화 (768px·480px 단계별 padding·font·desc 숨김) / 6주 재평가 KPI 표 가로 스크롤 wrapper + Visualization 컬럼 480px 이하 숨김 + 셀 padding 축소
+  const ALGORITHM_VERSION = 'v0.92';  // ★ v0.92 — 인과 구조 통일·표현 톤 정리: P3/P4/P6 "가장 큰 문제" 페이지 간 충돌 해결 / P4 5단계 점수를 ELI 영역과 매핑 (Drive·Landing·Torso·Arm·Release ↔ lower_drive·lead_block·pelvis_trunk+trunk_power·arm_transfer·load_eff) → P3·P4·P6 점수 일관성 / P4 SummaryBar 인과 구조 (1차 원인=Drive·Landing 약점 / 주요 손실 구간=Torso·Arm 약점 / 코칭 우선순위) / P4 TodaysFocus 인과 순서 고정 (Landing→Torso→Arm Connection, Release는 Monitor 박스) / P4 Coach Delivery 실제 코치 메시지로 교체 / P4 Bell 해석 정밀화 helper (골반→몸통 압축 vs 몸통→팔 보상 지연 분리, Target 40~50ms·Acceptable 30~60ms 명시) / P3 "가장 큰 누수" → "점수가 가장 낮은 분절" + 인과는 P4 참고 안내 / P6 "비용 X" → 프로페셔널 표현 / "🚨 매우 위험 (즉시 조치)" → "● 우선 보강" / "★★★ 매우 높음" → "우선 보강" / 잔여 "앞무릎 무너짐" → "앞다리 블로킹 유지"
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
