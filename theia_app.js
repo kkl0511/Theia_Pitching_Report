@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.87';  // ★ v0.87 — 프로 선수 이름 익명화 (leeyoungha→LYH 매핑 helper) — Athlete Card·Theia Take·P1 헤더 모두 적용 / Pro 모드 radar 캡션 "한국 고1 elite" → "KBO 상위권"으로 mode-branched / cohort_theia_pro_v0.json·theia_app.js 코드 주석 내 한글 이름 일괄 치환
+  const ALGORITHM_VERSION = 'v0.88';  // ★ v0.88 — P4 페이지 와이어프레임 재구성 (코치·선수 설명용 1페이지): 핵심 요약 바(가장 큰 누수·두 번째·코칭 우선순위 3 카드) → Dynamic Kinematic Sequence → 5단계 흐름 타임라인(Drive·Landing·Torso·Arm·Release 단계별 진단·큐·drill) → Coach Delivery → Today's Focus + KPI / 제목 "에너지가 새는 부분과 그 원인" / 기존 Fault-Loss Chain·3-Frame Strip·Event Timeline·Causal Cards는 분석가용 펼침 details로 격리
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

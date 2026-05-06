@@ -191,7 +191,7 @@
       { id: 'p1', n: '1', label: '한눈에 보는 결론',     desc: 'Executive Summary' },
       { id: 'p2', n: '2', label: '에너지 생성 능력', desc: 'Force Generation' },
       { id: 'p3', n: '3', label: '에너지 전달 능력', desc: 'Force Transmission' },
-      { id: 'p4', n: '4', label: '에너지 누수 원인', desc: 'Root-Cause Timeline' },
+      { id: 'p4', n: '4', label: '에너지 누수와 원인', desc: 'Drive → Landing → Torso → Arm → Release' },
       { id: 'p5', n: '5', label: '진단 근거',           desc: 'Evidence Dashboard' },
       { id: 'p6', n: '6', label: '훈련 처방',           desc: 'Action & Retest' },
     ];
@@ -988,34 +988,235 @@
     </div>`;
   }
 
-  // ── P4 Root Cause Analysis (★ v0.67 KBO 디자인 핸드오프) ──
+  // ── P4 Root Cause Analysis (★ v0.88 — 와이어프레임 재구성: 코치·선수 설명용 1페이지) ──
+  // 구조: 핵심 요약 바 → Dynamic Kinematic Sequence → 5단계 흐름 타임라인 → Coach Delivery → Today's Focus
+  function _p4StageScores(result) {
+    const m = result.varScores || {};
+    const v = (k) => m[k]?.value;
+    const s = (k) => m[k]?.score;
+    const avg = (...arr) => {
+      const xs = arr.filter(x => x != null);
+      return xs.length ? Math.round(xs.reduce((a,b) => a+b, 0) / xs.length) : null;
+    };
+    // 5단계 — 변수 클러스터별 평균 score
+    return [
+      {
+        id: 'drive',  name: '① Drive',  role: '뒷다리로 몸을 앞으로 보내는 추진력',
+        score: avg(s('Trail_Hip_Power_peak'), s('Trail_leg_peak_vertical_GRF'), s('trail_leg_propulsive_impulse')),
+        keyVars: ['Trail-leg drive · Trail vGRF', 'Trail Hip Power'],
+      },
+      {
+        id: 'landing', name: '② Landing', role: '앞으로 가는 힘을 회전으로 바꾸기',
+        score: avg(s('lead_leg_braking_impulse'), s('lead_knee_ext_change_fc_to_br'), s('Lead_leg_peak_vertical_GRF')),
+        keyVars: ['Lead braking impulse', 'Lead-leg block'],
+      },
+      {
+        id: 'torso', name: '③ Torso Rotation', role: '골반이 만든 힘을 몸통으로 전달하기',
+        score: avg(s('ETE_pelvis_to_trunk'), s('pelvis_to_trunk'), s('fc_xfactor')),
+        keyVars: ['Pelvis→Trunk lag', '골반→몸통 전달율', 'X-factor'],
+      },
+      {
+        id: 'arm', name: '④ Arm Acceleration', role: '몸통의 힘을 팔과 손으로 전달하기',
+        score: avg(s('ETE_trunk_to_arm'), s('trunk_to_arm'), s('Pitching_Shoulder_Power_peak')),
+        keyVars: ['Trunk→Arm transfer', 'Arm acceleration'],
+      },
+      {
+        id: 'release', name: '⑤ Release', role: '마지막 출력과 릴리스 반복성 유지',
+        score: avg(s('release_point_consistency'), s('Pitching_Elbow_Power_peak')),
+        keyVars: ['Release consistency', 'Command consistency'],
+      },
+    ];
+  }
+
+  // 점수 → status (good/caution/leak/na)
+  function _p4Status(score) {
+    if (score == null) return { key: 'na',      dot: '⚪', color: KBO_T.textMuted, bg: '#F4F4F4', label: '데이터 없음' };
+    if (score >= 70)   return { key: 'good',    dot: '🟢', color: KBO_T.good,      bg: 'rgba(63,125,92,0.10)', label: '양호' };
+    if (score >= 55)   return { key: 'okay',    dot: '🟡', color: KBO_T.gold,      bg: 'rgba(232,199,122,0.18)', label: '보통' };
+    if (score >= 40)   return { key: 'caution', dot: '🟠', color: KBO_T.caution,   bg: 'rgba(168,115,51,0.10)', label: '개선 필요' };
+    return                  { key: 'leak',    dot: '🔴', color: KBO_T.leak,      bg: 'rgba(168,68,58,0.10)', label: '큰 누수' };
+  }
+
+  // 단계별 진단·코칭 큐·drill (정적 라이브러리, status 키로 분기)
+  const _P4_LIB = {
+    drive: {
+      good:    { diag: '뒤에서 앞으로 나가는 시작 에너지가 잘 만들어집니다.', cue: '"뒤에서 앞으로 잘 타고 나가고 있어."', drills: ['Step-behind throw', 'Ride drill'] },
+      okay:    { diag: '추진력은 만들지만, 폭발력이 조금 더 필요합니다.',     cue: '"뒷다리로 마운드를 더 강하게 밀어내자."',          drills: ['Trap-bar deadlift', 'Step-behind throw'] },
+      caution: { diag: '뒷다리 추진이 약해 시작 에너지가 부족합니다.',           cue: '"뒷다리로 마운드를 강하게 박차고 나가자."',         drills: ['Squat·Trap bar', 'Box jump', 'Step-behind throw'] },
+      leak:    { diag: '뒷다리 추진이 매우 약함 — 시작부터 에너지 부족.',        cue: '"하체 출력 자체를 먼저 키우자. 메카닉보다 우선."',   drills: ['Trap-bar DL', 'Squat 5RM', 'Box jump'] },
+      na:      { diag: '데이터 부족 — Drive 단계 평가 보류.',                     cue: '—',                                              drills: [] },
+    },
+    landing: {
+      good:    { diag: '앞발이 닿은 뒤 단단히 버텨, 회전축이 잘 형성됩니다.',     cue: '"앞발 닿으면 그 자리에서 버티며 돌자."',           drills: ['Lead-leg brace', 'Connected throw'] },
+      okay:    { diag: '브레이킹은 되지만 끝까지 버티는 힘이 조금 부족.',         cue: '"착지하면 무릎이 더 무너지지 않게 버티자."',        drills: ['Eccentric step-down', 'Drop landing'] },
+      caution: { diag: '앞발 착지 후 버티는 힘이 부족 — 몸이 계속 앞으로 흘러갑니다.', cue: '"앞발이 닿으면 더 밀고 나가지 말고, 그 자리에서 버텨."', drills: ['Eccentric step-down', 'Drop landing', 'Lead-leg brace'] },
+      leak:    { diag: '디딤발 블로킹 부족이 가장 큰 누수 — 전진 에너지가 회전으로 안 바뀜.', cue: '"앞발 착지 후 무릎 무너뜨리지 말고, 버티며 돌자."',  drills: ['Eccentric step-down (5초 hold)', 'Drop landing', 'Single-leg RDL'] },
+      na:      { diag: '데이터 부족 — Landing 단계 평가 보류.',                  cue: '—',                                              drills: [] },
+    },
+    torso: {
+      good:    { diag: '골반·몸통이 좋은 시간차로 순차 가속 — 채찍 효과 양호.',   cue: '"이 순서를 유지하자."',                            drills: ['Med-ball rotational throw'] },
+      okay:    { diag: '골반→몸통 시간차가 약간 빠듯 — 채찍 효과 부분 손실.',     cue: '"골반 회전 후 몸통은 한 박자만 더 늦게."',          drills: ['Hip-shoulder separation', 'Med-ball hip-to-trunk'] },
+      caution: { diag: '골반과 몸통이 거의 동시에 열려 힘이 모이지 않음.',       cue: '"골반이 먼저 돌고, 몸통은 조금 늦게 따라와."',     drills: ['Hip-shoulder separation', 'Med-ball hip-to-trunk', 'Pivot pickoff'] },
+      leak:    { diag: '몸통이 너무 빨리 열려 힘이 흩어짐 — 팔 의존 증가.',      cue: '"골반 다음에 몸통이 돌게 만들자. 동시에 열지 말자."', drills: ['Hip-shoulder separation drill', 'Med-ball rotational', 'Pivot pickoff'] },
+      na:      { diag: '데이터 부족 — Torso Rotation 단계 평가 보류.',          cue: '—',                                              drills: [] },
+    },
+    arm: {
+      good:    { diag: '몸통→팔 전달 양호 — 팔 의존 없이 효율적 가속.',           cue: '"이 흐름 유지하자."',                              drills: ['Connected throw'] },
+      okay:    { diag: '몸통→팔 전달 보통 — 앞단계가 좋아지면 더 효율적이 됩니다.', cue: '"몸통 다음에 팔이 따라오게 하자."',                drills: ['Connected throw', 'Pivot pickoff'] },
+      caution: { diag: '앞단계 누수 때문에 팔 의존이 커지고 있음.',              cue: '"팔로 던지지 말고 몸통 다음에 팔이 나오게 하자."', drills: ['Connected throw', 'Pivot pickoff', 'Step-behind throw'] },
+      leak:    { diag: '몸통→팔 전달 약함 — 팔이 단독으로 가속 (UCL 부하 위험).',  cue: '"팔에 힘 빼고 몸통 회전 따라가게 하자."',         drills: ['Connected throw', 'Wall throws', 'Pivot pickoff'] },
+      na:      { diag: '데이터 부족 — Arm Acceleration 단계 평가 보류.',         cue: '—',                                              drills: [] },
+    },
+    release: {
+      good:    { diag: '릴리스 일관성 양호 — 같은 동작 반복성 우수.',             cue: '"이 일관성을 유지하자."',                          drills: ['Target throw'] },
+      okay:    { diag: '릴리스 일관성 보통 — 미세 조정으로 더 좋아질 수 있습니다.', cue: '"릴리스 직전 손끝까지 신경쓰자."',                  drills: ['Target throw', 'Release consistency drill'] },
+      caution: { diag: '릴리스 직전 누수 — 앞단계 개선이 우선입니다.',           cue: '"마지막 손끝 전달은 유지하되, 앞단계에서 힘을 잘 가져오자."', drills: ['Target throw', 'Connected throw'] },
+      leak:    { diag: '릴리스 자체보다 앞단계 누수가 더 우선 문제입니다.',     cue: '"릴리스 고치기 전에 착지·몸통 연결 먼저 잡자."',   drills: ['(앞단계 drill 우선)', 'Target throw'] },
+      na:      { diag: '데이터 부족 — Release 단계 평가 보류.',                  cue: '—',                                              drills: [] },
+    },
+  };
+
+  // 핵심 요약 바 (3 카드)
+  function _p4SummaryBar(stages) {
+    // 가장 큰 누수 = score 가장 낮은 단계 / 두 번째 = 그 다음
+    const ranked = stages.filter(s => s.score != null).sort((a,b) => a.score - b.score);
+    const top1 = ranked[0]; const top2 = ranked[1];
+    const top1Lib = top1 ? _P4_LIB[top1.id][_p4Status(top1.score).key] : null;
+    const top2Lib = top2 ? _P4_LIB[top2.id][_p4Status(top2.score).key] : null;
+
+    const card = ({ kicker, label, body, color, accent }) => `
+      <div style="padding: 18px; border-radius: 8px; background: ${color}; border-left: 4px solid ${accent}; flex: 1; min-width: 240px;">
+        <div class="kbo-eyebrow" style="color: ${accent}; margin-bottom: 6px;">${kicker}</div>
+        <div class="kbo-display" style="font-size: 18px; color: ${KBO_T.text}; line-height: 1.3; margin-bottom: 6px;">${label}</div>
+        <div style="font-size: 12.5px; color: ${KBO_T.text2}; line-height: 1.55;">${body}</div>
+      </div>`;
+
+    return `<div style="display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0 22px;">
+      ${top1 ? card({ kicker: '가장 큰 누수', label: top1.name.replace(/^[①②③④⑤]\s*/, '') + ' (' + (top1.score ?? '—') + '점)', body: top1Lib?.diag || '—', color: 'rgba(168,68,58,0.08)', accent: KBO_T.leak })
+            : card({ kicker: '가장 큰 누수', label: '데이터 부족', body: '5단계 변수 측정이 부족합니다.', color: '#F6F6F6', accent: KBO_T.textMuted })}
+      ${top2 ? card({ kicker: '두 번째 문제', label: top2.name.replace(/^[①②③④⑤]\s*/, '') + ' (' + (top2.score ?? '—') + '점)', body: top2Lib?.diag || '—', color: 'rgba(168,115,51,0.08)', accent: KBO_T.caution })
+            : card({ kicker: '두 번째 문제', label: '—', body: '추가 데이터 필요', color: '#F6F6F6', accent: KBO_T.textMuted })}
+      ${card({ kicker: '코칭 우선순위', label: top1 ? top1Lib?.cue?.replace(/^["']|["']$/g, '') || '—' : '데이터 보강 후 진단', body: top1Lib?.drills?.length ? '오늘의 우선 drill: ' + top1Lib.drills.slice(0,2).join(' · ') : '—', color: 'rgba(15,42,74,0.06)', accent: KBO_T.navy })}
+    </div>`;
+  }
+
+  // 5단계 흐름 타임라인 (가로형 단계 바 + 5 카드)
+  function _p4StageTimeline(stages) {
+    // 위 가로 바
+    const dotRow = stages.map(stg => {
+      const st = _p4Status(stg.score);
+      return `<div style="flex: 1; min-width: 90px; text-align: center;">
+        <div style="font-size: 22px; line-height: 1;">${st.dot}</div>
+        <div class="kbo-eyebrow" style="margin-top: 6px; color: ${KBO_T.textMuted};">${stg.name.replace(/^[①②③④⑤]\s*/, '')}</div>
+        <div class="kbo-mono" style="font-size: 15px; color: ${st.color}; font-weight: 800; margin-top: 4px;">${stg.score != null ? stg.score : '—'}<span style="font-size: 9px; color: ${KBO_T.textMuted}; margin-left: 2px;">/100</span></div>
+        <div style="font-size: 10px; color: ${st.color}; margin-top: 2px;">${st.label}</div>
+      </div>`;
+    }).join(`<div style="align-self: center; color: ${KBO_T.borderSoft}; font-size: 18px; padding: 0 4px;">→</div>`);
+
+    // 단계별 카드
+    const cards = stages.map(stg => {
+      const st = _p4Status(stg.score);
+      const lib = _P4_LIB[stg.id][st.key];
+      const drillRow = lib.drills.length
+        ? `<div style="margin-top: 8px;">
+             ${lib.drills.map(d => `<span class="kbo-mono" style="display: inline-block; font-size: 10.5px; padding: 3px 8px; margin: 2px 4px 2px 0; background: ${KBO_T.bgElev}; color: ${KBO_T.navy}; border-radius: 3px;">${d}</span>`).join('')}
+           </div>`
+        : '';
+      return `<div style="padding: 14px 16px; border-radius: 8px; background: ${st.bg}; border-left: 3px solid ${st.color};">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+          <div class="kbo-display" style="font-size: 16px; color: ${KBO_T.text};">${stg.name}</div>
+          <div style="font-size: 11px; color: ${st.color}; font-weight: 700;">${st.dot} ${st.label}</div>
+        </div>
+        <div style="font-size: 11.5px; color: ${KBO_T.textMuted}; margin-bottom: 6px; font-style: italic;">${stg.role}</div>
+        <div style="font-size: 13px; color: ${KBO_T.text}; line-height: 1.55; margin-bottom: 6px;"><b>한 줄 진단</b> ${lib.diag}</div>
+        ${lib.cue && lib.cue !== '—' ? `<div style="font-size: 12.5px; color: ${KBO_T.navy}; line-height: 1.55;"><b>선수에게 줄 큐</b> <em>${lib.cue}</em></div>` : ''}
+        ${drillRow}
+      </div>`;
+    }).join('');
+
+    return `<div class="kbo-card" style="padding: 22px 24px; margin: 18px 0;">
+      ${_kboSectionTitle({
+        kicker: '투구 흐름 타임라인',
+        title: 'Drive → Landing → Torso → Arm → Release',
+        sub: '시간 순서대로 어느 구간에서 힘이 새고, 왜 그런지 한눈에',
+      })}
+      <div style="display: flex; align-items: stretch; padding: 12px 4px 16px; margin-bottom: 14px; border-bottom: 1px dashed ${KBO_T.borderSoft};">
+        ${dotRow}
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+        ${cards}
+      </div>
+    </div>`;
+  }
+
+  // 맨 아래 — 오늘의 훈련 우선순위 + KPI
+  function _p4TodaysFocus(stages) {
+    const ranked = stages.filter(s => s.score != null).sort((a,b) => a.score - b.score).slice(0, 3);
+    const items = ranked.map((stg, i) => {
+      const st = _p4Status(stg.score);
+      const lib = _P4_LIB[stg.id][st.key];
+      const num = ['1', '2', '3'][i];
+      return `<div style="padding: 14px 16px; border-radius: 6px; background: ${st.bg}; border-left: 3px solid ${st.color};">
+        <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px;">
+          <span class="kbo-display" style="font-size: 22px; color: ${st.color};">${num}</span>
+          <span class="kbo-display" style="font-size: 14px; color: ${KBO_T.text};">${stg.name.replace(/^[①②③④⑤]\s*/, '')} 우선 교정</span>
+        </div>
+        <div style="font-size: 12px; color: ${KBO_T.text2}; line-height: 1.55; margin-bottom: 6px;">${lib.cue && lib.cue !== '—' ? lib.cue : ''}</div>
+        ${lib.drills.length ? `<div>${lib.drills.slice(0,2).map(d => `<span class="kbo-mono" style="display: inline-block; font-size: 10.5px; padding: 3px 8px; margin: 0 4px 2px 0; background: rgba(255,255,255,0.6); color: ${KBO_T.navy}; border-radius: 3px;">${d}</span>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    return `<div class="kbo-card" style="padding: 22px 24px; margin: 18px 0; background: linear-gradient(135deg, rgba(15,42,74,0.04), rgba(232,199,122,0.04));">
+      ${_kboSectionTitle({
+        kicker: "Today's Focus",
+        title: '오늘의 훈련 우선순위',
+        sub: '6주 운영 → 재측정 — 검증 가능한 결과 기반',
+      })}
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 8px;">
+        ${items || `<div style="font-size: 12px; color: ${KBO_T.textMuted};">데이터 보강 후 우선순위 산출</div>`}
+      </div>
+      <div style="margin-top: 14px; padding: 12px 14px; border-top: 1px solid ${KBO_T.borderSoft}; font-size: 12px; color: ${KBO_T.text2};">
+        <b style="color: ${KBO_T.navy};">재측정 KPI</b> · Lead braking impulse · 골반→몸통 전달율 · 릴리스 일관성 · (그리고 측정 구속의 변화)
+      </div>
+    </div>`;
+  }
+
   function _renderP4RootCause(result) {
+    const stages = _p4StageScores(result);
     const headline = `
-      <div style="margin-bottom: 24px;">
-        <div class="kbo-eyebrow" style="margin-bottom: 10px;">동작 결함 → 전달 손실 → 결과</div>
+      <div style="margin-bottom: 18px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">Drive → Landing → Torso → Arm → Release</div>
         <div class="kbo-headline">
-          한 번의 결함이 <em>어떻게</em> 팔까지 영향을 주는가 —<br/>
-          원인 → 누수 → 결과를 한 줄로.
+          <em>에너지가 새는 부분</em>과 <em>그 원인</em> —<br/>
+          어느 구간에서 힘이 새는지와 왜 그런지 한눈에.
         </div>
         <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
-          각 결함 phase(셋업→앞발 착지→최대 외회전→릴리스)와 결과 지표 동시 표기. drill 처방은 <a href="#p6" style="color: ${KBO_T.navy}; font-weight: 700;">P6</a>에서.
+          시간 순서대로 5단계 흐름을 따라가며 누수 위치·원인·코칭 큐·drill을 묶어서 보여줍니다. 6주 처방은 <a href="#p6" style="color: ${KBO_T.navy}; font-weight: 700;">P6</a>에서.
         </div>
       </div>`;
     return `
     <section id="p4" class="report-page kbo-scope">
       <div class="kbo-pad">
-        ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '에너지 누수 원인', q: '어느 동작·phase에서 에너지가 새고, 어떤 전달 손실로 이어지는가' })}
+        ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '에너지가 새는 부분과 그 원인', q: 'Drive → Landing → Torso → Arm → Release 흐름에서 어디가 새는가' })}
         ${headline}
-        ${_renderFaultLossCausalChain(result)}
-        ${_render3FrameCoachingStrip(result)}
+        ${_p4SummaryBar(stages)}
+        ${_renderKinematicBellUplift(result)}
+        ${_p4StageTimeline(stages)}
         ${_renderCoachDeliveryBox(result, 'p4')}
+        ${_p4TodaysFocus(stages)}
       </div>
-      <!-- 기존 Event Timeline + 인과 분석 카드 — 점진 전환 -->
-      <div style="background: var(--bg-card); margin-top: 16px; padding: 28px; border-top: 1px solid var(--border);">
-        <div class="text-xs mb-3" style="color: var(--text-muted); font-style: italic;">▼ 상세 인과 분석 — 6개 chain별 원인·결과 카드</div>
-        ${_renderEventTimeline(result)}
-        ${_renderCausalAnalysis(result)}
-      </div>
+      <!-- 분석가용 상세 — 펼쳐서 검수 (영업 데모에서는 기본 접힘) -->
+      <details style="background: var(--bg-card); margin-top: 16px;">
+        <summary style="padding: 16px 28px; cursor: pointer; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); list-style: none;">
+          ▼ 분석가용 상세 — Fault-Loss Causal Chain · 3-Frame Strip · Event Timeline · Causal Cards (펼치기)
+        </summary>
+        <div style="padding: 28px;">
+          ${_renderFaultLossCausalChain(result)}
+          ${_render3FrameCoachingStrip(result)}
+          ${_renderEventTimeline(result)}
+          ${_renderCausalAnalysis(result)}
+        </div>
+      </details>
     </section>`;
   }
 
@@ -1866,10 +2067,10 @@
     return `<div class="card-elev p-5 mt-6" style="background: linear-gradient(135deg, rgba(96,165,250,0.04), rgba(251,146,60,0.04)); border: 1px solid rgba(96,165,250,0.3);">
       <div class="flex items-baseline justify-between mb-3 flex-wrap" style="gap: 8px;">
         <div>
-          <div class="display" style="font-size: 22px; font-weight: 700; color: var(--text-primary);">🔗 동작이 어디서 막혀 힘이 새고 있는가</div>
+          <div class="display" style="font-size: 22px; font-weight: 700; color: var(--text-primary);">🔗 에너지가 새는 부분과 그 원인 (상세)</div>
           <div class="text-xs mt-1" style="color: var(--text-secondary);">자세·동작의 문제(원인) → 발에서 공까지 힘 전달의 손실(결과)</div>
         </div>
-        <div class="text-xs" style="color: var(--text-muted);">★ "어떤 동작이 어디서 힘을 새게 만들었나"</div>
+        <div class="text-xs" style="color: var(--text-muted);">★ Drive → Landing → Torso → Arm → Release 인과 분석</div>
       </div>
       <div class="mt-4">${chainCards}</div>
       <details class="mt-4">
