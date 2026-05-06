@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.59';  // ★ v0.59 — VALD Baseball 2024 normative 기반 Pro 체력 임계값 (mode-aware _fitnessScore)
+  const ALGORITHM_VERSION = 'v0.60';  // ★ v0.60 — PDF §4 모순 7개 중 4개 fix (#2 lag 단위, #3 Transmission Health 라벨, #4 Load Safety 방향성, #5 Mechanics/Physical confidence 분리)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

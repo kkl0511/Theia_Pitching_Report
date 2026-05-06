@@ -245,10 +245,22 @@
         </div>
         <div style="font-size: 11px; color: var(--text-muted);">${s.note}</div>
       </div>`).join('');
-    const confNote = conf.level === 'low' ? `
-      <div style="margin-top: 12px; padding: 10px 12px; border-left: 3px solid var(--warn); background: rgba(251,191,36,0.06); border-radius: 4px; font-size: 12px; color: var(--text-secondary);">
-        ⚠ 체력 측정 변수 부족 — "체력만 발전" 추정치는 placeholder입니다. VALD(SJ/CMJ/IMTP) 입력 후 신뢰도 향상.
-      </div>` : '';
+    // ★ v0.60 — PDF §4 #5 fix: Mechanics confidence와 Physical confidence 분리 배지
+    const fit = (typeof _getFit === 'function' ? _getFit() : null) || {};
+    const physN = ['imtp_peak_force_bm','cmj_peak_power_bm','cmj_rsi_modified','bmi'].filter(k => fit[k] != null).length;
+    const physCov = `${physN}/4`;
+    const physBadge = physN >= 3 ? { icon:'✓', label:'Physical: 측정 기반', color:'var(--good)' }
+                    : physN >= 1 ? { icon:'~', label:`Physical: 일부 측정 (${physCov})`, color:'var(--warn)' }
+                                 : { icon:'!', label:`Physical: 측정 없음 (${physCov}) — 추정`, color:'var(--bad)' };
+    const mechBadge = { icon:'✓', label:'Mechanics: 측정 기반', color:'var(--good)' };
+    const confNote = `
+      <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px;">
+        <span style="padding: 4px 10px; border-radius: 12px; background: rgba(74,222,128,0.10); color: ${mechBadge.color}; font-weight: 600;">${mechBadge.icon} ${mechBadge.label}</span>
+        <span style="padding: 4px 10px; border-radius: 12px; background: rgba(251,191,36,0.10); color: ${physBadge.color}; font-weight: 600;">${physBadge.icon} ${physBadge.label}</span>
+      </div>
+      ${physN < 3 ? `<div style="margin-top: 8px; padding: 10px 12px; border-left: 3px solid var(--warn); background: rgba(251,191,36,0.06); border-radius: 4px; font-size: 12px; color: var(--text-secondary);">
+        ⚠ 체력 ${physCov} 측정 — "체력만 발전" 잠재 구속은 부분 추정. VALD(SJ/CMJ/IMTP) 입력 후 신뢰도 향상
+      </div>` : ''}`;
     return `
     <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin: 16px 0;">
       <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px;">
@@ -672,10 +684,10 @@
     <div class="cat-card mb-6" style="padding: 22px; border: 2px solid ${grade.color}; background: linear-gradient(135deg, ${grade.color}10, transparent);">
       <div class="flex justify-between items-start flex-wrap gap-3 mb-3">
         <div>
-          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">에너지 손실 종합 점수</div>
+          <div class="mono text-xs uppercase tracking-widest" style="color: var(--text-muted);">Transmission Health · 전달 효율 종합 (높을수록 좋음)</div>
           <div class="display text-2xl mt-1" style="color: ${grade.color};">🔋 발에서 공까지 — 힘이 얼마나 잘 전달됐는가</div>
           <div class="text-xs mt-1" style="color: var(--text-muted);">
-            발·골반·몸통·팔 6개 단계의 힘 전달 효율을 종합한 점수
+            발·골반·몸통·팔 6개 단계의 힘 전달 효율을 종합한 점수 (★ v0.60 — 'ELI'는 이 점수를 설명하는 하위 진단 도구)
           </div>
         </div>
         <div class="text-right">
@@ -823,10 +835,17 @@
         chainScore >= 75 ? '#16a34a' : chainScore >= 50 ? '#22d3ee' : chainScore >= 30 ? '#fb923c' : '#dc2626';
       const narrative = chainScore != null && chainScore >= 60 ? ch.narrative_high : ch.narrative_low;
 
+      // ★ v0.60 — PDF 사양 §4 모순 #2 fix: sec 단위 lag을 ms 라벨에 그대로 표시하던 버그 수정
+      const _displayLagVal = (val, unit) => {
+        // unit이 'ms'고 raw 값이 |x|<1이면 sec → ms 변환 (×1000)
+        if (unit === 'ms' && val != null && Math.abs(val) < 1) return val * 1000;
+        return val;
+      };
       // 인과 화살표 시각
       const causeRows = causesData.map(c => {
         const cc = c.score == null ? '#94a3b8' : c.score >= 75 ? '#16a34a' : c.score >= 50 ? '#22d3ee' : c.score >= 30 ? '#fb923c' : '#dc2626';
-        const valStr = c.measured ? `${c.value.toFixed(2)} ${c.unit}` : '미측정';
+        const _v = _displayLagVal(c.value, c.unit);
+        const valStr = c.measured ? `${_v.toFixed(2)} ${c.unit}` : '미측정';
         const scoreStr = c.measured && c.score != null ? `${c.score}점` : '—';
         const opacity = c.measured ? '' : 'opacity: 0.5;';
         return `<div class="py-1" style="border-bottom: 1px dashed var(--border); ${opacity}">
@@ -841,7 +860,9 @@
 
       const effectRows = effectsData.map(e => {
         const ec = e.score == null ? '#94a3b8' : e.score >= 75 ? '#16a34a' : e.score >= 50 ? '#22d3ee' : e.score >= 30 ? '#fb923c' : '#dc2626';
-        const valStr = e.measured ? `${typeof e.value === 'number' ? e.value.toFixed(2) : e.value} ${e.unit}` : '미측정';
+        // ★ v0.60 — PDF §4 #2: sec 값에 ms 라벨 붙던 표시 버그 fix
+        const _ev = typeof e.value === 'number' ? _displayLagVal(e.value, e.unit) : e.value;
+        const valStr = e.measured ? `${typeof _ev === 'number' ? _ev.toFixed(2) : _ev} ${e.unit}` : '미측정';
         const scoreStr = e.measured && e.score != null ? `${e.score}점` : '—';
         const opacity = e.measured ? '' : 'opacity: 0.5;';
         return `<div class="py-1" style="border-bottom: 1px dashed var(--border); ${opacity}">
@@ -1310,9 +1331,9 @@
         </div>
       </div>
       <!-- ▸ expand 카드 형식 -->
-      ${_expandCard('출력 (Power Generation)', '각 분절(하체→몸통→팔)이 만들어내는 절대 회전·선형 출력', outScore, '#16a34a', 'OUTPUT', 'wrist_release_speed', ' m/s')}
-      ${_expandCard('에너지 효율 (Energy Transfer / Sequencing)', '분절 간 에너지가 효율적으로 흐르는가 — 타이밍·증폭률·저장방출', trScore, '#fb923c', 'TRANSFER', 'angular_chain_amplification', ' x')}
-      ${_expandCard('부상 위험 (Injury Risk)', '출력의 비용 — UCL stress (팔꿈치) + knee stress (drive 다리)', injScore, '#f87171', 'INJURY', 'max_shoulder_ER', ' °')}
+      ${_expandCard('출력 (Power Generation · 높을수록 좋음)', '각 분절(하체→몸통→팔)이 만들어내는 절대 회전·선형 출력', outScore, '#16a34a', 'OUTPUT', 'wrist_release_speed', ' m/s')}
+      ${_expandCard('에너지 전달 (Transfer Efficiency · 높을수록 좋음)', '분절 간 에너지가 효율적으로 흐르는가 — 타이밍·증폭률·저장방출', trScore, '#fb923c', 'TRANSFER', 'angular_chain_amplification', ' x')}
+      ${_expandCard('부하 안전도 (Load Safety · 높을수록 안전)', '★ v0.60 PDF §4 #4 fix — 점수 방향성 명시. 출력의 비용 — UCL stress (팔꿈치) + knee stress (drive 다리). 점수 높음 = 부하 적음 = 안전. UCL stress 경고가 별도 표시되면 그것이 우선.', injScore, '#f87171', 'INJURY', 'max_shoulder_ER', ' °')}
     </div>`;
   }
 
