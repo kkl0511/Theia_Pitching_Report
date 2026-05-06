@@ -409,6 +409,70 @@
     font-family: 'Inter', sans-serif; font-weight: 400; color: var(--kbo-text-muted);
     font-size: 0.4em; margin-left: 4px;
   }
+
+  /* ════════════════════════════════════════════════════════════
+     ★ v0.82 — 모바일 반응형 (KBO 데모는 모바일에서도 봐야 함)
+     데스크톱 grid가 모바일 폭 벗어나는 문제 해결
+     ════════════════════════════════════════════════════════════ */
+  /* 6페이지 sticky nav — 모바일 가로 스크롤 + min-width 축소 */
+  @media (max-width: 768px) {
+    .p-nav-tab { min-width: 110px !important; padding: 8px 10px !important; }
+    .p-nav-label { font-size: 12px !important; }
+  }
+
+  /* P1~P6 KBO 영역 — 모바일에서 grid stack + 큰 숫자 clamp */
+  @media (max-width: 768px) {
+    .kbo-scope .kbo-pad { padding: 18px 14px 32px; }
+    .kbo-scope .kbo-headline { font-size: 19px; line-height: 1.32; }
+    .kbo-scope .kbo-page-title-en { font-size: 18px; }
+    .kbo-scope .kbo-metric-num { font-size: clamp(24px, 8vw, 48px) !important; }
+    .kbo-scope .kbo-metric-unit { font-size: 0.45em !important; }
+    /* 3·4·5 컬럼 grid → 2 컬럼으로 */
+    .kbo-scope div[style*="grid-template-columns: repeat(3"],
+    .kbo-scope div[style*="grid-template-columns: repeat(4"],
+    .kbo-scope div[style*="grid-template-columns: repeat(5"] {
+      grid-template-columns: 1fr 1fr !important;
+      gap: 10px !important;
+    }
+    /* 1.15fr 1fr (P2 사분면+게이지) → stack */
+    .kbo-scope div[style*="grid-template-columns: 1.15fr 1fr"],
+    .kbo-scope div[style*="grid-template-columns: 1fr 1fr"][style*="gap: 18px"] {
+      grid-template-columns: 1fr !important;
+    }
+    /* Waterfall 4-col grid → 2행 압축 */
+    .kbo-scope div[style*="140px 1fr 80px"] {
+      grid-template-columns: 100px 1fr !important;
+      grid-template-rows: auto auto !important;
+      gap: 8px !important;
+    }
+    /* Energy Transfer Bar (160px 1fr 100px 110px) → 2행 */
+    .kbo-scope div[style*="160px 1fr 100px"] {
+      grid-template-columns: 110px 1fr !important;
+      gap: 8px !important;
+    }
+    /* SVG 자동 축소 */
+    .kbo-scope svg { max-width: 100% !important; height: auto !important; }
+    /* 큰 게이지 숫자 (P2 56px 등) */
+    .kbo-scope span[style*="font-size: 56px"] { font-size: 36px !important; }
+    .kbo-scope span[style*="font-size: 64px"] { font-size: 40px !important; }
+    .kbo-scope span[style*="font-size: 88px"] { font-size: 52px !important; }
+    .kbo-scope span[style*="font-size: 44px"] { font-size: 32px !important; }
+    /* 페이지 헤더 wrap */
+    .kbo-scope .kbo-page-q { font-size: 11px; }
+  }
+
+  /* 작은 모바일 (480px 이하) — 모든 grid 1col stack */
+  @media (max-width: 480px) {
+    .kbo-scope div[style*="grid-template-columns: repeat"] {
+      grid-template-columns: 1fr !important;
+    }
+    .kbo-scope div[style*="grid-template-columns: 100px 1fr"],
+    .kbo-scope div[style*="grid-template-columns: 110px 1fr"] {
+      grid-template-columns: 80px 1fr !important;
+    }
+    .kbo-scope .kbo-headline { font-size: 17px; }
+    .kbo-scope .kbo-pad { padding: 14px 12px 28px; }
+  }
 </style>
 </head>
 <body class="min-h-screen">
@@ -660,11 +724,11 @@
 </main>
 
 <!-- ═══════════ Theia 코호트 + 메타 + 앱 로직 (v0.7 분할 구조) ═══════════ -->
-<script src="cohort_theia.js?v=0.81"></script>
-<script src="metadata_theia.js?v=0.81"></script>
-<script src="theia_app.js?v=0.81"></script>          <!-- 파서·점수·API -->
-<script src="theia_mannequin.js?v=0.81"></script>     <!-- 마네킹·종형 동적 SVG -->
-<script src="theia_render.js?v=0.81"></script>        <!-- 메인 리포트 렌더 -->
+<script src="cohort_theia.js?v=0.82"></script>
+<script src="metadata_theia.js?v=0.82"></script>
+<script src="theia_app.js?v=0.82"></script>          <!-- 파서·점수·API -->
+<script src="theia_mannequin.js?v=0.82"></script>     <!-- 마네킹·종형 동적 SVG -->
+<script src="theia_render.js?v=0.82"></script>        <!-- 메인 리포트 렌더 -->
 
 
 <script>

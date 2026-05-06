@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.81';  // ★ v0.81 — 디자인 v0.9 핸드오프 적용: Navy 1색 + 어스톤 status (sage/amber/rust) + Headline 22px (모바일) + .plain 박스 + 그림자 제거 + Coach Delivery를 plain 스타일로
+  const ALGORITHM_VERSION = 'v0.82';  // ★ v0.82 — 모바일 반응형: 768px 이하 grid 2col로, 480px 이하 1col stack / 큰 숫자 clamp(24,8vw,48px) / Waterfall·Energy Transfer Bar 행 압축 / 6페이지 nav min-width 축소 (오프라인 패키지·PDF 모두 적용)
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;
