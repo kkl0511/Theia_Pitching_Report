@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const ALGORITHM_VERSION = 'v0.89';  // ★ v0.89 — 중복·이율배반 정리: Dynamic Kinematic Sequence(Bell) 3중 중복 → P4 단일 소유 (P3·P5 제거) / P3·P4 정체성 분리 — P3 "분절 단위(공간)" / P4 "시간 흐름(5단계)" / 헤더 상호참조 링크 추가 / P4 SummaryBar 코칭 우선순위 카드 drill 라인 제거 (Today's Focus와 중복) / P4 Coach Delivery(p4) 메시지 차별화 (P1과 동일했던 큐 → 5단계 결론 메타 메시지) / P4 Today's Focus → P6 cross-ref hint / P6 AthleteCard "오늘의 훈련 4 drill" → "6주 핵심 drill 4종 (선수 핸드아웃용)" 라벨 명확화
+  const ALGORITHM_VERSION = 'v0.90';  // ★ v0.90 — 오프라인 패키지 모바일 호환: viewport meta 추가 (iOS Safari·PDF viewer에서 미디어쿼리 적용 안 되던 문제 해결) / data-theme night→day 통일 / body overflow-x hidden + #result-area max-width 100% / 모바일 .offline-wrap 패딩·title 축소 / 마네킹 "착지발 제동력" 라벨 좌·상으로 이동 (lAnkle 발과 겹침 해소) + 점선 leader 추가
   let CURRENT_MODE = 'pro';  // ★ v0.58 — KBO 프로구단 영업 정렬: 디폴트 Pro 모드
   let CURRENT_PLAYER = { mass_kg: null, height_cm: null, name: null, handedness: null, level: null };
   let CURRENT_FITNESS = null;

@@ -535,9 +535,11 @@
         </g>` : ''}
         ${leadVGRF != null ? `
         <g>
-          <rect x="${K.lAnkle[0]-62}" y="${K.lAnkle[1]+10}" width="100" height="40" rx="5" fill="#FFFFFF" stroke="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" stroke-width="1.6"/>
-          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+24}" text-anchor="middle" font-size="10" fill="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" font-weight="800">착지발 제동력</text>
-          <text x="${K.lAnkle[0]-12}" y="${K.lAnkle[1]+42}" text-anchor="middle" font-size="14" fill="#0F1419" font-weight="800" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#6B7280" font-family="Inter"> BW</tspan></text>
+          <!-- ★ v0.90 — 착지발 제동력: 마네킹 발과 겹침 해소 → 왼쪽·위로 이동 (lToe 290/lAnkle 332 좌측, knee 라벨 위 빈 공간) -->
+          <rect x="${K.lAnkle[0]-138}" y="${K.lAnkle[1]-52}" width="106" height="40" rx="5" fill="#FFFFFF" stroke="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" stroke-width="1.6"/>
+          <text x="${K.lAnkle[0]-85}" y="${K.lAnkle[1]-37}" text-anchor="middle" font-size="10" fill="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" font-weight="800">착지발 제동력</text>
+          <text x="${K.lAnkle[0]-85}" y="${K.lAnkle[1]-19}" text-anchor="middle" font-size="14" fill="#0F1419" font-weight="800" font-family="JetBrains Mono">${leadVGRF.toFixed(2)}<tspan font-size="9" fill="#6B7280" font-family="Inter"> BW</tspan></text>
+          <line x1="${K.lAnkle[0]-32}" y1="${K.lAnkle[1]-32}" x2="${K.lAnkle[0]-4}" y2="${K.lAnkle[1]+4}" stroke="${leadVGRF >= 2.0 ? '#3F7D5C' : '#A87333'}" stroke-width="1" stroke-dasharray="2 2" opacity="0.6"/>
         </g>` : ''}
 
         <!-- 어깨 power 라벨 (왼쪽 머리 위) — ★ v0.85 가독성 강화: 큰 숫자 dark text + 어스톤 status -->
