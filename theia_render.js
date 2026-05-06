@@ -608,81 +608,270 @@
     </div>`;
   }
 
-  // ── P2 Force Generation Profile ──
+  // ── P2 Opportunity Map (★ v0.67 KBO 디자인 핸드오프 v0.8 적용) ──
   function _renderP2Generation(result) {
+    const cs = result.catScores || {};
+    const px = cs.OUTPUT?.score ?? 50;       // 출력 percentile
+    const py = cs.TRANSFER?.score ?? 50;     // 전달 효율 percentile
+    const pred = _predictPotentialVelo(result);
+    const dMech = (pred?.current != null && pred?.mechOnly != null) ? +(pred.mechOnly - pred.current).toFixed(1) : null;
+
+    // 사분면 분류
+    let zoneId, zoneLabel, zoneColor, zoneRoi;
+    if (px >= 50 && py >= 50)      { zoneId='①'; zoneLabel='Elite';   zoneColor=KBO_T.good;     zoneRoi='유지·세부 조정'; }
+    else if (px >= 50 && py < 50)  { zoneId='②'; zoneLabel='낭비형';  zoneColor=KBO_T.injury;   zoneRoi='High Coaching ROI'; }
+    else if (px < 50 && py >= 50)  { zoneId='③'; zoneLabel='효율형';  zoneColor=KBO_T.transfer; zoneRoi='출력 보강 필요'; }
+    else                           { zoneId='④'; zoneLabel='아마';    zoneColor='#94a3b8';      zoneRoi='기초 재정립'; }
+
+    // SVG 좌표 (40~360 가로, 320~40 세로)
+    const cx = 40 + Math.max(0, Math.min(100, px)) / 100 * 320;
+    const cy = 320 - Math.max(0, Math.min(100, py)) / 100 * 280;
+    const tx = 40 + 75 / 100 * 320;
+    const ty = 320 - 72 / 100 * 280;
+
+    const headline = `
+      <div style="margin-bottom: 28px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">The opportunity</div>
+        <div class="kbo-headline">
+          출력은 <em>${px >= 50 ? '충분' : '부족'}</em>, 전달 효율이 <em>${py >= 50 ? '양호' : '약함'}</em>.<br/>
+          ${dMech != null && dMech > 3 ? `→ 메카닉 코칭으로 <em>+${dMech.toFixed(1)} km/h</em> 회수 가능.` : '→ 5축 점수 종합으로 진단 우선순위 결정.'}
+        </div>
+      </div>`;
+
+    const quadrantSvg = `
+      <svg viewBox="0 0 380 360" style="width: 100%; height: auto; display: block;">
+        <rect x="200" y="40"  width="160" height="140" fill="${KBO_T.good}"     opacity="0.10"/>
+        <rect x="200" y="180" width="160" height="140" fill="${KBO_T.injury}"   opacity="0.10"/>
+        <rect x="40"  y="40"  width="160" height="140" fill="${KBO_T.transfer}" opacity="0.08"/>
+        <rect x="40"  y="180" width="160" height="140" fill="#94a3b8"           opacity="0.06"/>
+        <line x1="200" y1="320" x2="200" y2="40"  stroke="${KBO_T.border}" stroke-dasharray="4,4"/>
+        <line x1="40"  y1="180" x2="360" y2="180" stroke="${KBO_T.border}" stroke-dasharray="4,4"/>
+        <line x1="40" y1="320" x2="360" y2="320" stroke="${KBO_T.text2}"/>
+        <line x1="40" y1="320" x2="40"  y2="40"  stroke="${KBO_T.text2}"/>
+        <text x="280" y="74"  text-anchor="middle" font-size="13" fill="${KBO_T.good}"     font-weight="700" font-family="'Space Grotesk',sans-serif">① Elite</text>
+        <text x="280" y="92"  text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">출력·전달 모두 우수</text>
+        <text x="280" y="218" text-anchor="middle" font-size="13" fill="${KBO_T.injury}"   font-weight="700" font-family="'Space Grotesk',sans-serif">② 낭비형</text>
+        <text x="280" y="236" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">출력은 있으나 전달 약함</text>
+        <text x="120" y="74"  text-anchor="middle" font-size="13" fill="${KBO_T.transfer}" font-weight="700" font-family="'Space Grotesk',sans-serif">③ 효율형</text>
+        <text x="120" y="92"  text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">전달은 우수, 출력 부족</text>
+        <text x="120" y="218" text-anchor="middle" font-size="13" fill="#94a3b8"           font-weight="700" font-family="'Space Grotesk',sans-serif">④ 아마</text>
+        <text x="120" y="236" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">둘 다 부족</text>
+        <text x="200" y="350" text-anchor="middle" font-size="12" fill="${KBO_T.text2}" font-weight="600">출력 Output (%)</text>
+        <text x="14"  y="180" text-anchor="middle" font-size="12" fill="${KBO_T.text2}" font-weight="600" transform="rotate(-90 14 180)">전달 효율 Transmission (%)</text>
+        <text x="40"  y="334" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">0</text>
+        <text x="200" y="334" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">50</text>
+        <text x="360" y="334" text-anchor="middle" font-size="10" fill="${KBO_T.textMuted}">100</text>
+        <text x="28"  y="320" text-anchor="end"    font-size="10" fill="${KBO_T.textMuted}">0</text>
+        <text x="28"  y="183" text-anchor="end"    font-size="10" fill="${KBO_T.textMuted}">50</text>
+        <text x="28"  y="43"  text-anchor="end"    font-size="10" fill="${KBO_T.textMuted}">100</text>
+        <defs>
+          <marker id="arr-p2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 Z" fill="${KBO_T.navy}"/>
+          </marker>
+        </defs>
+        <line x1="${cx}" y1="${cy}" x2="${tx}" y2="${ty}" stroke="${KBO_T.navy}" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arr-p2)"/>
+        <circle cx="${tx}" cy="${ty}" r="6" fill="none" stroke="${KBO_T.good}" stroke-width="1.5" stroke-dasharray="2,2"/>
+        <text x="${tx + 12}" y="${ty + 4}" font-size="10" fill="${KBO_T.good}" font-weight="700">목표 · Elite</text>
+        <circle cx="${cx}" cy="${cy}" r="11" fill="${zoneColor}" stroke="white" stroke-width="2"/>
+        <circle cx="${cx}" cy="${cy}" r="17" fill="none" stroke="${zoneColor}" stroke-width="1" opacity="0.5"/>
+        <text x="${cx}" y="${cy - 22}" text-anchor="middle" font-size="12" font-weight="700" fill="${zoneColor}" font-family="'Space Grotesk',sans-serif">본 선수</text>
+      </svg>`;
+
+    const main = `
+      <div style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 28px; align-items: start;">
+        <div class="kbo-card" style="padding: 28px;">
+          ${_kboSectionTitle({
+            kicker: 'Output × Energy Efficiency',
+            title: `현재 위치 — ${zoneId} ${zoneLabel}`,
+            right: _kboStatusPill({ kind: zoneId === '①' ? 'good' : zoneId === '②' ? 'caution' : zoneId === '③' ? 'caution' : 'leak', text: zoneRoi }),
+          })}
+          ${quadrantSvg}
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="kbo-card" style="padding: 22px;">
+            ${_kboSectionTitle({ kicker: 'Generation', title: '힘 생성 (Output)' })}
+            <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px;">
+              <span class="kbo-metric-num" style="font-size: 56px; color: ${KBO_T.output};">${px}</span>
+              <span style="font-size: 16px; color: ${KBO_T.textMuted};">/ 100 percentile</span>
+            </div>
+            <div style="background: ${KBO_T.bgElev}; height: 10px; border-radius: 5px; overflow: hidden;">
+              <div style="width: ${px}%; height: 100%; background: ${KBO_T.output};"></div>
+            </div>
+            <div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-top: 10px; line-height: 1.5;">
+              골반·몸통·상완 회전 출력 ${px >= 60 ? '코호트 중앙값 이상' : px >= 40 ? '중앙값 부근' : '하위'}. ${px >= 50 ? '절대 출력 자체는 충분한 수준.' : '출력 보강 필요.'}
+            </div>
+          </div>
+          <div class="kbo-card" style="padding: 22px; border-left: 3px solid ${py < 50 ? KBO_T.injury : KBO_T.good};">
+            ${_kboSectionTitle({
+              kicker: 'Transmission',
+              title: '힘 전달 (Energy Efficiency)',
+              right: _kboStatusPill({ kind: py < 50 ? 'leak' : 'good', text: py < 50 ? '약점' : '양호' }),
+            })}
+            <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px;">
+              <span class="kbo-metric-num" style="font-size: 56px; color: ${py < 50 ? KBO_T.injury : KBO_T.good};">${py}</span>
+              <span style="font-size: 16px; color: ${KBO_T.textMuted};">/ 100 percentile</span>
+            </div>
+            <div style="background: ${KBO_T.bgElev}; height: 10px; border-radius: 5px; overflow: hidden;">
+              <div style="width: ${py}%; height: 100%; background: ${py < 50 ? KBO_T.injury : KBO_T.good};"></div>
+            </div>
+            <div style="font-size: 12px; color: ${KBO_T.textMuted}; margin-top: 10px; line-height: 1.5;">
+              ${py < 50 ? `시퀀싱·증폭률·관절 간 전달율 ${py < 30 ? '하위' : '평균 미만'} — <strong style="color: ${KBO_T.text};">여기서 ${dMech != null ? dMech.toFixed(1) : '+'}km/h가 새고 있음</strong>.` : '시퀀싱·증폭률·전달율 양호. 세부 타이밍 조정 단계.'}
+            </div>
+          </div>
+          <div style="padding: 14px 18px; background: ${KBO_T.navy}; color: #fff; border-radius: 10px;">
+            <div class="kbo-eyebrow" style="color: rgba(255,255,255,0.6); margin-bottom: 4px;">Coaching ROI</div>
+            <div class="kbo-display" style="font-size: 18px; line-height: 1.4;">
+              ${py < 50 ? `전달 효율을 <span style="color: #FFD166;">50%까지 회복</span>하면<br/>즉시 <span style="color: #FFD166;">+${dMech != null ? dMech.toFixed(1) : '?'} km/h</span> 회수` : `현재 균형 양호 — <span style="color: #FFD166;">세부 타이밍 정밀화</span>가 다음 단계`}
+            </div>
+          </div>
+        </div>
+      </div>`;
+
     return `
-    <section id="p2" class="report-page">
-      ${_pageBanner('2', '힘을 얼마나 만들었나', 'Force Generation Profile', '각 분절과 지면에서 절대 출력/파워를 충분히 만들고 있나?')}
-      <div class="page-intro">
-        <span class="scope-chip scope-gen">Generation</span>
-        이 페이지는 <strong>절대 출력/파워의 양</strong>만 봅니다.
-        전달 효율(어디서 새는가)은 <a href="#p3">P3</a>에서 다룹니다.
+    <section id="p2" class="report-page kbo-scope">
+      <div class="kbo-pad">
+        ${_kboPageHeader({ num: '2', en: 'Opportunity Map', kr: '힘 생성 vs 힘 전달', q: '출력과 전달은 다르다 — 어느 쪽이 약하면 코칭 효과가 큰가' })}
+        ${headline}
+        ${main}
       </div>
-      ${_render3ColumnRadars(result)}
-      ${_renderSegmentGenerationStack(result)}
+      <!-- 기존 보조 시각화 (3-col radar, segment generation stack) — 페이지 하단 보존 -->
+      <div style="background: var(--bg-card); margin-top: 32px; padding: 28px; border-top: 1px solid var(--border);">
+        <div class="text-xs mb-3" style="color: var(--text-muted); font-style: italic;">▼ 보조 시각화 — 카테고리별 점수 + 분절별 출력 스택</div>
+        ${_render3ColumnRadars(result)}
+        ${_renderSegmentGenerationStack(result)}
+      </div>
     </section>`;
   }
 
-  // ── P3 Force Transmission Map ──
+  // ── P3 Kinetic Chain Map (★ v0.67 KBO 디자인 핸드오프 — 헤더/헤드라인 적용, 본문 시각화는 점진 전환) ──
   function _renderP3Transmission(result) {
+    const cs = result.catScores || {};
+    const tr = cs.TRANSFER?.score ?? 50;
+    const eliResult = _calculateELI(result);
+    const eli = eliResult?.eli;
+    const weakArea = eliResult?.areas?.filter(a => a.score != null && a.score < 50).sort((a,b) => a.score - b.score)[0];
+    const headline = `
+      <div style="margin-bottom: 24px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">발 → 골반 → 몸통 → 팔 → 공</div>
+        <div class="kbo-headline">
+          ${weakArea ? `힘이 가장 새는 곳 — <em>${weakArea.name}</em> ${Math.round(weakArea.score)}점.` : `전달 효율 종합 <em>${eli != null ? Math.round(eli) : '—'}점</em> · 큰 누수 지점 없음.`}
+        </div>
+        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
+          ★ 5축 중 <strong>Transmission(에너지 전달)</strong> 축 하위 진단. ELI는 이 축을 분해하는 도구 — 별도 종합점수 아님.
+        </div>
+      </div>`;
     return `
-    <section id="p3" class="report-page">
-      ${_pageBanner('3', '힘이 어디서 새는가', 'Force Transmission Map', '생성된 힘이 발→골반→몸통→팔→공으로 얼마나 잘 전달되는가?')}
-      <div class="page-intro">
-        <span class="scope-chip scope-trans">Transmission</span>
-        ★ <strong>5축 중 Transmission(에너지 전달) 축</strong>의 하위 진단 페이지입니다. ELI는 별도 종합점수가 아니라 <strong>이 축을 분해하는 도구</strong>로 사용됩니다.
-        절대 출력은 <a href="#p2">P2 Generation</a>, 5축 종합 점수는 <a href="#p1">P1</a> 하단 보드에서 확인하세요.
+    <section id="p3" class="report-page kbo-scope">
+      <div class="kbo-pad">
+        ${_kboPageHeader({ num: '3', en: 'Kinetic Chain Map', kr: '힘이 어디서 새는가', q: '발-골반-몸통-팔-공 흐름 어디서 누수가 가장 큰가' })}
+        ${headline}
+        ${_renderEnergyTransferBar(result)}
       </div>
-      <div class="kbo-scope" style="margin: 16px 0;">${_renderEnergyTransferBar(result)}</div>
-      ${_renderMannequinUplift(result)}
-      ${_renderELISection(result)}
-      ${_renderETESection(result)}
+      <!-- 기존 마네킹 + ELI + ETE — 점진 전환 (현재 dark 테마 유지) -->
+      <div style="background: var(--bg-card); margin-top: 16px; padding: 28px; border-top: 1px solid var(--border);">
+        <div class="text-xs mb-3" style="color: var(--text-muted); font-style: italic;">▼ 상세 진단 — 마네킹 + ELI 6영역 + ETE 분해</div>
+        ${_renderMannequinUplift(result)}
+        ${_renderELISection(result)}
+        ${_renderETESection(result)}
+      </div>
     </section>`;
   }
 
-  // ── P4 Root-Cause Timeline ──
+  // ── P4 Root Cause Analysis (★ v0.67 KBO 디자인 핸드오프) ──
   function _renderP4RootCause(result) {
+    const headline = `
+      <div style="margin-bottom: 24px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">동작 결함 → 전달 손실 → 결과</div>
+        <div class="kbo-headline">
+          한 번의 결함이 <em>어떻게</em> 팔까지 영향을 주는가 —<br/>
+          원인 → 누수 → 결과를 한 줄로.
+        </div>
+        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
+          각 결함 phase(셋업→앞발 착지→최대 외회전→릴리스)와 결과 지표 동시 표기. drill 처방은 <a href="#p6" style="color: ${KBO_T.navy}; font-weight: 700;">P6</a>에서.
+        </div>
+      </div>`;
     return `
-    <section id="p4" class="report-page">
-      ${_pageBanner('4', '어떤 동작이 막는가', 'Root-Cause Timeline', '결함 동작(원인)이 어느 이벤트에서 발생하고, 어떤 전달 손실(결과)을 만들었나?')}
-      <div class="page-intro">
-        <span class="scope-chip scope-fault">Fault</span>
-        결함마다 phase(KH→FC→MER→BR)와 결과 metric을 함께 표기합니다. drill 처방은 <a href="#p6">P6</a>에서.
+    <section id="p4" class="report-page kbo-scope">
+      <div class="kbo-pad">
+        ${_kboPageHeader({ num: '4', en: 'Root Cause Analysis', kr: '어떤 동작이 막는가', q: '결함이 어느 phase에서 발생하고 어떤 전달 손실을 만드는가' })}
+        ${headline}
+        ${_renderFaultLossCausalChain(result)}
       </div>
-      ${_renderEventTimeline(result)}
-      <div class="kbo-scope" style="margin: 16px 0;">${_renderFaultLossCausalChain(result)}</div>
-      ${_renderCausalAnalysis(result)}
+      <!-- 기존 Event Timeline + 인과 분석 카드 — 점진 전환 -->
+      <div style="background: var(--bg-card); margin-top: 16px; padding: 28px; border-top: 1px solid var(--border);">
+        <div class="text-xs mb-3" style="color: var(--text-muted); font-style: italic;">▼ 상세 인과 분석 — 6개 chain별 원인·결과 카드</div>
+        ${_renderEventTimeline(result)}
+        ${_renderCausalAnalysis(result)}
+      </div>
     </section>`;
   }
 
-  // ── P5 Evidence Dashboard ──
+  // ── P5 Evidence Dashboard (★ v0.67 KBO 디자인 핸드오프) ──
   function _renderP5Evidence(result) {
+    const headline = `
+      <div style="margin-bottom: 24px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">분석가 근거 자료</div>
+        <div class="kbo-headline">
+          위 진단의 <em>근거 수치</em>.<br/>
+          반복성(Stability)과 최적성(Quality)은 다른 개념 — 두 축으로 분리.
+        </div>
+        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
+          이 페이지는 <strong>분석가·의사결정자가 신뢰할 수 있는 근거</strong>만 모아 제시. 학술 인용·통계 용어는 펼침 카드 안에만.
+        </div>
+      </div>`;
     return `
-    <section id="p5" class="report-page">
-      ${_pageBanner('5', '진단 근거', 'Evidence Dashboard', '위 진단을 만드는 핵심 데이터는 무엇이며, 서로 모순 없이 어떻게 읽히나?')}
-      <div class="page-intro">
-        <span class="scope-chip scope-evid">Evidence</span>
-        반복성(Stability)과 최적성(Quality)은 다른 개념입니다. 두 축으로 분리해서 봅니다.
+    <section id="p5" class="report-page kbo-scope">
+      <div class="kbo-pad">
+        ${_kboPageHeader({ num: '5', en: 'Evidence Dashboard', kr: '진단 근거', q: '위 진단을 만드는 핵심 데이터는 어떻게 읽히는가' })}
+        ${headline}
       </div>
-      ${_renderKinematicBellUplift(result)}
-      ${_renderGRFSection(result)}
-      ${_renderConsistencyQualityMatrix(result)}
+      <!-- 기존 Evidence — 점진 전환 -->
+      <div style="background: var(--bg-card); padding: 28px;">
+        ${_renderKinematicBellUplift(result)}
+        ${_renderGRFSection(result)}
+        ${_renderConsistencyQualityMatrix(result)}
+      </div>
     </section>`;
   }
 
-  // ── P6 Action Plan & Retest ──
+  // ── P6 Action & Pilot Plan (★ v0.67 KBO 디자인 핸드오프) ──
   function _renderP6Action(result) {
+    const headline = `
+      <div style="margin-bottom: 24px;">
+        <div class="kbo-eyebrow" style="margin-bottom: 10px;">6주 코칭 → retest → 검증</div>
+        <div class="kbo-headline">
+          <em>6주 후 같은 리포트로</em> 재측정 검증.<br/>
+          개선이 수치로 증명되는 결과 기반 도입.
+        </div>
+        <div style="font-size: 13px; color: ${KBO_T.textMuted}; margin-top: 10px;">
+          각 drill은 측정 가능한 KPI 한 개에 묶입니다. 도입 → 6주 → retest → 다음 사이클 결정 흐름.
+        </div>
+      </div>`;
+    // 6-Week Roadmap (PDF §2 P6 핵심)
+    const roadmap = _kboPilotRoadmap({ weeks: [
+      { range: 'W 1-2', title: '진단·기준선', detail: '베이스라인 측정 + 코칭 우선순위 확정' },
+      { range: 'W 3-4', title: '집중 교정',   detail: '결함 1·2번 drill 집중 — 동작 패턴 재학습' },
+      { range: 'W 5-6', title: '통합·미세조정', detail: '교정 동작을 풀스피드 투구에 통합', milestone: false },
+      { range: 'Retest', title: '효과 검증', detail: '같은 지표 측정 — Before/After 비교', milestone: true },
+    ]});
     return `
-    <section id="p6" class="report-page">
-      ${_pageBanner('6', '훈련 처방', 'Action Plan & Retest', '6주 동안 무엇을 우선 훈련하고, 어떤 지표로 좋아졌는지 판단할 것인가?')}
-      <div class="page-intro">
-        <span class="scope-chip scope-act">Action</span>
-        각 drill은 측정 가능한 KPI 한 개에 묶입니다. 6주 후 retest로 효과 검증.
+    <section id="p6" class="report-page kbo-scope">
+      <div class="kbo-pad">
+        ${_kboPageHeader({ num: '6', en: 'Action & Pilot Plan', kr: '훈련 처방', q: '6주 동안 무엇을 우선 훈련하고 어떤 지표로 검증할 것인가' })}
+        ${headline}
+        <div class="kbo-card" style="padding: 28px; margin-bottom: 18px;">
+          ${_kboSectionTitle({ kicker: '6-Week Roadmap', title: '도입 → 코칭 → retest 1 사이클', sub: '개선이 수치로 증명되지 않으면 다음 사이클 비용 X — 검증 가능한 결과 기반' })}
+          ${roadmap}
+        </div>
+        ${_renderBeforeAfterRetestSlots(result)}
       </div>
-      ${_renderFaultsWithDrills(result)}
-      ${_renderSummaryWithTraining(result)}
-      ${_renderRetestKPITable(result)}
-      <div class="kbo-scope" style="margin: 16px 0;">${_renderBeforeAfterRetestSlots(result)}</div>
+      <!-- 기존 결함+drill + 종합 + Retest KPI 표 — 점진 전환 -->
+      <div style="background: var(--bg-card); margin-top: 16px; padding: 28px; border-top: 1px solid var(--border);">
+        <div class="text-xs mb-3" style="color: var(--text-muted); font-style: italic;">▼ 상세 처방 — 결함별 drill + 종합 권장 + Retest KPI 표</div>
+        ${_renderFaultsWithDrills(result)}
+        ${_renderSummaryWithTraining(result)}
+        ${_renderRetestKPITable(result)}
+      </div>
     </section>`;
   }
 
