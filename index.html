@@ -1582,6 +1582,63 @@ function showAlert(msg, type='info') {
       console.log('✓ 자동 복원:', latest.name, latest.version);
     }
   } catch (e) { console.warn('auto-restore 실패', e); }
+  // ════════════════════════════════════════════════════════════
+  // v0.99 — postMessage 외부 prefill (예: HS-Team-Dashboard 토글 뷰)
+  //   parent 가 c3d.txt content 를 전달하면 자동으로 setPlayer + processFiles + render
+  //   부모 ↔ iframe 도메인 같아야 함 (둘 다 *.github.io)
+  // ════════════════════════════════════════════════════════════
+  (function setupEmbedPrefill(){
+    if (window.parent === window) return;  // iframe 임베드일 때만 동작
+    window.addEventListener('message', async (event) => {
+      if (!event.data || event.data.type !== 'theia_load_c3d') return;
+      const { player, files, ball_speed, ball_speed_sd, pitch_type, level } = event.data;
+      if (!Array.isArray(files) || files.length === 0) return;
+      try {
+        // 1) 폼 채우기 (UX 일관성)
+        const $ = id => document.getElementById(id);
+        if (player?.name)      $('player-name').value      = player.name;
+        if (player?.mass_kg)   $('player-mass').value      = player.mass_kg;
+        if (player?.height_cm) $('player-height').value    = player.height_cm;
+        if (ball_speed != null) $('player-ball-speed').value = ball_speed;
+        if (ball_speed_sd != null) $('player-ball-speed-sd').value = ball_speed_sd;
+        if (pitch_type && $('player-pitch-type')) $('player-pitch-type').value = pitch_type;
+        if (level) {
+          if (typeof selectLevel === 'function') selectLevel(level);
+        }
+        // 2) State 채우기
+        window.TheiaApp.setPlayer({
+          mass_kg: player?.mass_kg, height_cm: player?.height_cm,
+          name: player?.name || '?', handedness: player?.handedness || 'R',
+          level: level || (window.TheiaApp.getPlayer()?.level || '고교'),
+        });
+        // 3) File-like 객체 (Theia processFiles 는 .text() 만 호출)
+        const fileLike = files.map(f => ({
+          name: f.name || 'embed.c3d.txt',
+          text: async () => f.text,
+        }));
+        // 4) 분석 + 렌더
+        const result = await window.TheiaApp.processFiles(fileLike, {
+          mode: window.TheiaApp.getMode(),
+          mass_kg: player?.mass_kg, height_cm: player?.height_cm,
+          level: level || '고교',
+          ball_speed, ball_speed_sd, pitch_type: pitch_type || 'FF',
+        });
+        const html = window.TheiaApp.renderReport(result);
+        $('result-area').innerHTML = `<div class="card p-6">${html}</div>`;
+        if (typeof hideInputSections === 'function') hideInputSections();
+        try { window.TheiaApp.saveCurrentReport(player?.name || '신규'); if (typeof refreshSavedPlayerSelector==='function') refreshSavedPlayerSelector(); } catch(_){}
+        window.parent.postMessage({ type: 'theia_loaded', ok: true }, '*');
+      } catch (e) {
+        console.warn('embed prefill 실패:', e);
+        window.parent.postMessage({ type: 'theia_loaded', ok: false, error: e.message }, '*');
+      }
+    });
+    // Parent 에게 ready 신호
+    window.parent.postMessage({ type: 'theia_ready' }, '*');
+    console.log('[Theia embed] postMessage 핸들러 등록 완료 — parent 에 ready 신호 전송');
+  })();
+  
+  
 })();
 </script>
 
